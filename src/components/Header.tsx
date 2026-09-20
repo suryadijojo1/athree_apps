@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock } from 'lucide-react';
+import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame } from 'lucide-react';
 import { User, CashierShift } from '../types';
 
 interface HeaderProps {
@@ -13,6 +13,9 @@ interface HeaderProps {
   onGoToAdminDashboard?: () => void;
   onLogout?: () => void;
   onOpenUserManagement?: () => void;
+  onOpenFirebaseModal?: () => void;
+  isFirebaseConnected?: boolean;
+  firebaseUser?: any;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,7 +28,10 @@ export const Header: React.FC<HeaderProps> = ({
   onScanBarcodePrompt,
   onGoToAdminDashboard,
   onLogout,
-  onOpenUserManagement
+  onOpenUserManagement,
+  onOpenFirebaseModal,
+  isFirebaseConnected,
+  firebaseUser
 }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -84,9 +90,27 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right: Date, Shift button, Profile */}
-      <div className="flex items-center gap-3 md:gap-4 shrink-0">
+      <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
+        {/* Firebase Cloud Status Badge & Trigger */}
+        {onOpenFirebaseModal && (
+          <button
+            type="button"
+            onClick={onOpenFirebaseModal}
+            className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shadow-2xs ${
+              isFirebaseConnected
+                ? 'bg-amber-500/20 text-amber-100 hover:bg-amber-500/30 border-amber-400/40'
+                : 'bg-black/20 text-white/90 hover:bg-black/30 border-white/20'
+            }`}
+            title="Pengaturan Database Cloud Firestore"
+          >
+            <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            <span className="hidden md:inline">Firestore:</span>
+            <span className="font-bold">{firebaseUser ? 'Online' : 'Siap'}</span>
+          </button>
+        )}
+
         {/* Date Display */}
-        <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-white bg-black/20 border border-white/20 px-3 py-1.5 rounded-lg">
+        <div className="hidden lg:flex items-center gap-2 text-xs font-semibold text-white bg-black/20 border border-white/20 px-3 py-1.5 rounded-lg">
           <span>{formattedDate}</span>
           <Calendar className="w-3.5 h-3.5 text-emerald-200" />
         </div>
@@ -222,6 +246,25 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>Ganti Akun / Hak Akses</span>
                     <UserCheck className="w-4 h-4" />
                   </button>
+
+                  {onOpenFirebaseModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onOpenFirebaseModal();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-medium text-amber-700 hover:bg-amber-50 flex items-center justify-between cursor-pointer border-t border-slate-100"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
+                        <span>Firebase Cloud Firestore</span>
+                      </span>
+                      <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                        {firebaseUser ? 'Online' : 'Cloud'}
+                      </span>
+                    </button>
+                  )}
 
                   {currentUser.role === 'admin' && onOpenUserManagement && (
                     <button

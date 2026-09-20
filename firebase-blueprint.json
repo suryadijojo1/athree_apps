@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Master data produk, stok barang, dan harga jual sistem kasir",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID unik produk" },
+        "name": { "type": "string", "description": "Nama produk barang" },
+        "category": { "type": "string", "description": "Kategori produk" },
+        "price": { "type": "number", "description": "Harga jual produk" },
+        "costPrice": { "type": "number", "description": "Harga pokok/modal produk" },
+        "stock": { "type": "number", "description": "Jumlah stok tersedia" },
+        "minStock": { "type": "number", "description": "Batas minimum peringatan stok rendah" },
+        "unit": { "type": "string", "description": "Satuan produk (pcs, box, kg, dll)" },
+        "sku": { "type": "string", "description": "Kode SKU atau Barcode produk" },
+        "barcode": { "type": "string", "description": "Kode barcode batang produk" },
+        "description": { "type": "string", "description": "Keterangan atau deskripsi tambahan produk" },
+        "updatedAt": { "type": "string", "description": "Waktu update terakhir" }
+      },
+      "required": ["id", "name", "price", "stock"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Data transaksi penjualan kasir POS",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID unik transaksi / invoice" },
+        "invoiceNumber": { "type": "string", "description": "Nomor faktur nota kasir" },
+        "date": { "type": "string", "description": "Tanggal transaksi format YYYY-MM-DD" },
+        "time": { "type": "string", "description": "Waktu transaksi format HH:mm" },
+        "cashierId": { "type": "string", "description": "ID kasir yang memproses" },
+        "cashierName": { "type": "string", "description": "Nama kasir yang bertugas" },
+        "customerName": { "type": "string", "description": "Nama pembeli atau pelanggan" },
+        "paymentMethod": { "type": "string", "description": "Metode pembayaran (cash, qris, transfer, debt)" },
+        "subtotal": { "type": "number", "description": "Total sebelum diskon dan pajak" },
+        "discount": { "type": "number", "description": "Nilai potongan harga atau diskon" },
+        "tax": { "type": "number", "description": "Nilai pajak transaksi" },
+        "total": { "type": "number", "description": "Total akhir yang harus dibayar" },
+        "paidAmount": { "type": "number", "description": "Nominal yang dibayarkan konsumen" },
+        "change": { "type": "number", "description": "Nominal kembalian" },
+        "status": { "type": "string", "description": "Status transaksi (completed, pending, cancelled, debt)" },
+        "dueDate": { "type": "string", "description": "Tanggal jatuh tempo jika bon/utang" },
+        "createdAt": { "type": "string", "description": "Timestamp waktu pencatatan" }
+      },
+      "required": ["id", "invoiceNumber", "total", "paymentMethod", "status"]
+    },
+    "CashFlowRecord": {
+      "title": "CashFlowRecord",
+      "description": "Catatan mutasi kas masuk dan kas keluar operasional toko",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID mutasi kas" },
+        "date": { "type": "string", "description": "Tanggal pencatatan" },
+        "type": { "type": "string", "description": "Jenis arus kas: in (pemasukan) atau out (pengeluaran)" },
+        "category": { "type": "string", "description": "Kategori operasional kas" },
+        "amount": { "type": "number", "description": "Jumlah nominal uang kas" },
+        "description": { "type": "string", "description": "Keterangan mutasi kas" },
+        "recordedBy": { "type": "string", "description": "Nama petugas pencatat kas" },
+        "createdAt": { "type": "string", "description": "Waktu pencatatan" }
+      },
+      "required": ["id", "date", "type", "amount", "recordedBy"]
+    },
+    "CashierShift": {
+      "title": "CashierShift",
+      "description": "Rekap shift kerja kasir dan rekonsiliasi uang laci",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID sesi shift" },
+        "cashierId": { "type": "string", "description": "ID petugas kasir" },
+        "cashierName": { "type": "string", "description": "Nama kasir yang bertugas" },
+        "startTime": { "type": "string", "description": "Waktu mulai buka kasir" },
+        "endTime": { "type": "string", "description": "Waktu tutup kasir" },
+        "startingCash": { "type": "number", "description": "Modal awal kas kecil" },
+        "expectedCash": { "type": "number", "description": "Estimasi uang tunai di laci" },
+        "actualCash": { "type": "number", "description": "Hitungan fisik uang tunai aktual" },
+        "cashDifference": { "type": "number", "description": "Selisih kas (plus / minus)" },
+        "status": { "type": "string", "description": "Status shift (open atau closed)" }
+      },
+      "required": ["id", "cashierId", "cashierName", "startTime", "startingCash", "status"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Katalog inventaris master produk dan stok toko"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Arsip transaksi penjualan nota kasir"
+    },
+    "/cashFlowRecords/{recordId}": {
+      "schema": "CashFlowRecord",
+      "description": "Catatan buku kas masuk dan keluar harian"
+    },
+    "/shifts/{shiftId}": {
+      "schema": "CashierShift",
+      "description": "Laporan rekonsiliasi dan log pergantian shift kasir"
+    }
+  }
+}

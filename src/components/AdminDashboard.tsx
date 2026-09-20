@@ -30,7 +30,8 @@ import {
   Filter,
   Lock,
   Unlock,
-  HardDrive
+  HardDrive,
+  Flame
 } from 'lucide-react';
 import { Transaction, CashFlowRecord, CashierShift, User } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -47,6 +48,7 @@ interface AdminDashboardProps {
   onNavigate: (view: 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'drive') => void;
   onSwitchUser: () => void;
   onLogout?: () => void;
+  onOpenFirebaseModal?: () => void;
   transactions: Transaction[];
   shift: CashierShift;
   cashFlowRecords: CashFlowRecord[];
@@ -70,6 +72,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onNavigate,
   onSwitchUser,
   onLogout,
+  onOpenFirebaseModal,
   transactions,
   shift,
   cashFlowRecords,
