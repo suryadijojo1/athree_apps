@@ -1,0 +1,6 @@
+{
+  "name": "Aplikasi Kasir & Manajemen Stok",
+  "description": "Sistem POS Kasir responsif dengan manajemen stok barang, integrasi Google Drive untuk cadangan data & ekspor laporan, jatuh tempo penyelesaian, laporan penjualan harian, hak akses multi-role, dan ekspor PDF/Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
