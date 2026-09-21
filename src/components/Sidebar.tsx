@@ -22,6 +22,7 @@ interface SidebarProps {
   onLogout: () => void;
   pendingOrdersCount: number;
   lowStockCount: number;
+  allowCashierDrive?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -31,7 +32,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSwitchUser,
   onLogout,
   pendingOrdersCount,
-  lowStockCount
+  lowStockCount,
+  allowCashierDrive = false
 }) => {
   const isAdmin = currentUser.role === 'admin';
   const isKasir = currentUser.role === 'kasir';
@@ -144,18 +146,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
 
-          {/* 5. Google Drive Cloud Backup & Storage */}
-          <button
-            onClick={() => setActiveTab('drive')}
-            title="Google Drive Cloud Storage & Cadangan Data"
-            className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
-              activeTab === 'drive'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-950'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <HardDrive className="w-5 h-5 md:w-6 md:h-6" />
-          </button>
+          {/* 5. Google Drive Cloud Backup & Storage (Khusus Admin atau jika Kasir diizinkan) */}
+          {(isAdmin || allowCashierDrive) && (
+            <button
+              onClick={() => setActiveTab('drive')}
+              title="Google Drive Cloud Storage & Cadangan Data"
+              className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+                activeTab === 'drive'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-950'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <HardDrive className="w-5 h-5 md:w-6 md:h-6" />
+            </button>
+          )}
         </nav>
       </div>
 

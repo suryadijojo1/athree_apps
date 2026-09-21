@@ -41,7 +41,7 @@ import {
   getOrCreateBackupFolder,
   BACKUP_FOLDER_NAME
 } from '../services/googleDriveService';
-import { DriveFile, Transaction, Product, CashFlowRecord, CashierShift } from '../types';
+import { DriveFile, Transaction, Product, CashFlowRecord, CashierShift, User } from '../types';
 
 interface GoogleDriveViewProps {
   transactions: Transaction[];
@@ -49,6 +49,9 @@ interface GoogleDriveViewProps {
   cashFlowRecords: CashFlowRecord[];
   shifts?: CashierShift[];
   currentStartingCash?: number;
+  currentUser?: User;
+  allowCashierDrive?: boolean;
+  onSwitchToAdmin?: () => void;
   onRestoreData?: (data: {
     transactions?: Transaction[];
     products?: Product[];
@@ -62,6 +65,9 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   cashFlowRecords,
   shifts = [],
   currentStartingCash = 0,
+  currentUser,
+  allowCashierDrive = false,
+  onSwitchToAdmin,
   onRestoreData
 }) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -452,6 +458,64 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       return isoString;
     }
   };
+
+  // Role Access Control: Restrict to Admin unless allowCashierDrive is enabled
+  if (currentUser && currentUser.role !== 'admin' && !allowCashierDrive) {
+    return (
+      <div className="flex-1 bg-slate-100 flex items-center justify-center p-6 select-none">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-8 max-w-md text-center space-y-5 animate-in fade-in duration-200">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200 mx-auto flex items-center justify-center shadow-xs">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-base font-extrabold text-slate-800">
+              Akses Dibatasi Khusus Administrator
+            </h2>
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+              Menu <strong>Google Drive Cloud Storage & Cadangan Data</strong> hanya dapat diakses dan dikelola oleh akun
+              <strong> Administrator / Pemilik Toko</strong> demi menjaga integritas database dan riwayat penjualan.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left text-xs space-y-2 text-slate-600">
+            <span className="font-bold text-slate-700 block">Status Pengguna Aktif:</span>
+            <div className="flex items-center justify-between text-[11px]">
+              <span>Nama Akun:</span>
+              <span className="font-semibold text-slate-800">{currentUser.name}</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span>Peran (Role):</span>
+              <span className="font-bold uppercase text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200 text-[10px]">
+                {currentUser.roleLabel || currentUser.role}
+              </span>
+            </div>
+          </div>
+
+          <div className="pt-2 space-y-2">
+            {onSwitchToAdmin && (
+              <button
+                type="button"
+                onClick={onSwitchToAdmin}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Masuk Sebagai Administrator / Pemilik</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleDownloadLocalBackup}
+              className="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Unduh Cadangan Offline (.JSON) Lokal</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-100 select-none">

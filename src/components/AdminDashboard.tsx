@@ -31,7 +31,8 @@ import {
   Lock,
   Unlock,
   HardDrive,
-  Flame
+  Flame,
+  ShieldCheck
 } from 'lucide-react';
 import { Transaction, CashFlowRecord, CashierShift, User } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -61,6 +62,8 @@ interface AdminDashboardProps {
   salesList?: string[];
   onAddSales?: (newSalesName: string) => void;
   onDeleteSales?: (salesName: string) => void;
+  allowCashierDrive?: boolean;
+  onToggleAllowCashierDrive?: (allowed: boolean) => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -84,7 +87,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteInvoice,
   salesList = ['Kasir (Dimas)', 'Admin (DEAZBAR)'],
   onAddSales,
-  onDeleteSales
+  onDeleteSales,
+  allowCashierDrive = false,
+  onToggleAllowCashierDrive
 }) => {
   const [showPendapatanModal, setShowPendapatanModal] = useState(false);
   const [showPengeluaranModal, setShowPengeluaranModal] = useState(false);
@@ -349,6 +354,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <HardDrive className="w-4 h-4 text-blue-600" />
               <span>Google Drive</span>
             </button>
+            {onToggleAllowCashierDrive && (
+              <button
+                type="button"
+                onClick={() => onToggleAllowCashierDrive(!allowCashierDrive)}
+                className={`px-3.5 py-2.5 rounded-xl font-bold text-xs shadow-lg hover:shadow-xl transition-all active:scale-95 border flex items-center gap-1.5 cursor-pointer ${
+                  allowCashierDrive
+                    ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-400'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-100'
+                }`}
+                title={
+                  allowCashierDrive
+                    ? 'Akses Drive Kasir: Sedang Aktif (Klik untuk Kunci Khusus Admin)'
+                    : 'Akses Drive Kasir: Terkunci Khusus Admin (Klik untuk Berikan Akses Kasir)'
+                }
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                <span>Drive Kasir: {allowCashierDrive ? 'Diizinkan' : 'Terkunci (Admin)'}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowUserManagementModal(true)}

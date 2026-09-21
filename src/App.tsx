@@ -178,6 +178,23 @@ export default function App() {
   });
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // Role permissions: Allow cashier access to Google Drive
+  const [allowCashierDrive, setAllowCashierDrive] = useState<boolean>(() => {
+    return localStorage.getItem('athree_allow_cashier_drive') === 'true';
+  });
+
+  const handleToggleAllowCashierDrive = (allowed: boolean) => {
+    setAllowCashierDrive(allowed);
+    localStorage.setItem('athree_allow_cashier_drive', allowed ? 'true' : 'false');
+  };
+
+  // If currently on drive tab but user is non-admin and cashier access is disabled, redirect to pos
+  useEffect(() => {
+    if (activeTab === 'drive' && currentUser.role !== 'admin' && !allowCashierDrive) {
+      setActiveTab('pos');
+    }
+  }, [currentUser.role, activeTab, allowCashierDrive]);
+
   // Modals
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
@@ -865,6 +882,8 @@ export default function App() {
           salesList={salesList}
           onAddSales={handleAddSales}
           onDeleteSales={handleDeleteSales}
+          allowCashierDrive={allowCashierDrive}
+          onToggleAllowCashierDrive={handleToggleAllowCashierDrive}
         />
 
         {/* Modals accessible from Admin Portal */}
@@ -951,6 +970,7 @@ export default function App() {
         onLogout={handleLogout}
         pendingOrdersCount={pendingOrdersCount}
         lowStockCount={lowStockCount}
+        allowCashierDrive={allowCashierDrive}
       />
 
       {/* 2. Main Work Area */}
@@ -1041,6 +1061,9 @@ export default function App() {
               cashFlowRecords={cashFlowRecords}
               shifts={shiftHistory}
               currentStartingCash={shift?.startingCash}
+              currentUser={currentUser}
+              allowCashierDrive={allowCashierDrive}
+              onSwitchToAdmin={() => setIsLoginModalOpen(true)}
               onRestoreData={handleRestoreDataFromDrive}
             />
           )}
