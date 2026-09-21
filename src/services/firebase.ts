@@ -22,7 +22,7 @@ import { Product, Transaction, CashFlowRecord, CashierShift } from '../types';
 
 // Initialize Firebase with exact config and database ID
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-aplikasikasirman-c4020c71-4153-4487-b4fc-621dc809ce75');
 export const auth = getAuth(app);
 
 // Operation types for standard error handling

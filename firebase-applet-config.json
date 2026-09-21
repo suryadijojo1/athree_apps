@@ -1,12 +1,12 @@
 {
-  "projectId": "excellent-bit-csjh2",
-  "appId": "1:988360825147:web:42a597812576c793bd3f1e",
-  "apiKey": "AIzaSyCFuQGgAfdmUmZNEqq6bVTSzgbRIymcL8M",
-  "authDomain": "excellent-bit-csjh2.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-aplikasikasirman-c4020c71-4153-4487-b4fc-621dc809ce75",
-  "storageBucket": "excellent-bit-csjh2.firebasestorage.app",
-  "messagingSenderId": "988360825147",
+  "projectId": "gen-lang-client-0253908527",
+  "appId": "1:828206992848:web:17ddff190060f72db4bdd5",
+  "apiKey": "AIzaSyDWhI-UiNV99KwxkbgQySLBh7bSEzoQpyE",
+  "authDomain": "gen-lang-client-0253908527.firebaseapp.com",
+  "storageBucket": "gen-lang-client-0253908527.firebasestorage.app",
+  "messagingSenderId": "828206992848",
   "measurementId": "",
-  "oAuthClientId": "988360825147-dtal0313ik4dbjp3qc33q58b6okrpm9h.apps.googleusercontent.com",
+  "oAuthClientId": "828206992848-h8i2njlma593a6ise5u2ndjdud1f7a64.apps.googleusercontent.com",
+  "firestoreDatabaseId": "ai-studio-aplikasikasirman-c4020c71-4153-4487-b4fc-621dc809ce75",
   "recaptchaSiteKey": ""
 }

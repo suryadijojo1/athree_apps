@@ -20,7 +20,10 @@ import {
   Database,
   ArrowDownToLine,
   X,
-  Clock
+  Clock,
+  Copy,
+  Check,
+  ShieldAlert
 } from 'lucide-react';
 import {
   googleSignIn,
@@ -65,6 +68,13 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Diagnostic state for Firebase unauthorized-domain
+  const [unauthorizedDomainInfo, setUnauthorizedDomainInfo] = useState<{
+    hostname: string;
+    projectId: string;
+  } | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   // Files state
   const [files, setFiles] = useState<DriveFile[]>([]);
@@ -134,6 +144,62 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     }, 6000);
   };
 
+  const handleCopyHostname = async (hostname: string) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(hostname);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = hostname;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 3000);
+    } catch {
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 3000);
+    }
+  };
+
+  const handleDownloadLocalBackup = () => {
+    try {
+      const backupData = {
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        appName: 'Aplikasi Kasir & Manajemen Stok DEAZBAR POS',
+        database: 'Cloud SQL PostgreSQL / Local',
+        counts: {
+          transactions: transactions.length,
+          products: products.length,
+          cashFlowRecords: cashFlowRecords.length,
+        },
+        data: {
+          transactions,
+          products,
+          cashFlowRecords,
+          shifts,
+          currentStartingCash
+        }
+      };
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Backup_Kasir_Lokal_${new Date().toISOString().slice(0, 10)}_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showNotification('success', 'File cadangan JSON berhasil diunduh ke perangkat Anda.');
+    } catch (err: any) {
+      showNotification('error', 'Gagal mengunduh file cadangan lokal: ' + err.message);
+    }
+  };
+
   const handleSignIn = async () => {
     setIsAuthenticating(true);
     setAuthError(null);
@@ -142,13 +208,24 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       if (result) {
         setIsConnected(true);
         setGoogleUser(result.user);
+        setUnauthorizedDomainInfo(null);
         showNotification('success', `Berhasil terhubung dengan akun Google: ${result.user.email}`);
         await loadFiles();
       }
     } catch (err: any) {
       console.error('Sign-in error:', err);
-      setAuthError(err.message || 'Gagal login ke akun Google');
-      showNotification('error', err.message || 'Gagal menghubungkan akun Google');
+      if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+        const host = err.hostname || (typeof window !== 'undefined' ? window.location.hostname : '');
+        setUnauthorizedDomainInfo({
+          hostname: host,
+          projectId: err.projectId || 'excellent-bit-csjh2'
+        });
+        setAuthError(`Domain "${host}" belum diizinkan di Firebase Authentication.`);
+        showNotification('error', `Domain "${host}" belum diotorisasi di Firebase Authentication.`);
+      } else {
+        setAuthError(err.message || 'Gagal login ke akun Google');
+        showNotification('error', err.message || 'Gagal menghubungkan akun Google');
+      }
     } finally {
       setIsAuthenticating(false);
     }
@@ -485,6 +562,98 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
 
       {/* Main Container */}
       <div className="p-6 space-y-6">
+        {/* UNAUTHORIZED DOMAIN DIAGNOSTIC CARD */}
+        {unauthorizedDomainInfo && (
+          <div className="bg-amber-50/80 border border-amber-300 rounded-2xl p-6 text-left max-w-2xl mx-auto shadow-sm space-y-4 animate-in fade-in duration-200">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Domain Belum Terdaftar di Firebase Authentication
+                  </h3>
+                  <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+                    auth/unauthorized-domain
+                  </span>
+                </div>
+                <p className="text-xs text-slate-700 mt-1 leading-relaxed">
+                  Firebase menolak proses login karena domain Cloud Run saat ini belum ditambahkan ke daftar
+                  <strong> Authorized domains</strong> di Firebase Console project Anda (<strong>{unauthorizedDomainInfo.projectId}</strong>).
+                </p>
+              </div>
+            </div>
+
+            {/* Current Hostname with Copy Button */}
+            <div className="bg-white border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="overflow-hidden">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Domain Aplikasi Anda Saat Ini:</span>
+                <code className="text-xs font-mono font-bold text-blue-700 break-all select-all">
+                  {unauthorizedDomainInfo.hostname}
+                </code>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCopyHostname(unauthorizedDomainInfo.hostname)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shrink-0 transition-all cursor-pointer ${
+                  copiedDomain
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                }`}
+              >
+                {copiedDomain ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedDomain ? 'Tersalin!' : 'Salin Domain'}</span>
+              </button>
+            </div>
+
+            {/* Steps to fix */}
+            <div className="bg-white/60 border border-amber-200/60 rounded-xl p-3.5 text-xs text-slate-700 space-y-2">
+              <span className="font-bold text-slate-900 block">Langkah Mengaktifkan di Firebase Console:</span>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600">
+                <li>Klik tombol <strong>Salin Domain</strong> di atas.</li>
+                <li>
+                  Buka pengaturan Firebase Console:{' '}
+                  <a
+                    href={`https://console.firebase.google.com/project/${unauthorizedDomainInfo.projectId}/authentication/settings`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline font-bold inline-flex items-center gap-1"
+                  >
+                    <span>Buka Firebase Auth Settings</span>
+                    <ExternalLink className="w-3 h-3 inline" />
+                  </a>
+                </li>
+                <li>Pilih tab <strong>Authorized domains</strong> (Domain yang diizinkan).</li>
+                <li>Klik <strong>Add domain</strong>, tempel domain yang tadi disalin, lalu klik <strong>Add</strong>.</li>
+                <li>Kembali ke tab ini lalu klik tombol coba lagi di bawah.</li>
+              </ol>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={handleSignIn}
+                disabled={isAuthenticating}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer transition-all shadow-xs disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isAuthenticating ? 'animate-spin' : ''}`} />
+                <span>{isAuthenticating ? 'Menghubungkan...' : 'Coba Hubungkan Google Drive Lagi'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadLocalBackup}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer transition-all shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh Cadangan JSON Lokal (Offline)</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {!isConnected ? (
           /* Connect Prompt Card */
           <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-xs text-center max-w-xl mx-auto space-y-4 my-8">
@@ -499,15 +668,25 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               dan laporan arus kas toko langsung ke folder Google Drive dengan aman.
             </p>
 
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={handleSignIn}
                 disabled={isAuthenticating}
-                className="px-6 py-3 bg-[#3b49df] hover:bg-[#2f3ab2] text-white rounded-xl text-xs font-bold inline-flex items-center gap-2.5 transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
+                className="w-full sm:w-auto px-6 py-3 bg-[#3b49df] hover:bg-[#2f3ab2] text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2.5 transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 <Cloud className="w-4 h-4" />
-                <span>{isAuthenticating ? 'Sedang Menghubungkan...' : 'Masuk dengan Akun Google Sekarang'}</span>
+                <span>{isAuthenticating ? 'Sedang Menghubungkan...' : 'Masuk dengan Akun Google'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadLocalBackup}
+                className="w-full sm:w-auto px-5 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+                title="Cadangkan data ke file JSON di komputer tanpa internet"
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>Unduh Cadangan Offline (.JSON)</span>
               </button>
             </div>
 

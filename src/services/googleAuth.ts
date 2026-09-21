@@ -10,19 +10,7 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const SCOPES = [
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/drive.activity',
-  'https://www.googleapis.com/auth/drive.activity.readonly',
-  'https://www.googleapis.com/auth/drive.appdata',
-  'https://www.googleapis.com/auth/drive.apps.readonly',
-  'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/drive.install',
-  'https://www.googleapis.com/auth/drive.meet.readonly',
-  'https://www.googleapis.com/auth/drive.metadata',
-  'https://www.googleapis.com/auth/drive.metadata.readonly',
-  'https://www.googleapis.com/auth/drive.photos.readonly',
-  'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/drive.scripts'
+  'https://www.googleapis.com/auth/drive.file'
 ];
 
 // Initialize Firebase App
@@ -30,7 +18,7 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
-// Add all Google Drive scopes
+// Add Google Drive scopes
 SCOPES.forEach((scope) => {
   provider.addScope(scope);
 });
@@ -78,6 +66,16 @@ export const googleSignIn = async (): Promise<{ user: FirebaseUser; accessToken:
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error('Google Sign-in error:', error);
+    if (error?.code === 'auth/unauthorized-domain') {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'domain ini';
+      const customErr: any = new Error(
+        `Domain "${currentHost}" belum diizinkan di Firebase Authentication (auth/unauthorized-domain). Tambahkan domain ini ke daftar Authorized Domains pada Firebase Console project.`
+      );
+      customErr.code = 'auth/unauthorized-domain';
+      customErr.hostname = currentHost;
+      customErr.projectId = firebaseConfig.projectId;
+      throw customErr;
+    }
     throw error;
   } finally {
     isSigningIn = false;

@@ -68,6 +68,7 @@ export interface Transaction {
   cashierName: string;
   cashierId: string;
   notes?: string;
+  createdAt?: string;
 }
 
 export interface StockMovement {
@@ -136,6 +137,7 @@ export interface CashFlowRecord {
   description: string;
   date: string;
   recordedBy: string;
+  createdAt?: string;
 }
 
 export interface DriveFile {
