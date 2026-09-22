@@ -813,7 +813,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            <div className={`grid grid-cols-2 ${isAdmin ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-2.5`}>
               <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
                 <span className="text-[10px] text-slate-500 font-medium block">Penjualan Kotor</span>
                 <span className="text-xs font-bold text-slate-800">
@@ -838,12 +838,14 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                   {formatCurrency(netFilteredRevenue)}
                 </span>
               </div>
-              <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
-                <span className="text-[10px] text-slate-500 font-medium block">Laba Bersih</span>
-                <span className="text-xs font-bold text-indigo-700">
-                  {formatCurrency(netFilteredProfit)}
-                </span>
-              </div>
+              {isAdmin && (
+                <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] text-slate-500 font-medium block">Laba Bersih</span>
+                  <span className="text-xs font-bold text-indigo-700">
+                    {formatCurrency(netFilteredProfit)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
