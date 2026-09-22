@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Transaction, Product, CashFlowRecord } from '../types';
+import { Transaction, Product, CashFlowRecord, KaosStockItem } from '../types';
 
 export const formatCurrency = (val: number): string => {
   return 'Rp ' + (val || 0).toLocaleString('id-ID');
@@ -241,6 +241,100 @@ export const exportStockToPDF = (products: Product[]) => {
 };
 
 /**
+ * Export Kaos Polos Stock to Excel (.xlsx)
+ */
+export const exportKaosStockToExcel = (kaosStocks: KaosStockItem[]) => {
+  const data = kaosStocks.map((k, idx) => ({
+    No: idx + 1,
+    SKU: `KAOS-${k.color.toUpperCase().replace(/\s+/g, '-')}-${k.size.toUpperCase()}`,
+    'Warna Kaos': k.color,
+    'Ukuran / Size': k.size,
+    'Stok Saat Ini (Pcs)': k.stock,
+    'Stok Minimal (Pcs)': k.minStock,
+    Status: k.stock <= 0 ? 'HABIS' : k.stock <= k.minStock ? 'MENIPIS' : 'AMAN'
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Stok Kaos Polos');
+
+  // Generate Matrix Summary Sheet (Warna vs Size)
+  const colors = Array.from(new Set(kaosStocks.map((k) => k.color)));
+  const sizes = ['S', 'M', 'L', 'XL', 'XXL', '3XL'];
+  
+  const matrixData = colors.map((col, idx) => {
+    const row: Record<string, any> = {
+      No: idx + 1,
+      'Warna Kaos': col
+    };
+    let totalPerColor = 0;
+    sizes.forEach((sz) => {
+      const found = kaosStocks.find((k) => k.color.toLowerCase() === col.toLowerCase() && k.size.toUpperCase() === sz.toUpperCase());
+      const qty = found ? found.stock : 0;
+      row[sz] = qty;
+      totalPerColor += qty;
+    });
+    row['Total (Pcs)'] = totalPerColor;
+    return row;
+  });
+
+  const matrixSheet = XLSX.utils.json_to_sheet(matrixData);
+  XLSX.utils.book_append_sheet(workbook, matrixSheet, 'Matriks Per Warna');
+
+  const dateTag = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(workbook, `Manajemen_Stok_Kaos_Polos_${dateTag}.xlsx`);
+};
+
+/**
+ * Export Kaos Polos Stock to PDF
+ */
+export const exportKaosStockToPDF = (kaosStocks: KaosStockItem[]) => {
+  const doc = new jsPDF();
+
+  doc.setFontSize(16);
+  doc.text('ATHREE STUDIO / DEAZBAR - STOK KHUSUS KAOS POLOS', 14, 15);
+  doc.setFontSize(10);
+  doc.text(`Tanggal Cetak: ${new Date().toLocaleString('id-ID')}`, 14, 22);
+
+  const totalPcs = kaosStocks.reduce((sum, k) => sum + k.stock, 0);
+  const lowStockCount = kaosStocks.filter((k) => k.stock <= k.minStock).length;
+  doc.text(
+    `Total Stok Fisik: ${totalPcs} Pcs | Total Varian: ${kaosStocks.length} | Perhatian (Menipis/Habis): ${lowStockCount} varian`,
+    14,
+    28
+  );
+
+  const tableData = kaosStocks.map((k, idx) => [
+    idx + 1,
+    `KAOS-${k.color.toUpperCase().replace(/\s+/g, '-')}-${k.size}`,
+    k.color,
+    k.size,
+    `${k.stock} Pcs`,
+    `${k.minStock} Pcs`,
+    k.stock <= 0 ? 'HABIS' : k.stock <= k.minStock ? 'MENIPIS' : 'AMAN'
+  ]);
+
+  autoTable(doc, {
+    startY: 34,
+    head: [['No', 'SKU Kaos', 'Warna', 'Size', 'Stok Saat Ini', 'Min. Stok', 'Status']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: 255,
+      fontSize: 8
+    },
+    styles: {
+      fontSize: 8,
+      cellPadding: 2
+    }
+  });
+
+  const dateTag = new Date().toISOString().slice(0, 10);
+  doc.save(`Laporan_Stok_Kaos_${dateTag}.pdf`);
+};
+
+/**
  * Generate Printable Receipt PDF
  */
 export const downloadTransactionReceiptPDF = (transaction: Transaction) => {
@@ -292,6 +386,14 @@ export const downloadTransactionReceiptPDF = (transaction: Transaction) => {
     doc.text(`${item.quantity} x ${formatCurrency(item.price)}`, 5, y);
     doc.text(formatCurrency(item.subtotal), 75, y, { align: 'right' });
     y += 4;
+    if (item.kaosColor || item.kaosSize) {
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`[Kaos: ${item.kaosColor || '-'} | Size: ${item.kaosSize || '-'}]`, 5, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      y += 3.5;
+    }
     if (item.notes) {
       doc.setFontSize(7);
       doc.text(`* ${item.notes.substring(0, 32)}`, 5, y);
@@ -326,8 +428,22 @@ export const downloadTransactionReceiptPDF = (transaction: Transaction) => {
   doc.text('Dibayar:', 5, y);
   doc.text(formatCurrency(transaction.amountPaid), 75, y, { align: 'right' });
   y += 4;
-  doc.text('Kembalian:', 5, y);
-  doc.text(formatCurrency(transaction.change), 75, y, { align: 'right' });
+
+  if (transaction.remainingAmount && transaction.remainingAmount > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('Sisa Piutang:', 5, y);
+    doc.text(formatCurrency(transaction.remainingAmount), 75, y, { align: 'right' });
+    y += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.text(`Jatuh Tempo: ${transaction.dueDate || 'Sesuai Deadline'}`, 5, y);
+    doc.setFontSize(8);
+    y += 4;
+  } else {
+    doc.text('Kembalian:', 5, y);
+    doc.text(formatCurrency(transaction.change), 75, y, { align: 'right' });
+    y += 4;
+  }
 
   y += 5;
   doc.line(5, y, 75, y);

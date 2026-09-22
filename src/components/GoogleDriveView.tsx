@@ -23,14 +23,17 @@ import {
   Clock,
   Copy,
   Check,
-  ShieldAlert
+  ShieldAlert,
+  Key
 } from 'lucide-react';
 import {
   googleSignIn,
   logoutGoogle,
   initAuth,
   getAccessToken,
-  getCurrentGoogleUser
+  getCurrentGoogleUser,
+  setManualAccessToken,
+  getOAuthClientId
 } from '../services/googleAuth';
 import {
   listDriveFiles,
@@ -41,12 +44,13 @@ import {
   getOrCreateBackupFolder,
   BACKUP_FOLDER_NAME
 } from '../services/googleDriveService';
-import { DriveFile, Transaction, Product, CashFlowRecord, CashierShift, User } from '../types';
+import { DriveFile, Transaction, Product, CashFlowRecord, CashierShift, User, KaosStockItem } from '../types';
 
 interface GoogleDriveViewProps {
   transactions: Transaction[];
   products: Product[];
   cashFlowRecords: CashFlowRecord[];
+  kaosStocks?: KaosStockItem[];
   shifts?: CashierShift[];
   currentStartingCash?: number;
   currentUser?: User;
@@ -56,6 +60,7 @@ interface GoogleDriveViewProps {
     transactions?: Transaction[];
     products?: Product[];
     cashFlowRecords?: CashFlowRecord[];
+    kaosStocks?: KaosStockItem[];
   }) => void;
 }
 
@@ -63,6 +68,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   transactions,
   products,
   cashFlowRecords,
+  kaosStocks,
   shifts = [],
   currentStartingCash = 0,
   currentUser,
@@ -109,6 +115,11 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+
+  // Manual Token Modal State
+  const [showManualTokenModal, setShowManualTokenModal] = useState(false);
+  const [manualTokenInput, setManualTokenInput] = useState('');
+  const [manualTokenEmail, setManualTokenEmail] = useState('');
 
   // Initialize auth listener
   useEffect(() => {
@@ -181,13 +192,15 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           transactions: transactions.length,
           products: products.length,
           cashFlowRecords: cashFlowRecords.length,
+          kaosStocks: kaosStocks ? kaosStocks.length : 0
         },
         data: {
           transactions,
           products,
           cashFlowRecords,
           shifts,
-          currentStartingCash
+          currentStartingCash,
+          kaosStocks
         }
       };
       const jsonStr = JSON.stringify(backupData, null, 2);
@@ -203,6 +216,25 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       showNotification('success', 'File cadangan JSON berhasil diunduh ke perangkat Anda.');
     } catch (err: any) {
       showNotification('error', 'Gagal mengunduh file cadangan lokal: ' + err.message);
+    }
+  };
+
+  const handleConnectManualToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualTokenInput.trim()) return;
+    setIsAuthenticating(true);
+    try {
+      const result = await setManualAccessToken(manualTokenInput.trim(), manualTokenEmail.trim() || undefined);
+      setIsConnected(true);
+      setGoogleUser(result.user);
+      setShowManualTokenModal(false);
+      setUnauthorizedDomainInfo(null);
+      showNotification('success', 'Berhasil terhubung ke Google Drive menggunakan Access Token!');
+      await loadFiles();
+    } catch (err: any) {
+      showNotification('error', 'Token tidak valid atau kedaluwarsa: ' + err.message);
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
@@ -224,7 +256,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         const host = err.hostname || (typeof window !== 'undefined' ? window.location.hostname : '');
         setUnauthorizedDomainInfo({
           hostname: host,
-          projectId: err.projectId || 'excellent-bit-csjh2'
+          projectId: err.projectId || 'gen-lang-client-0253908527'
         });
         setAuthError(`Domain "${host}" belum diizinkan di Firebase Authentication.`);
         showNotification('error', `Domain "${host}" belum diotorisasi di Firebase Authentication.`);
@@ -271,7 +303,8 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         products,
         cashFlowRecords,
         shifts,
-        currentStartingCash
+        currentStartingCash,
+        kaosStocks
       });
 
       showNotification(
@@ -378,7 +411,8 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       onRestoreData({
         transactions: data.transactions,
         products: data.products,
-        cashFlowRecords: data.cashFlowRecords
+        cashFlowRecords: data.cashFlowRecords,
+        kaosStocks: data.kaosStocks
       });
       showNotification(
         'success',
@@ -714,6 +748,15 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 <Download className="w-3.5 h-3.5" />
                 <span>Unduh Cadangan JSON Lokal (Offline)</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setShowManualTokenModal(true)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer transition-all shadow-xs"
+              >
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                <span>Input Token Manual</span>
+              </button>
             </div>
           </div>
         )}
@@ -750,7 +793,17 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 title="Cadangkan data ke file JSON di komputer tanpa internet"
               >
                 <Download className="w-4 h-4 text-emerald-600" />
-                <span>Unduh Cadangan Offline (.JSON)</span>
+                <span>Cadangan Offline (.JSON)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowManualTokenModal(true)}
+                className="w-full sm:w-auto px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                title="Gunakan Google Access Token jika popup dicegah oleh peramban"
+              >
+                <Key className="w-3.5 h-3.5 text-amber-600" />
+                <span>Token Manual</span>
               </button>
             </div>
 
@@ -1225,6 +1278,81 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm disabled:opacity-50"
                 >
                   {isCreatingFolder ? 'Membuat...' : 'Buat Folder'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Access Token Modal */}
+      {showManualTokenModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Hubungkan via Access Token Google</h3>
+                  <p className="text-[11px] text-slate-500">Alternatif jika popup Google diblokir oleh peramban/iframe</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowManualTokenModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConnectManualToken} className="py-4 space-y-3.5">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Google OAuth Access Token *
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Tempel token yang diawali dengan ya29...."
+                  value={manualTokenInput}
+                  onChange={(e) => setManualTokenInput(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  autoFocus
+                  required
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Token disimpan secara aman hanya di memori sesi aktif (tidak disimpan di localStorage).
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Email Akun Google (Opsional untuk label tampilan):
+                </label>
+                <input
+                  type="email"
+                  placeholder="nama@gmail.com"
+                  value={manualTokenEmail}
+                  onChange={(e) => setManualTokenEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowManualTokenModal(false)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAuthenticating || !manualTokenInput.trim()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {isAuthenticating ? 'Menghubungkan...' : 'Hubungkan Google Drive'}
                 </button>
               </div>
             </form>

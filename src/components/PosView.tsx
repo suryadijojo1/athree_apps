@@ -23,7 +23,10 @@ import {
   X,
   UserCheck,
   Lock,
-  Unlock
+  Unlock,
+  Shirt,
+  Layers,
+  Palette
 } from 'lucide-react';
 import {
   Product,
@@ -32,15 +35,20 @@ import {
   PaymentMethod,
   Customer,
   Transaction,
-  CashierShift
+  CashierShift,
+  KaosStockItem,
+  OrderStatus
 } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
 import { AddSalesModal } from './AddSalesModal';
+import { STANDARD_KAOS_COLORS, STANDARD_KAOS_SIZES } from '../data/mockData';
+import { isSablonKaosProduct, getKaosStockQty } from '../utils/kaosStockUtils';
 
 interface PosViewProps {
   products: Product[];
   categories: string[];
   customers: Customer[];
+  kaosStocks?: KaosStockItem[];
   onAddCustomer: (customer: Customer) => void;
   onOpenCustomProductModal: () => void;
   onCompletePayment: (transaction: Omit<Transaction, 'id'>) => void;
@@ -62,6 +70,7 @@ export const PosView: React.FC<PosViewProps> = ({
   products,
   categories,
   customers,
+  kaosStocks = [],
   onAddCustomer,
   onOpenCustomProductModal,
   onCompletePayment,
@@ -153,13 +162,29 @@ export const PosView: React.FC<PosViewProps> = ({
   const remainingBill = Math.max(0, total - effectiveCash);
   const changeAmount = Math.max(0, effectiveCash - total);
 
+  // Helper to get unique key for cart row
+  const getItemKey = (item: OrderItem) => item.cartItemId || item.productId;
+
   // Add product to cart
   const handleAddToCart = (product: Product) => {
+    const isKaos = isSablonKaosProduct(product.name);
+    const defaultColor = 'Hitam';
+    const defaultSize = 'L';
+
     setCartItems((prev) => {
-      const existing = prev.find((item) => item.productId === product.id);
+      // If it's Kaos, find existing by productId AND same color & size
+      const existing = isKaos
+        ? prev.find(
+            (item) =>
+              item.productId === product.id &&
+              (item.kaosColor || defaultColor) === defaultColor &&
+              (item.kaosSize || defaultSize) === defaultSize
+          )
+        : prev.find((item) => item.productId === product.id);
+
       if (existing) {
         return prev.map((item) =>
-          item.productId === product.id
+          item === existing
             ? {
                 ...item,
                 quantity: item.quantity + 1,
@@ -168,9 +193,11 @@ export const PosView: React.FC<PosViewProps> = ({
             : item
         );
       } else {
+        const cartItemId = `cart_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         return [
           ...prev,
           {
+            cartItemId,
             productId: product.id,
             name: product.name,
             sku: product.sku,
@@ -178,19 +205,37 @@ export const PosView: React.FC<PosViewProps> = ({
             costPrice: product.costPrice,
             quantity: 1,
             notes: '',
-            subtotal: product.price
+            subtotal: product.price,
+            kaosColor: isKaos ? defaultColor : undefined,
+            kaosSize: isKaos ? defaultSize : undefined
           }
         ];
       }
     });
   };
 
+  // Add another variant of same Kaos product
+  const handleAddKaosVariant = (baseItem: OrderItem) => {
+    const cartItemId = `cart_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    // pick a sensible alternate or same color
+    const nextSize = baseItem.kaosSize === 'L' ? 'XL' : 'L';
+    const newItem: OrderItem = {
+      ...baseItem,
+      cartItemId,
+      quantity: 1,
+      subtotal: baseItem.price,
+      kaosColor: baseItem.kaosColor || 'Hitam',
+      kaosSize: nextSize
+    };
+    setCartItems((prev) => [...prev, newItem]);
+  };
+
   // Update item quantity
-  const handleUpdateQty = (productId: string, delta: number) => {
+  const handleUpdateQty = (itemKey: string, delta: number) => {
     setCartItems((prev) =>
       prev
         .map((item) => {
-          if (item.productId === productId) {
+          if (getItemKey(item) === itemKey) {
             const newQty = item.quantity + delta;
             return newQty > 0
               ? { ...item, quantity: newQty, subtotal: newQty * item.price }
@@ -203,17 +248,35 @@ export const PosView: React.FC<PosViewProps> = ({
   };
 
   // Update item note
-  const handleUpdateItemNote = (productId: string, note: string) => {
+  const handleUpdateItemNote = (itemKey: string, note: string) => {
     setCartItems((prev) =>
       prev.map((item) =>
-        item.productId === productId ? { ...item, notes: note } : item
+        getItemKey(item) === itemKey ? { ...item, notes: note } : item
+      )
+    );
+  };
+
+  // Update Kaos Color
+  const handleUpdateItemKaosColor = (itemKey: string, color: string) => {
+    setCartItems((prev) =>
+      prev.map((item) =>
+        getItemKey(item) === itemKey ? { ...item, kaosColor: color } : item
+      )
+    );
+  };
+
+  // Update Kaos Size
+  const handleUpdateItemKaosSize = (itemKey: string, size: string) => {
+    setCartItems((prev) =>
+      prev.map((item) =>
+        getItemKey(item) === itemKey ? { ...item, kaosSize: size } : item
       )
     );
   };
 
   // Remove single item
-  const handleRemoveItem = (productId: string) => {
-    setCartItems((prev) => prev.filter((item) => item.productId !== productId));
+  const handleRemoveItem = (itemKey: string) => {
+    setCartItems((prev) => prev.filter((item) => getItemKey(item) !== itemKey));
   };
 
   // Cancel / Clear Cart
@@ -260,17 +323,34 @@ export const PosView: React.FC<PosViewProps> = ({
       return;
     }
 
-    if (paymentMethodTab === 'Tunai' && cashGiven < total) {
-      alert(`Uang pembayaran tunai masih kurang ${formatCurrency(total - cashGiven)}.`);
-      return;
-    }
-
     const customer = customers.find((c) => c.id === selectedCustomerId) || customers[0];
     const finalPaymentMethod: PaymentMethod =
       paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType;
 
     const formattedDueDate = dueDate ? dueDate.replace('T', ' ') : '-';
     const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+    const isPartialOrUnpaid = effectiveCash < total;
+    const remainingAmount = Math.max(0, total - effectiveCash);
+    const paymentStatus: 'LUNAS' | 'PIUTANG' | 'DP' = isPartialOrUnpaid
+      ? effectiveCash > 0
+        ? 'DP'
+        : 'PIUTANG'
+      : 'LUNAS';
+
+    // If partial or unpaid, status is 'Sedang Dikerjakan'
+    const orderStatus: OrderStatus = isPartialOrUnpaid ? 'Sedang Dikerjakan' : 'Selesai';
+
+    let piutangNote = '';
+    if (isPartialOrUnpaid) {
+      piutangNote = `[PIUTANG ${paymentStatus}] Bayar: ${formatCurrency(effectiveCash)}, Sisa Piutang: ${formatCurrency(remainingAmount)} (Jatuh Tempo: ${formattedDueDate})`;
+    }
+
+    const finalNotes = orderNotes
+      ? piutangNote
+        ? `${orderNotes} | ${piutangNote}`
+        : orderNotes
+      : piutangNote;
 
     onCompletePayment({
       invoiceNo: `#INV/${String(Math.floor(10000 + Math.random() * 90000))}`,
@@ -284,12 +364,14 @@ export const PosView: React.FC<PosViewProps> = ({
       tax: 0,
       total,
       paymentMethod: finalPaymentMethod,
-      amountPaid: paymentMethodTab === 'Tunai' ? cashGiven : total,
+      amountPaid: effectiveCash,
       change: changeAmount,
-      status: 'Selesai',
+      status: orderStatus,
+      paymentStatus,
+      remainingAmount,
       cashierName,
       cashierId,
-      notes: orderNotes
+      notes: finalNotes
     });
 
     // Reset cart
@@ -313,6 +395,25 @@ export const PosView: React.FC<PosViewProps> = ({
     const formattedDueDate = dueDate ? dueDate.replace('T', ' ') : '-';
     const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
+    const isPartialOrUnpaid = effectiveCash < total;
+    const remainingAmount = Math.max(0, total - effectiveCash);
+    const paymentStatus: 'LUNAS' | 'PIUTANG' | 'DP' = isPartialOrUnpaid
+      ? effectiveCash > 0
+        ? 'DP'
+        : 'PIUTANG'
+      : 'LUNAS';
+
+    let piutangNote = '';
+    if (isPartialOrUnpaid) {
+      piutangNote = `[ANTREAN PRODUKSI / ${paymentStatus}] Bayar: ${formatCurrency(effectiveCash)}, Sisa: ${formatCurrency(remainingAmount)} (Jatuh Tempo: ${formattedDueDate})`;
+    }
+
+    const finalNotes = orderNotes
+      ? piutangNote
+        ? `${orderNotes} | ${piutangNote}`
+        : orderNotes
+      : piutangNote;
+
     onSaveAsPendingOrder({
       invoiceNo: `#ORD/${String(Math.floor(10000 + Math.random() * 90000))}`,
       date: nowStr,
@@ -328,12 +429,14 @@ export const PosView: React.FC<PosViewProps> = ({
       amountPaid: effectiveCash,
       change: changeAmount,
       status: 'Sedang Dikerjakan',
+      paymentStatus,
+      remainingAmount,
       cashierName,
       cashierId,
-      notes: orderNotes
+      notes: finalNotes
     });
 
-    alert('Pesanan berhasil disimpan ke Antrean Produksi dengan Jatuh Tempo: ' + formattedDueDate);
+    alert(`Pesanan berhasil disimpan ke Antrean Produksi dengan Jatuh Tempo: ${formattedDueDate}${remainingAmount > 0 ? ` (Sisa Piutang: ${formatCurrency(remainingAmount)})` : ''}`);
     setCartItems([]);
     setDiscountAmount(0);
     setCashGiven(0);
@@ -679,64 +782,212 @@ export const PosView: React.FC<PosViewProps> = ({
             </div>
           ) : (
             <div className="space-y-2.5">
-              {cartItems.map((item) => (
-                <div
-                  key={item.productId}
-                  className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex flex-col gap-2 group hover:border-slate-300 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-slate-800 truncate">{item.name}</h4>
-                      <p className="text-[10px] text-slate-400 font-mono">
-                        {item.sku} &bull; {formatCurrency(item.price)}
-                      </p>
-                    </div>
-                    <span className="text-xs font-bold text-slate-900 shrink-0">
-                      {formatCurrency(item.subtotal)}
-                    </span>
-                  </div>
+              {cartItems.map((item) => {
+                const itemKey = getItemKey(item);
+                const isKaos = isSablonKaosProduct(item.name);
+                const selectedColor = item.kaosColor || 'Hitam';
+                const selectedSize = item.kaosSize || 'L';
+                const currentKaosStock = getKaosStockQty(kaosStocks, selectedColor, selectedSize);
 
-                  {/* Note input for custom instructions (e.g. Size, Jersey Name, Color) */}
-                  <input
-                    type="text"
-                    value={item.notes || ''}
-                    onChange={(e) => handleUpdateItemNote(item.productId, e.target.value)}
-                    placeholder="Catatan pesanan / ukuran / teks sablon..."
-                    className="text-[11px] px-2 py-1 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#00871f] text-slate-700 placeholder:text-slate-400"
-                  />
-
-                  {/* Quantity controls */}
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/70">
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveItem(item.productId)}
-                      className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                      title="Hapus item"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs">
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateQty(item.productId, -1)}
-                        className="w-5 h-5 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="text-xs font-bold text-slate-800 min-w-[20px] text-center">
-                        {item.quantity}
+                return (
+                  <div
+                    key={itemKey}
+                    className={`border rounded-xl p-2.5 flex flex-col gap-2 group transition-all ${
+                      isKaos
+                        ? 'bg-purple-50/40 border-purple-200 hover:border-purple-300'
+                        : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="text-xs font-bold text-slate-800 truncate">{item.name}</h4>
+                          {isKaos && (
+                            <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-purple-100 text-purple-800 border border-purple-200 flex items-center gap-0.5">
+                              <Shirt className="w-2.5 h-2.5" />
+                              Sablon + Kaos
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-mono">
+                          {item.sku} &bull; {formatCurrency(item.price)}
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-slate-900 shrink-0">
+                        {formatCurrency(item.subtotal)}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateQty(item.productId, 1)}
-                        className="w-5 h-5 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
+                    </div>
+
+                    {/* If Sablon + Kaos: dedicated selection for Warna Kaos & Size Kaos + real-time stock indicator! */}
+                    {isKaos ? (
+                      <div className="bg-white p-2.5 rounded-lg border border-purple-200/80 shadow-2xs space-y-2.5">
+                        {/* 1. Warna Kaos Selector */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                              <Palette className="w-3 h-3 text-purple-600" />
+                              <span>Warna Kaos:</span>
+                              <span className="font-extrabold text-purple-700 underline decoration-purple-300 underline-offset-2">
+                                {selectedColor}
+                              </span>
+                            </label>
+                            <span className="text-[9px] text-slate-400">Pilih warna kain</span>
+                          </div>
+
+                          {/* Quick color buttons */}
+                          <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+                            {STANDARD_KAOS_COLORS.map((c) => {
+                              const isSelected = selectedColor.toLowerCase() === c.name.toLowerCase();
+                              return (
+                                <button
+                                  key={c.name}
+                                  type="button"
+                                  onClick={() => handleUpdateItemKaosColor(itemKey, c.name)}
+                                  className={`px-2 py-1 rounded-md text-[10px] font-semibold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-purple-700 text-white shadow-xs ring-2 ring-purple-300 font-bold scale-[1.02]'
+                                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80'
+                                  }`}
+                                >
+                                  <span className={`w-2.5 h-2.5 rounded-full border shadow-2xs shrink-0 ${c.dotClass}`}></span>
+                                  <span>{c.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 2. Size Kaos Selector with Stock info */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                              <Shirt className="w-3 h-3 text-[#00871f]" />
+                              <span>Size Kaos:</span>
+                              <span className="font-extrabold text-[#00871f]">Size {selectedSize}</span>
+                            </label>
+
+                            {/* LIVE STOCK BADGE for chosen (Warna, Size) */}
+                            <div
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border transition-all ${
+                                currentKaosStock <= 0
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200 animate-pulse'
+                                  : currentKaosStock <= 5
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              }`}
+                            >
+                              <span>Stok Kaos {selectedColor} [{selectedSize}]:</span>
+                              <span className="font-black text-xs">{currentKaosStock} pcs</span>
+                            </div>
+                          </div>
+
+                          {/* Size Buttons Matrix with live individual stock numbers */}
+                          <div className="grid grid-cols-6 gap-1">
+                            {STANDARD_KAOS_SIZES.map((sz) => {
+                              const isSelected = selectedSize.toUpperCase() === sz.toUpperCase();
+                              const stockForSz = getKaosStockQty(kaosStocks, selectedColor, sz);
+                              const isOut = stockForSz <= 0;
+
+                              return (
+                                <button
+                                  key={sz}
+                                  type="button"
+                                  onClick={() => handleUpdateItemKaosSize(itemKey, sz)}
+                                  className={`py-1 px-1 rounded-md text-center transition-all cursor-pointer border ${
+                                    isSelected
+                                      ? 'bg-[#00871f] text-white font-black border-[#00871f] ring-2 ring-[#00871f]/30 shadow-xs'
+                                      : isOut
+                                      ? 'bg-rose-50/70 border-rose-200 text-rose-600 hover:bg-rose-100'
+                                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <div className="text-xs font-bold leading-tight">{sz}</div>
+                                  <div
+                                    className={`text-[8px] leading-none mt-0.5 font-semibold ${
+                                      isSelected
+                                        ? 'text-emerald-100'
+                                        : isOut
+                                        ? 'text-rose-600 font-bold'
+                                        : 'text-slate-400'
+                                    }`}
+                                  >
+                                    {isOut ? 'Habis' : `${stockForSz} pcs`}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 3. Catatan Pesanan / Spesifikasi Sablon */}
+                        <div>
+                          <input
+                            type="text"
+                            value={item.notes || ''}
+                            onChange={(e) => handleUpdateItemNote(itemKey, e.target.value)}
+                            placeholder="Catatan sablon (posisi gambar, warna tinta, nama file)..."
+                            className="w-full text-[11px] px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00871f] text-slate-700 placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      /* Standard note input for non-kaos products */
+                      <input
+                        type="text"
+                        value={item.notes || ''}
+                        onChange={(e) => handleUpdateItemNote(itemKey, e.target.value)}
+                        placeholder="Catatan pesanan / ukuran / spesifikasi..."
+                        className="text-[11px] px-2 py-1 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#00871f] text-slate-700 placeholder:text-slate-400"
+                      />
+                    )}
+
+                    {/* Quantity & Action controls */}
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/70">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(itemKey)}
+                          className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
+                          title="Hapus item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        {isKaos && (
+                          <button
+                            type="button"
+                            onClick={() => handleAddKaosVariant(item)}
+                            className="text-[10px] font-semibold text-purple-700 hover:text-purple-800 bg-purple-100 hover:bg-purple-200/80 px-2 py-0.5 rounded transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Tambah varian warna/ukuran lain untuk sablon ini"
+                          >
+                            <Plus className="w-3 h-3" />
+                            + Varian Kaos Lain
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQty(itemKey, -1)}
+                          className="w-5 h-5 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded cursor-pointer"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="text-xs font-bold text-slate-800 min-w-[20px] text-center">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQty(itemKey, 1)}
+                          className="w-5 h-5 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -940,24 +1191,33 @@ export const PosView: React.FC<PosViewProps> = ({
                 )}
               </div>
 
-              <div className="flex justify-between items-center pt-1">
-                <span
-                  className={`font-semibold ${
-                    remainingBill > 0 ? 'text-rose-600' : 'text-emerald-600'
-                  }`}
-                >
-                  {remainingBill > 0 ? 'Sisa Tagihan' : 'Kembalian'}
-                </span>
-                <span
-                  className={`font-bold text-sm ${
-                    remainingBill > 0 ? 'text-rose-600' : 'text-emerald-600'
-                  }`}
-                >
-                  {remainingBill > 0
-                    ? formatCurrency(remainingBill)
-                    : formatCurrency(changeAmount)}
-                </span>
-              </div>
+              {/* If remainingBill > 0: Show Piutang Conversion Banner & Info */}
+              {remainingBill > 0 ? (
+                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 space-y-1 mt-1">
+                  <div className="flex justify-between items-center text-amber-900 font-bold">
+                    <span className="flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                      Dialihkan ke Piutang:
+                    </span>
+                    <span className="text-rose-600 text-sm font-black">{formatCurrency(remainingBill)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] text-amber-800">
+                    <span>Jatuh Tempo Piutang:</span>
+                    <span className="font-bold">{dueDate ? dueDate.replace('T', ' ') : 'Sesuai Deadline'}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 flex justify-between">
+                    <span>Status:</span>
+                    <span className="font-semibold text-amber-700">
+                      {effectiveCash > 0 ? `Uang Muka (DP: ${formatCurrency(effectiveCash)})` : 'Piutang Penuh (Tempo)'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center pt-1 text-emerald-600">
+                  <span className="font-semibold">Kembalian</span>
+                  <span className="font-bold text-sm">{formatCurrency(changeAmount)}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -967,16 +1227,26 @@ export const PosView: React.FC<PosViewProps> = ({
               type="button"
               onClick={handlePay}
               disabled={cartItems.length === 0}
-              className="py-2.5 px-3 bg-[#00871f] hover:bg-[#007019] disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-200 transition-all active:scale-[0.98] cursor-pointer"
+              className={`py-2.5 px-2 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.98] cursor-pointer ${
+                remainingBill > 0
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200'
+                  : 'bg-[#00871f] hover:bg-[#007019] shadow-emerald-200'
+              }`}
             >
               <FileCheck className="w-4 h-4" />
-              <span>Bayar</span>
+              <span>
+                {remainingBill > 0
+                  ? effectiveCash > 0
+                    ? `Bayar DP & Piutang`
+                    : 'Catat Piutang'
+                  : 'Bayar'}
+              </span>
             </button>
             <button
               type="button"
               onClick={handleSaveAsPending}
               disabled={cartItems.length === 0}
-              className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all border border-slate-200 cursor-pointer"
+              className="py-2.5 px-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all border border-slate-200 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Simpan ke Pesanan</span>

@@ -32,7 +32,8 @@ import {
   Unlock,
   HardDrive,
   Flame,
-  ShieldCheck
+  ShieldCheck,
+  Shirt
 } from 'lucide-react';
 import { Transaction, CashFlowRecord, CashierShift, User } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -46,7 +47,7 @@ interface AdminDashboardProps {
   onUpdateUser: (user: User) => void;
   onAddUser?: (user: User) => void;
   onDeleteUser?: (userId: string) => void;
-  onNavigate: (view: 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'drive') => void;
+  onNavigate: (view: 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'kaos-stock' | 'drive') => void;
   onSwitchUser: () => void;
   onLogout?: () => void;
   onOpenFirebaseModal?: () => void;
@@ -353,6 +354,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <HardDrive className="w-4 h-4 text-blue-600" />
               <span>Google Drive</span>
+            </button>
+            <button
+              onClick={() => onNavigate('kaos-stock')}
+              className="bg-white hover:bg-slate-50 text-emerald-700 px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm shadow-lg hover:shadow-xl transition-all active:scale-95 border border-emerald-100 flex items-center gap-1.5 cursor-pointer"
+              title="Manajemen Khusus Stok Kaos Polos (Warna & Ukuran)"
+            >
+              <Shirt className="w-4 h-4 text-emerald-600" />
+              <span>Stok Kaos</span>
             </button>
             {onToggleAllowCashierDrive && (
               <button

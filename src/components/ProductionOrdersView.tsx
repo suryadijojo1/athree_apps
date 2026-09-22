@@ -281,14 +281,26 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         Rincian Produksi:
                       </p>
                       {t.items.map((i, idx) => (
-                        <div key={idx} className="text-xs text-slate-700 flex justify-between">
-                          <span>
-                            {i.quantity}x {i.name}
-                          </span>
-                          {i.notes && (
-                            <span className="text-[10px] text-slate-500 italic max-w-[140px] truncate ml-1">
-                              ({i.notes})
+                        <div key={idx} className="text-xs text-slate-700 flex flex-col py-0.5 border-b border-slate-100 last:border-b-0">
+                          <div className="flex justify-between">
+                            <span className="font-medium">
+                              {i.quantity}x {i.name}
                             </span>
+                            {i.notes && (
+                              <span className="text-[10px] text-slate-500 italic max-w-[140px] truncate ml-1">
+                                ({i.notes})
+                              </span>
+                            )}
+                          </div>
+                          {(i.kaosColor || i.kaosSize) && (
+                            <div className="text-[10px] font-semibold text-purple-800 flex items-center gap-1 mt-0.5">
+                              <span className="px-1.5 py-0.5 bg-purple-100/80 rounded border border-purple-200">
+                                Warna: {i.kaosColor || '-'}
+                              </span>
+                              <span className="px-1.5 py-0.5 bg-purple-100/80 rounded border border-purple-200 font-bold">
+                                Size: {i.kaosSize || '-'}
+                              </span>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -299,6 +311,38 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         <span className="font-semibold text-amber-800">Catatan:</span> {t.notes}
                       </p>
                     )}
+
+                    {/* Payment & Piutang Status Badge */}
+                    <div className="mb-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-slate-500 font-medium">Total Biaya:</span>
+                        <span className="font-bold text-slate-800">{formatCurrency(t.total)}</span>
+                      </div>
+                      {t.remainingAmount && t.remainingAmount > 0 ? (
+                        <div className="pt-1.5 border-t border-slate-200/80 space-y-1">
+                          <div className="flex justify-between items-center text-slate-600 text-[11px]">
+                            <span>Dibayar ({t.paymentStatus || 'DP'}):</span>
+                            <span className="font-semibold text-emerald-700">{formatCurrency(t.amountPaid)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-rose-600 font-bold">
+                            <span className="flex items-center gap-1">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                              Sisa Piutang:
+                            </span>
+                            <span className="text-sm font-black">{formatCurrency(t.remainingAmount)}</span>
+                          </div>
+                          <div className="text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex justify-between items-center font-medium">
+                            <span>Jatuh Tempo Piutang:</span>
+                            <span className="font-bold">{t.dueDate || '-'}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="pt-1 border-t border-slate-200/80 flex justify-between items-center text-emerald-600 text-[11px] font-bold">
+                          <span>Status Pembayaran:</span>
+                          <span className="px-2 py-0.5 bg-emerald-100/80 text-emerald-800 rounded">LUNAS</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Bottom: Status Changer & Actions */}

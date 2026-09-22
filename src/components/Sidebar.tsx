@@ -8,11 +8,12 @@ import {
   Clock,
   ShieldCheck,
   Home,
-  HardDrive
+  HardDrive,
+  Shirt
 } from 'lucide-react';
 import { User } from '../types';
 
-export type ActiveTab = 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'drive';
+export type ActiveTab = 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'kaos-stock' | 'drive';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -22,6 +23,7 @@ interface SidebarProps {
   onLogout: () => void;
   pendingOrdersCount: number;
   lowStockCount: number;
+  lowKaosStockCount?: number;
   allowCashierDrive?: boolean;
 }
 
@@ -33,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   pendingOrdersCount,
   lowStockCount,
+  lowKaosStockCount = 0,
   allowCashierDrive = false
 }) => {
   const isAdmin = currentUser.role === 'admin';
@@ -143,6 +146,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Package className="w-5 h-5 md:w-6 md:h-6" />
             {lowStockCount > 0 && (
               <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full"></span>
+            )}
+          </button>
+
+          {/* 4b. Manajemen Khusus Stok Kaos Polos */}
+          <button
+            onClick={() => {
+              setActiveTab('kaos-stock');
+            }}
+            title="Manajemen Khusus Stok Kaos Polos (Warna & Ukuran)"
+            className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+              activeTab === 'kaos-stock'
+                ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-950'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Shirt className="w-5 h-5 md:w-6 md:h-6" />
+            {lowKaosStockCount > 0 && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse"></span>
             )}
           </button>
 

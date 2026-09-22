@@ -17,7 +17,8 @@ import {
   Boxes,
   ShieldAlert,
   Lock,
-  UploadCloud
+  UploadCloud,
+  Shirt
 } from 'lucide-react';
 import { Product, StockMovement, User } from '../types';
 import { formatCurrency, exportStockToExcel, exportStockToPDF } from '../utils/exportUtils';
@@ -41,6 +42,7 @@ interface StockManagementViewProps {
     items: ParsedImportProduct[],
     strategy: 'update' | 'skip' | 'new_sku'
   ) => { addedCount: number; updatedCount: number; skippedCount: number };
+  onOpenKaosStock?: () => void;
 }
 
 export const StockManagementView: React.FC<StockManagementViewProps> = ({
@@ -52,7 +54,8 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
   onUpdateProduct,
   onDeleteProduct,
   onAdjustStock,
-  onImportProducts
+  onImportProducts,
+  onOpenKaosStock
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'history'>('inventory');
   const [searchQuery, setSearchQuery] = useState('');
@@ -239,6 +242,18 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Shortcut to Kaos Specific Management */}
+            {onOpenKaosStock && (
+              <button
+                onClick={onOpenKaosStock}
+                className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                title="Buka Manajemen Khusus Kaos Polos per Warna & Ukuran"
+              >
+                <Shirt className="w-4 h-4 text-emerald-100" />
+                <span>Stok Khusus Kaos</span>
+              </button>
+            )}
+
             {/* Export Buttons */}
             <button
               onClick={() => exportStockToExcel(products)}

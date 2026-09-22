@@ -7,7 +7,8 @@ import {
   INITIAL_STOCK_MOVEMENTS,
   INITIAL_USERS,
   INITIAL_SHIFT,
-  INITIAL_SALES
+  INITIAL_SALES,
+  INITIAL_KAOS_STOCK
 } from './data/mockData';
 import {
   Product,
@@ -18,8 +19,10 @@ import {
   CashierShift,
   OrderStatus,
   OrderItem,
-  CashFlowRecord
+  CashFlowRecord,
+  KaosStockItem
 } from './types';
+import { deductKaosStock, restoreMultipleKaosStock } from './utils/kaosStockUtils';
 import { Sidebar, ActiveTab } from './components/Sidebar';
 import { Header } from './components/Header';
 import { PosView } from './components/PosView';
@@ -37,6 +40,7 @@ import { DeleteInvoiceModal } from './components/DeleteInvoiceModal';
 import { ParsedImportProduct } from './components/ImportProductsModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { GoogleDriveView } from './components/GoogleDriveView';
+import { KaosStockManagementView } from './components/KaosStockManagementView';
 
 export default function App() {
   // Persistence via localStorage
@@ -79,10 +83,23 @@ export default function App() {
     return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
   });
 
+  const [kaosStocks, setKaosStocks] = useState<KaosStockItem[]>(() => {
+    const saved = localStorage.getItem('athree_kaos_stocks');
+    return saved ? JSON.parse(saved) : INITIAL_KAOS_STOCK;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('athree_kaos_stocks', JSON.stringify(kaosStocks));
+  }, [kaosStocks]);
+
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
     const saved = localStorage.getItem('athree_stock_movements');
     return saved ? JSON.parse(saved) : INITIAL_STOCK_MOVEMENTS;
   });
+
+  useEffect(() => {
+    localStorage.setItem('athree_stock_movements', JSON.stringify(stockMovements));
+  }, [stockMovements]);
 
   const [salesList, setSalesList] = useState<string[]>(() => {
     const saved = localStorage.getItem('athree_sales_list');
@@ -344,7 +361,7 @@ export default function App() {
       id: `tx-${Date.now()}`
     };
 
-    // 1. Deduct Stock for each item & record Stock Movement
+    // 1. Deduct Stock for each master product & record Stock Movement
     const newMovements: StockMovement[] = [];
     setProducts((prevProducts) => {
       return prevProducts.map((prod) => {
@@ -371,32 +388,53 @@ export default function App() {
       });
     });
 
+    // 2. Deduct Kaos Polos stock for items with color & size
+    setKaosStocks((prevKaos) => {
+      const { updatedStocks, movements } = deductKaosStock(
+        prevKaos,
+        newTx.items,
+        newTx.invoiceNo,
+        currentUser.name,
+        'Penjualan'
+      );
+      if (movements.length > 0) {
+        newMovements.push(...movements);
+      }
+      return updatedStocks;
+    });
+
     if (newMovements.length > 0) {
       setStockMovements((prev) => [...newMovements, ...prev]);
     }
 
-    // 2. Add to transactions list
+    // 3. Add to transactions list
     setTransactions((prev) => [newTx, ...prev]);
 
-    // 3. Update shift balances
+    // 4. Update shift balances (only actual amount received enters the cash drawer)
+    const actualReceived = newTx.amountPaid;
+    const isReceivable = Boolean(newTx.remainingAmount && newTx.remainingAmount > 0);
+
     setShift((prev) => ({
       ...prev,
       cashSales:
         newTx.paymentMethod === 'Tunai'
-          ? prev.cashSales + newTx.total
+          ? prev.cashSales + actualReceived
           : prev.cashSales,
       nonCashSales:
         newTx.paymentMethod !== 'Tunai'
-          ? prev.nonCashSales + newTx.total
+          ? prev.nonCashSales + actualReceived
           : prev.nonCashSales,
       totalSales: prev.totalSales + newTx.total,
       expectedCash:
         newTx.paymentMethod === 'Tunai'
-          ? prev.expectedCash + newTx.total
-          : prev.expectedCash
+          ? prev.expectedCash + actualReceived
+          : prev.expectedCash,
+      unpaidAmount: prev.unpaidAmount + (newTx.remainingAmount || 0),
+      unpaidCount: isReceivable ? prev.unpaidCount + 1 : prev.unpaidCount,
+      totalTransactions: prev.totalTransactions + 1
     }));
 
-    // 4. Show success & receipt modal
+    // 5. Show success & receipt modal
     setSuccessTx(newTx);
   };
 
@@ -432,6 +470,21 @@ export default function App() {
         }
         return prod;
       });
+    });
+
+    // Deduct Kaos Polos stock
+    setKaosStocks((prevKaos) => {
+      const { updatedStocks, movements } = deductKaosStock(
+        prevKaos,
+        newTx.items,
+        newTx.invoiceNo,
+        currentUser.name,
+        'Pesanan Dikerjakan'
+      );
+      if (movements.length > 0) {
+        newMovements.push(...movements);
+      }
+      return updatedStocks;
     });
 
     if (newMovements.length > 0) {
@@ -486,6 +539,32 @@ export default function App() {
 
         return { ...p, stock: updatedStock };
       });
+    });
+
+    // 3. Adjust Kaos stock for revision
+    setKaosStocks((prevKaos) => {
+      const restored = restoreMultipleKaosStock(
+        prevKaos,
+        oldTransaction.items,
+        oldTransaction.invoiceNo,
+        currentUser.name,
+        'Revisi Faktur (Kembalikan)'
+      );
+      if (restored.movements.length > 0) {
+        newMovements.push(...restored.movements);
+      }
+
+      const deducted = deductKaosStock(
+        restored.updatedStocks,
+        updatedTransaction.items,
+        updatedTransaction.invoiceNo,
+        currentUser.name,
+        'Revisi Faktur (Pengurangan)'
+      );
+      if (deducted.movements.length > 0) {
+        newMovements.push(...deducted.movements);
+      }
+      return deducted.updatedStocks;
     });
 
     if (newMovements.length > 0) {
@@ -544,6 +623,21 @@ export default function App() {
 
           return { ...p, stock: updatedStock };
         });
+      });
+
+      // Restore Kaos stock
+      setKaosStocks((prevKaos) => {
+        const { updatedStocks, movements } = restoreMultipleKaosStock(
+          prevKaos,
+          txToDelete.items,
+          txToDelete.invoiceNo,
+          currentUser.name,
+          'Hapus Faktur'
+        );
+        if (movements.length > 0) {
+          newMovements.push(...movements);
+        }
+        return updatedStocks;
       });
 
       if (newMovements.length > 0) {
@@ -648,6 +742,47 @@ export default function App() {
         return p;
       })
     );
+  };
+
+  // Handler: Kaos stock adjustment
+  const handleAdjustKaosStock = (
+    color: string,
+    size: string,
+    type: 'IN' | 'OUT' | 'ADJUST',
+    qty: number,
+    reason: string
+  ) => {
+    setKaosStocks((prev) => {
+      const idx = prev.findIndex(
+        (k) => k.color.toLowerCase() === color.toLowerCase() && k.size.toUpperCase() === size.toUpperCase()
+      );
+      if (idx === -1) return prev;
+      const item = prev[idx];
+      const prevStock = item.stock;
+      let newStock = prevStock;
+      if (type === 'IN') newStock += qty;
+      else if (type === 'OUT') newStock = Math.max(0, prevStock - qty);
+      else if (type === 'ADJUST') newStock = qty;
+
+      const updated = [...prev];
+      updated[idx] = { ...item, stock: newStock };
+      return updated;
+    });
+
+    const movement: StockMovement = {
+      id: `sm-kaos-${Date.now()}`,
+      productId: `kaos_${color.toLowerCase()}_${size.toLowerCase()}`,
+      productName: `Kaos Polos ${color} (${size})`,
+      sku: `KAOS-${color.toUpperCase()}-${size.toUpperCase()}`,
+      type,
+      qty,
+      prevStock: 0,
+      newStock: 0,
+      date: new Date().toISOString().slice(0, 16).replace('T', ' '),
+      reason: reason || `Penyesuaian Stok Kaos ${color} ${size}`,
+      operatorName: currentUser.name
+    };
+    setStockMovements((sm) => [movement, ...sm]);
   };
 
   // Handler: Batch Import Products from CSV / Excel
@@ -832,11 +967,13 @@ export default function App() {
   ).length;
 
   const lowStockCount = products.filter((p) => p.stock <= p.minStock).length;
+  const lowKaosStockCount = kaosStocks.filter((k) => k.stock <= k.minStock).length;
 
   const handleRestoreDataFromDrive = (data: {
     transactions?: Transaction[];
     products?: Product[];
     cashFlowRecords?: CashFlowRecord[];
+    kaosStocks?: KaosStockItem[];
   }) => {
     if (data.transactions && Array.isArray(data.transactions)) {
       setTransactions(data.transactions);
@@ -849,6 +986,10 @@ export default function App() {
     if (data.cashFlowRecords && Array.isArray(data.cashFlowRecords)) {
       setCashFlowRecords(data.cashFlowRecords);
       localStorage.setItem('athree_cash_flow', JSON.stringify(data.cashFlowRecords));
+    }
+    if (data.kaosStocks && Array.isArray(data.kaosStocks)) {
+      setKaosStocks(data.kaosStocks);
+      localStorage.setItem('athree_kaos_stocks', JSON.stringify(data.kaosStocks));
     }
   };
 
@@ -970,6 +1111,7 @@ export default function App() {
         onLogout={handleLogout}
         pendingOrdersCount={pendingOrdersCount}
         lowStockCount={lowStockCount}
+        lowKaosStockCount={lowKaosStockCount}
         allowCashierDrive={allowCashierDrive}
       />
 
@@ -1051,6 +1193,27 @@ export default function App() {
               onDeleteProduct={handleDeleteProduct}
               onAdjustStock={handleAdjustStock}
               onImportProducts={handleImportProducts}
+              onOpenKaosStock={() => setActiveTab('kaos-stock')}
+            />
+          )}
+
+          {activeTab === 'kaos-stock' && (
+            <KaosStockManagementView
+              kaosStocks={kaosStocks}
+              stockMovements={stockMovements}
+              currentUser={currentUser}
+              onUpdateKaosStocks={(newStocks, movements) => {
+                setKaosStocks(newStocks);
+                localStorage.setItem('athree_kaos_stocks', JSON.stringify(newStocks));
+                if (movements && movements.length > 0) {
+                  setStockMovements((prev) => {
+                    const updated = [...movements, ...prev];
+                    localStorage.setItem('athree_stock_movements', JSON.stringify(updated));
+                    return updated;
+                  });
+                }
+              }}
+              onOpenRegularStock={() => setActiveTab('stock')}
             />
           )}
 

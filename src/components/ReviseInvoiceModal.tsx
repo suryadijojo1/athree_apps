@@ -12,11 +12,15 @@ import {
   CreditCard,
   Banknote,
   CheckCircle2,
-  UserCheck
+  UserCheck,
+  Shirt,
+  Palette
 } from 'lucide-react';
 import { Transaction, OrderItem, PaymentMethod, OrderStatus, OrderType, Product } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
 import { AddSalesModal } from './AddSalesModal';
+import { STANDARD_KAOS_COLORS, STANDARD_KAOS_SIZES } from '../data/mockData';
+import { isSablonKaosProduct } from '../utils/kaosStockUtils';
 
 interface ReviseInvoiceModalProps {
   transaction: Transaction | null;
@@ -62,6 +66,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(transaction.paymentMethod);
   const [status, setStatus] = useState<OrderStatus>(transaction.status);
   const [discount, setDiscount] = useState<number>(transaction.discount || 0);
+  const [amountPaid, setAmountPaid] = useState<number>(transaction.amountPaid ?? transaction.total);
   const [items, setItems] = useState<OrderItem[]>(
     transaction.items.map((it) => ({ ...it }))
   );
@@ -71,6 +76,12 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   // Calculations
   const subtotal = items.reduce((acc, it) => acc + it.price * it.quantity, 0);
   const total = Math.max(0, subtotal - discount);
+  const remainingAmount = Math.max(0, total - amountPaid);
+  const change = Math.max(0, amountPaid - total);
+  let paymentStatus: 'LUNAS' | 'PIUTANG' | 'DP' = 'LUNAS';
+  if (remainingAmount > 0) {
+    paymentStatus = amountPaid > 0 ? 'DP' : 'PIUTANG';
+  }
 
   // Update item quantity
   const handleUpdateQty = (idx: number, delta: number) => {
@@ -114,6 +125,20 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
     );
   };
 
+  // Update item Kaos Color
+  const handleUpdateItemKaosColor = (idx: number, color: string) => {
+    setItems((prev) =>
+      prev.map((it, i) => (i === idx ? { ...it, kaosColor: color } : it))
+    );
+  };
+
+  // Update item Kaos Size
+  const handleUpdateItemKaosSize = (idx: number, size: string) => {
+    setItems((prev) =>
+      prev.map((it, i) => (i === idx ? { ...it, kaosSize: size } : it))
+    );
+  };
+
   // Remove item
   const handleRemoveItem = (idx: number) => {
     if (items.length <= 1) {
@@ -129,8 +154,9 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
     const prod = availableProducts.find((p) => p.id === selectedAddProductId);
     if (!prod) return;
 
+    const isKaos = isSablonKaosProduct(prod.name);
     const existingIdx = items.findIndex((it) => it.productId === prod.id);
-    if (existingIdx >= 0) {
+    if (existingIdx >= 0 && !isKaos) {
       handleUpdateQty(existingIdx, 1);
     } else {
       setItems((prev) => [
@@ -142,7 +168,9 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
           price: prod.price,
           costPrice: prod.costPrice,
           quantity: 1,
-          subtotal: prod.price
+          subtotal: prod.price,
+          kaosColor: isKaos ? 'Hitam' : undefined,
+          kaosSize: isKaos ? 'L' : undefined
         }
       ]);
     }
@@ -187,8 +215,10 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       subtotal,
       discount,
       total,
-      amountPaid: paymentMethod === 'Tunai' ? Math.max(total, transaction.amountPaid) : total,
-      change: paymentMethod === 'Tunai' ? Math.max(0, (transaction.amountPaid || total) - total) : 0,
+      amountPaid,
+      change,
+      remainingAmount,
+      paymentStatus,
       notes: combinedNotes
     };
 
@@ -397,12 +427,57 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
                   {items.map((it, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
                       <td className="py-2 px-2.5">
-                        <p className="font-bold text-slate-800">{it.name}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-bold text-slate-800">{it.name}</p>
+                          {isSablonKaosProduct(it.name) && (
+                            <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-purple-100 text-purple-800 border border-purple-200 flex items-center gap-0.5">
+                              <Shirt className="w-2.5 h-2.5" />
+                              Sablon + Kaos
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Kaos Color & Size selectors if Sablon + Kaos */}
+                        {isSablonKaosProduct(it.name) && (
+                          <div className="flex items-center gap-2 mt-1 bg-purple-50/60 p-1.5 rounded-lg border border-purple-200/70">
+                            <div className="flex items-center gap-1">
+                              <Palette className="w-3 h-3 text-purple-600" />
+                              <span className="text-[10px] text-slate-600 font-bold">Warna:</span>
+                              <select
+                                value={it.kaosColor || 'Hitam'}
+                                onChange={(e) => handleUpdateItemKaosColor(idx, e.target.value)}
+                                className="text-[11px] font-semibold py-0.5 px-1.5 border border-purple-200 rounded bg-white text-purple-900 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                              >
+                                {STANDARD_KAOS_COLORS.map((c) => (
+                                  <option key={c.name} value={c.name}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Shirt className="w-3 h-3 text-[#00871f]" />
+                              <span className="text-[10px] text-slate-600 font-bold">Size:</span>
+                              <select
+                                value={it.kaosSize || 'L'}
+                                onChange={(e) => handleUpdateItemKaosSize(idx, e.target.value)}
+                                className="text-[11px] font-bold py-0.5 px-1.5 border border-emerald-300 rounded bg-white text-emerald-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              >
+                                {STANDARD_KAOS_SIZES.map((s) => (
+                                  <option key={s} value={s}>
+                                    Size {s}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+
                         <input
                           type="text"
                           value={it.notes || ''}
                           onChange={(e) => handleUpdateItemNote(idx, e.target.value)}
-                          placeholder="Catatan sablon / ukuran / warna..."
+                          placeholder="Catatan sablon / ukuran / spesifikasi..."
                           className="mt-1 w-full text-[11px] px-2 py-0.5 border border-slate-200 rounded bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00871f]"
                         />
                       </td>
@@ -457,8 +532,8 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
             </div>
           </div>
 
-          {/* Payment & Discount Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Payment, Discount & Amount Paid Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">
                 Metode Pembayaran
@@ -487,7 +562,40 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
                 className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00871f] focus:outline-none"
               />
             </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Jumlah Telah Dibayar / DP (Rp)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                value={amountPaid}
+                onChange={(e) => setAmountPaid(Math.max(0, Number(e.target.value)))}
+                className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00871f] focus:outline-none"
+              />
+            </div>
           </div>
+
+          {/* Status Piutang / Pelunasan Banner */}
+          {remainingAmount > 0 ? (
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>Status: PIUTANG / {paymentStatus}</strong> &bull; Sisa belum terbayar: <strong className="text-amber-800">{formatCurrency(remainingAmount)}</strong>
+                </span>
+              </div>
+              <div className="text-[11px] font-semibold text-amber-700">
+                Jatuh Tempo: {dueDate ? dueDate.replace('T', ' ') : 'Sesuai Deadline'}
+              </div>
+            </div>
+          ) : (
+            <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2 text-xs font-semibold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Status Pembayaran: LUNAS (Tidak ada piutang)</span>
+            </div>
+          )}
 
           {/* Revision Reason / Audit Note */}
           <div>

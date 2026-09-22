@@ -1,4 +1,4 @@
-import { Product, User, Customer, Transaction, StockMovement, CashierShift } from '../types';
+import { Product, User, Customer, Transaction, StockMovement, CashierShift, KaosStockItem } from '../types';
 
 export const INITIAL_USERS: User[] = [
   {
@@ -99,6 +99,20 @@ export const INITIAL_PRODUCTS: Product[] = [
     unit: 'Pcs',
     colorBadge: 'bg-purple-100 text-purple-800 border-purple-200',
     initials: 'SK',
+    isFavorite: true
+  },
+  {
+    id: 'p5_a4',
+    name: 'SABLON + KAOS A4',
+    sku: 'SKU/00017',
+    category: 'SABLON & PRINTING',
+    price: 75000,
+    costPrice: 42000,
+    stock: 48,
+    minStock: 15,
+    unit: 'Pcs',
+    colorBadge: 'bg-blue-100 text-blue-800 border-blue-200',
+    initials: 'S4',
     isFavorite: true
   },
   {
@@ -250,6 +264,106 @@ export const INITIAL_CATEGORIES = [
   'KAOS POLOS',
   'SABLON & PRINTING',
   'CUSTOM MERCHANDISE'
+];
+
+export interface KaosColorOption {
+  name: string;
+  dotClass: string;
+}
+
+export const STANDARD_KAOS_COLORS: KaosColorOption[] = [
+  { name: 'Hitam', dotClass: 'bg-slate-900 border-slate-700' },
+  { name: 'Putih', dotClass: 'bg-white border-slate-300' },
+  { name: 'Navy', dotClass: 'bg-blue-900 border-blue-800' },
+  { name: 'Maroon', dotClass: 'bg-rose-950 border-rose-900' },
+  { name: 'Abu Misty', dotClass: 'bg-slate-400 border-slate-300' },
+  { name: 'Hijau Botol', dotClass: 'bg-emerald-950 border-emerald-900' },
+  { name: 'Merah Cabe', dotClass: 'bg-red-600 border-red-500' },
+  { name: 'Biru Benhur', dotClass: 'bg-blue-600 border-blue-500' },
+  { name: 'Kuning Mustard', dotClass: 'bg-amber-600 border-amber-500' }
+];
+
+export const STANDARD_KAOS_SIZES = ['S', 'M', 'L', 'XL', 'XXL', '3XL'];
+
+// Helper to generate unique ID for Kaos Stock
+export const generateKaosStockId = (color: string, size: string) => {
+  const c = color.trim().toLowerCase().replace(/\s+/g, '_');
+  const s = size.trim().toLowerCase().replace(/\s+/g, '_');
+  return `kaos_${c}_${s}`;
+};
+
+export const INITIAL_KAOS_STOCK: KaosStockItem[] = [
+  // Hitam
+  { id: 'kaos_hitam_s', color: 'Hitam', size: 'S', stock: 15, minStock: 5 },
+  { id: 'kaos_hitam_m', color: 'Hitam', size: 'M', stock: 25, minStock: 8 },
+  { id: 'kaos_hitam_l', color: 'Hitam', size: 'L', stock: 35, minStock: 10 },
+  { id: 'kaos_hitam_xl', color: 'Hitam', size: 'XL', stock: 30, minStock: 10 },
+  { id: 'kaos_hitam_xxl', color: 'Hitam', size: 'XXL', stock: 18, minStock: 5 },
+  { id: 'kaos_hitam_3xl', color: 'Hitam', size: '3XL', stock: 10, minStock: 3 },
+
+  // Putih
+  { id: 'kaos_putih_s', color: 'Putih', size: 'S', stock: 12, minStock: 5 },
+  { id: 'kaos_putih_m', color: 'Putih', size: 'M', stock: 20, minStock: 8 },
+  { id: 'kaos_putih_l', color: 'Putih', size: 'L', stock: 28, minStock: 10 },
+  { id: 'kaos_putih_xl', color: 'Putih', size: 'XL', stock: 22, minStock: 8 },
+  { id: 'kaos_putih_xxl', color: 'Putih', size: 'XXL', stock: 14, minStock: 5 },
+  { id: 'kaos_putih_3xl', color: 'Putih', size: '3XL', stock: 8, minStock: 3 },
+
+  // Navy
+  { id: 'kaos_navy_s', color: 'Navy', size: 'S', stock: 10, minStock: 4 },
+  { id: 'kaos_navy_m', color: 'Navy', size: 'M', stock: 18, minStock: 6 },
+  { id: 'kaos_navy_l', color: 'Navy', size: 'L', stock: 24, minStock: 8 },
+  { id: 'kaos_navy_xl', color: 'Navy', size: 'XL', stock: 20, minStock: 6 },
+  { id: 'kaos_navy_xxl', color: 'Navy', size: 'XXL', stock: 12, minStock: 4 },
+  { id: 'kaos_navy_3xl', color: 'Navy', size: '3XL', stock: 6, minStock: 2 },
+
+  // Maroon
+  { id: 'kaos_maroon_s', color: 'Maroon', size: 'S', stock: 8, minStock: 3 },
+  { id: 'kaos_maroon_m', color: 'Maroon', size: 'M', stock: 15, minStock: 5 },
+  { id: 'kaos_maroon_l', color: 'Maroon', size: 'L', stock: 20, minStock: 6 },
+  { id: 'kaos_maroon_xl', color: 'Maroon', size: 'XL', stock: 16, minStock: 5 },
+  { id: 'kaos_maroon_xxl', color: 'Maroon', size: 'XXL', stock: 10, minStock: 3 },
+  { id: 'kaos_maroon_3xl', color: 'Maroon', size: '3XL', stock: 5, minStock: 2 },
+
+  // Abu Misty
+  { id: 'kaos_abu_misty_s', color: 'Abu Misty', size: 'S', stock: 10, minStock: 3 },
+  { id: 'kaos_abu_misty_m', color: 'Abu Misty', size: 'M', stock: 16, minStock: 5 },
+  { id: 'kaos_abu_misty_l', color: 'Abu Misty', size: 'L', stock: 22, minStock: 6 },
+  { id: 'kaos_abu_misty_xl', color: 'Abu Misty', size: 'XL', stock: 18, minStock: 5 },
+  { id: 'kaos_abu_misty_xxl', color: 'Abu Misty', size: 'XXL', stock: 10, minStock: 3 },
+  { id: 'kaos_abu_misty_3xl', color: 'Abu Misty', size: '3XL', stock: 6, minStock: 2 },
+
+  // Hijau Botol
+  { id: 'kaos_hijau_botol_s', color: 'Hijau Botol', size: 'S', stock: 6, minStock: 2 },
+  { id: 'kaos_hijau_botol_m', color: 'Hijau Botol', size: 'M', stock: 12, minStock: 4 },
+  { id: 'kaos_hijau_botol_l', color: 'Hijau Botol', size: 'L', stock: 18, minStock: 5 },
+  { id: 'kaos_hijau_botol_xl', color: 'Hijau Botol', size: 'XL', stock: 14, minStock: 4 },
+  { id: 'kaos_hijau_botol_xxl', color: 'Hijau Botol', size: 'XXL', stock: 8, minStock: 3 },
+  { id: 'kaos_hijau_botol_3xl', color: 'Hijau Botol', size: '3XL', stock: 4, minStock: 2 },
+
+  // Merah Cabe
+  { id: 'kaos_merah_cabe_s', color: 'Merah Cabe', size: 'S', stock: 8, minStock: 2 },
+  { id: 'kaos_merah_cabe_m', color: 'Merah Cabe', size: 'M', stock: 14, minStock: 4 },
+  { id: 'kaos_merah_cabe_l', color: 'Merah Cabe', size: 'L', stock: 16, minStock: 5 },
+  { id: 'kaos_merah_cabe_xl', color: 'Merah Cabe', size: 'XL', stock: 12, minStock: 4 },
+  { id: 'kaos_merah_cabe_xxl', color: 'Merah Cabe', size: 'XXL', stock: 8, minStock: 2 },
+  { id: 'kaos_merah_cabe_3xl', color: 'Merah Cabe', size: '3XL', stock: 4, minStock: 2 },
+
+  // Biru Benhur
+  { id: 'kaos_biru_benhur_s', color: 'Biru Benhur', size: 'S', stock: 6, minStock: 2 },
+  { id: 'kaos_biru_benhur_m', color: 'Biru Benhur', size: 'M', stock: 10, minStock: 3 },
+  { id: 'kaos_biru_benhur_l', color: 'Biru Benhur', size: 'L', stock: 15, minStock: 4 },
+  { id: 'kaos_biru_benhur_xl', color: 'Biru Benhur', size: 'XL', stock: 12, minStock: 3 },
+  { id: 'kaos_biru_benhur_xxl', color: 'Biru Benhur', size: 'XXL', stock: 6, minStock: 2 },
+  { id: 'kaos_biru_benhur_3xl', color: 'Biru Benhur', size: '3XL', stock: 4, minStock: 2 },
+
+  // Kuning Mustard
+  { id: 'kaos_kuning_mustard_s', color: 'Kuning Mustard', size: 'S', stock: 6, minStock: 2 },
+  { id: 'kaos_kuning_mustard_m', color: 'Kuning Mustard', size: 'M', stock: 10, minStock: 3 },
+  { id: 'kaos_kuning_mustard_l', color: 'Kuning Mustard', size: 'L', stock: 14, minStock: 4 },
+  { id: 'kaos_kuning_mustard_xl', color: 'Kuning Mustard', size: 'XL', stock: 10, minStock: 3 },
+  { id: 'kaos_kuning_mustard_xxl', color: 'Kuning Mustard', size: 'XXL', stock: 6, minStock: 2 },
+  { id: 'kaos_kuning_mustard_3xl', color: 'Kuning Mustard', size: '3XL', stock: 4, minStock: 2 }
 ];
 
 export const INITIAL_CUSTOMERS: Customer[] = [

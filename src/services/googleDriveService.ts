@@ -231,6 +231,7 @@ export async function backupAppDataToDrive(payload: {
   stockMovements?: any[];
   customers?: any[];
   currentStartingCash?: number;
+  kaosStocks?: any[];
 }): Promise<DriveFile> {
   const folderId = await getOrCreateBackupFolder(BACKUP_FOLDER_NAME);
 

@@ -20,8 +20,13 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
 }) => {
   if (!transaction) return null;
 
+  const isPiutang = Boolean(transaction.remainingAmount && transaction.remainingAmount > 0);
+
   const handleShareWA = () => {
-    const text = `*ATHREE STUDIO JAYAPURA*\nNo Faktur: ${transaction.invoiceNo}\nPelanggan: ${transaction.customer.name}\nTotal: ${formatCurrency(transaction.total)}\nStatus: ${transaction.status}\nTarget Jatuh Tempo: ${transaction.dueDate || '-'}\nTerima kasih atas pesanan Anda!`;
+    const piutangInfo = isPiutang
+      ? `\n*Status:* DP / Piutang Belum Lunas\n*Dibayar:* ${formatCurrency(transaction.amountPaid)}\n*Sisa Piutang:* ${formatCurrency(transaction.remainingAmount || 0)}\n*Jatuh Tempo Pelunasan:* ${transaction.dueDate || '-'}`
+      : `\n*Status:* LUNAS (Selesai)`;
+    const text = `*ATHREE STUDIO JAYAPURA*\nNo Faktur: ${transaction.invoiceNo}\nPelanggan: ${transaction.customer.name}\nTotal: ${formatCurrency(transaction.total)}${piutangInfo}\nTarget Jatuh Tempo: ${transaction.dueDate || '-'}\nTerima kasih atas pesanan Anda!`;
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
@@ -74,17 +79,34 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
             <span className="text-[#00871f]">{formatCurrency(transaction.total)}</span>
           </div>
 
-          {transaction.paymentMethod === 'Tunai' && (
-            <>
-              <div className="flex justify-between text-slate-500">
-                <span>Uang Diterima:</span>
-                <span>{formatCurrency(transaction.amountPaid)}</span>
+          {isPiutang ? (
+            <div className="pt-2 border-t border-amber-200 bg-amber-50/70 p-2.5 rounded-lg space-y-1">
+              <div className="flex justify-between text-slate-600">
+                <span>Dibayar / Uang Muka (DP):</span>
+                <span className="font-semibold text-slate-800">{formatCurrency(transaction.amountPaid)}</span>
               </div>
-              <div className="flex justify-between font-semibold text-emerald-600">
-                <span>Kembalian:</span>
-                <span>{formatCurrency(transaction.change)}</span>
+              <div className="flex justify-between font-bold text-rose-600">
+                <span>Sisa Piutang:</span>
+                <span>{formatCurrency(transaction.remainingAmount || 0)}</span>
               </div>
-            </>
+              <div className="flex justify-between text-[11px] text-amber-900 pt-1 border-t border-amber-200/60 font-semibold">
+                <span>Jatuh Tempo Pelunasan:</span>
+                <span>{transaction.dueDate || 'Sesuai Deadline'}</span>
+              </div>
+            </div>
+          ) : (
+            transaction.paymentMethod === 'Tunai' && (
+              <>
+                <div className="flex justify-between text-slate-500">
+                  <span>Uang Diterima:</span>
+                  <span>{formatCurrency(transaction.amountPaid)}</span>
+                </div>
+                <div className="flex justify-between font-semibold text-emerald-600">
+                  <span>Kembalian:</span>
+                  <span>{formatCurrency(transaction.change)}</span>
+                </div>
+              </>
+            )
           )}
         </div>
 

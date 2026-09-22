@@ -26,6 +26,7 @@ export interface Product {
 }
 
 export interface OrderItem {
+  cartItemId?: string; // unique identifier for cart row
   productId: string;
   name: string;
   sku: string;
@@ -34,6 +35,16 @@ export interface OrderItem {
   quantity: number;
   notes?: string;
   subtotal: number;
+  kaosColor?: string; // e.g. 'Hitam', 'Putih', 'Navy'
+  kaosSize?: string;  // e.g. 'S', 'M', 'L', 'XL', 'XXL', '3XL'
+}
+
+export interface KaosStockItem {
+  id: string; // e.g. 'kaos-hitam-l'
+  color: string;
+  size: string;
+  stock: number;
+  minStock: number;
 }
 
 export type OrderType = 'Kasir (Dimas)' | 'Admin (DEAZBAR)' | string;
@@ -65,6 +76,8 @@ export interface Transaction {
   amountPaid: number;
   change: number;
   status: OrderStatus;
+  paymentStatus?: 'LUNAS' | 'PIUTANG' | 'DP';
+  remainingAmount?: number; // Sisa tagihan yang dialihkan menjadi piutang
   cashierName: string;
   cashierId: string;
   notes?: string;
