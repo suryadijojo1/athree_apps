@@ -519,3 +519,44 @@ export const downloadProductImportTemplate = (format: 'xlsx' | 'csv' = 'xlsx') =
     XLSX.writeFile(workbook, 'Template_Import_Produk_Athree.xlsx', { bookType: 'xlsx' });
   }
 };
+
+/**
+ * Download Template for Kaos Stock Adjustment / Opname Import (Excel / CSV)
+ */
+export const downloadKaosStockAdjustmentTemplate = (
+  currentStocks?: KaosStockItem[],
+  format: 'xlsx' | 'csv' = 'xlsx'
+) => {
+  // If currentStocks is provided, pre-fill with existing colors and sizes to make stock opname seamless
+  const rows = (currentStocks && currentStocks.length > 0)
+    ? currentStocks.map((k, idx) => ({
+        'No': idx + 1,
+        'Warna Kaos': k.color,
+        'Ukuran': k.size,
+        'Stok Fisik Opname': k.stock, // User can update this number
+        'Stok Minimal': k.minStock || 5,
+        'Keterangan': 'Hasil Stock Opname'
+      }))
+    : [
+        { 'No': 1, 'Warna Kaos': 'Hitam', 'Ukuran': 'S', 'Stok Fisik Opname': 40, 'Stok Minimal': 5, 'Keterangan': 'Opname Gudang' },
+        { 'No': 2, 'Warna Kaos': 'Hitam', 'Ukuran': 'M', 'Stok Fisik Opname': 50, 'Stok Minimal': 5, 'Keterangan': 'Opname Gudang' },
+        { 'No': 3, 'Warna Kaos': 'Hitam', 'Ukuran': 'L', 'Stok Fisik Opname': 60, 'Stok Minimal': 5, 'Keterangan': 'Opname Gudang' },
+        { 'No': 4, 'Warna Kaos': 'Hitam', 'Ukuran': 'XL', 'Stok Fisik Opname': 35, 'Stok Minimal': 5, 'Keterangan': 'Opname Gudang' },
+        { 'No': 5, 'Warna Kaos': 'Putih', 'Ukuran': 'M', 'Stok Fisik Opname': 30, 'Stok Minimal': 5, 'Keterangan': 'Opname Gudang' },
+        { 'No': 6, 'Warna Kaos': 'Putih', 'Ukuran': 'L', 'Stok Fisik Opname': 45, 'Stok Minimal': 5, 'Keterangan': 'Opname Gudang' },
+        { 'No': 7, 'Warna Kaos': 'Navy', 'Ukuran': 'L', 'Stok Fisik Opname': 25, 'Stok Minimal': 5, 'Keterangan': 'Opname Gudang' },
+        { 'No': 8, 'Warna Kaos': 'Maroon', 'Ukuran': 'XL', 'Stok Fisik Opname': 20, 'Stok Minimal': 5, 'Keterangan': 'Opname Gudang' }
+      ];
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Opname Kaos Polos');
+
+  const dateTag = new Date().toISOString().slice(0, 10);
+  if (format === 'csv') {
+    XLSX.writeFile(workbook, `Template_Penyesuaian_Stok_Kaos_${dateTag}.csv`, { bookType: 'csv' });
+  } else {
+    XLSX.writeFile(workbook, `Template_Penyesuaian_Stok_Kaos_${dateTag}.xlsx`, { bookType: 'xlsx' });
+  }
+};
+

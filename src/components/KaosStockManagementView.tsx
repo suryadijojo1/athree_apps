@@ -23,11 +23,13 @@ import {
   Info,
   ChevronRight,
   SlidersHorizontal,
+  UploadCloud,
   X
 } from 'lucide-react';
 import { KaosStockItem, StockMovement, User } from '../types';
 import { STANDARD_KAOS_COLORS, STANDARD_KAOS_SIZES, KaosColorOption, generateKaosStockId } from '../data/mockData';
 import { exportKaosStockToExcel, exportKaosStockToPDF } from '../utils/exportUtils';
+import { ImportKaosStockModal } from './ImportKaosStockModal';
 
 interface KaosStockManagementViewProps {
   kaosStocks: KaosStockItem[];
@@ -59,6 +61,7 @@ export const KaosStockManagementView: React.FC<KaosStockManagementViewProps> = (
   const [showRestockModal, setShowRestockModal] = useState(false);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showAddColorModal, setShowAddColorModal] = useState(false);
+  const [showImportKaosModal, setShowImportKaosModal] = useState(false);
 
   // Selected item for quick action
   const [selectedItem, setSelectedItem] = useState<KaosStockItem | null>(null);
@@ -413,6 +416,15 @@ export const KaosStockManagementView: React.FC<KaosStockManagementViewProps> = (
 
             {isAdmin && (
               <>
+                <button
+                  onClick={() => setShowImportKaosModal(true)}
+                  title="Impor Penyesuaian Stok Kaos dari file Excel (.xlsx) atau CSV"
+                  className="px-3.5 py-2 rounded-xl bg-blue-950/70 hover:bg-blue-900 text-blue-200 border border-blue-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <UploadCloud className="w-4 h-4 text-blue-400" />
+                  Impor Penyesuaian Stok
+                </button>
+
                 <button
                   onClick={() => setShowAddColorModal(true)}
                   className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -1334,6 +1346,17 @@ export const KaosStockManagementView: React.FC<KaosStockManagementViewProps> = (
           </div>
         </div>
       )}
+
+      {/* 8. Modal Import Penyesuaian Stok Khusus Kaos (Excel / CSV) */}
+      <ImportKaosStockModal
+        isOpen={showImportKaosModal}
+        onClose={() => setShowImportKaosModal(false)}
+        kaosStocks={kaosStocks}
+        currentUser={currentUser}
+        onApplyImport={(updatedStocks, movements) => {
+          onUpdateKaosStocks(updatedStocks, movements);
+        }}
+      />
     </div>
   );
 };
