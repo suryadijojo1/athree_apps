@@ -51,6 +51,7 @@ import {
   subscribeToCashFlow,
   subscribeToCustomers,
   subscribeToShifts,
+  subscribeToStockMovements,
   saveProductToFirestore,
   deleteProductFromFirestore,
   saveMultipleProductsToFirestore,
@@ -64,6 +65,8 @@ import {
   subscribeToUsers,
   saveUserToFirestore,
   deleteUserFromFirestore,
+  saveStockMovementToFirestore,
+  saveMultipleStockMovementsToFirestore,
   fetchAllDataFromFirestore,
   syncAllLocalDataToFirestore
 } from './services/firebase';
@@ -520,6 +523,10 @@ export default function App() {
               setUsers(cloudData.users);
               localStorage.setItem('athree_users', JSON.stringify(cloudData.users));
             }
+            if (cloudData.stockMovements && cloudData.stockMovements.length > 0) {
+              setStockMovements(cloudData.stockMovements);
+              localStorage.setItem('athree_stock_movements', JSON.stringify(cloudData.stockMovements));
+            }
           } else {
             // First time ever on cloud -> upload current local master data to cloud so other browsers can immediately receive it
             syncAllLocalDataToFirestore({
@@ -529,7 +536,8 @@ export default function App() {
               shifts: shiftHistory,
               kaosStocks,
               customers,
-              users
+              users,
+              stockMovements
             }).catch((err) => console.warn('Cloud auto-seed error:', err));
           }
         } catch (err) {
@@ -541,6 +549,7 @@ export default function App() {
     // 2. Real-time Listeners across all browser tabs, windows, and devices
     const unsubProducts = subscribeToProducts((remoteProducts) => {
       if (remoteProducts && remoteProducts.length > 0) {
+        setIsFirebaseConnected(true);
         setProducts(remoteProducts);
         localStorage.setItem('athree_products', JSON.stringify(remoteProducts));
       }
@@ -548,6 +557,7 @@ export default function App() {
 
     const unsubTransactions = subscribeToTransactions((remoteTransactions) => {
       if (remoteTransactions && remoteTransactions.length > 0) {
+        setIsFirebaseConnected(true);
         setTransactions(remoteTransactions);
         localStorage.setItem('athree_transactions', JSON.stringify(remoteTransactions));
       }
@@ -555,6 +565,7 @@ export default function App() {
 
     const unsubKaos = subscribeToKaosStocks((remoteKaos) => {
       if (remoteKaos && remoteKaos.length > 0) {
+        setIsFirebaseConnected(true);
         setKaosStocks(remoteKaos);
         localStorage.setItem('athree_kaos_stocks', JSON.stringify(remoteKaos));
       }
@@ -562,6 +573,7 @@ export default function App() {
 
     const unsubCashFlow = subscribeToCashFlow((remoteCashFlow) => {
       if (remoteCashFlow && remoteCashFlow.length > 0) {
+        setIsFirebaseConnected(true);
         setCashFlowRecords(remoteCashFlow);
         localStorage.setItem('athree_cash_flow', JSON.stringify(remoteCashFlow));
       }
@@ -569,6 +581,7 @@ export default function App() {
 
     const unsubCustomers = subscribeToCustomers((remoteCustomers) => {
       if (remoteCustomers && remoteCustomers.length > 0) {
+        setIsFirebaseConnected(true);
         setCustomers(remoteCustomers);
         localStorage.setItem('athree_customers', JSON.stringify(remoteCustomers));
       }
@@ -576,15 +589,35 @@ export default function App() {
 
     const unsubShifts = subscribeToShifts((remoteShifts) => {
       if (remoteShifts && remoteShifts.length > 0) {
+        setIsFirebaseConnected(true);
         setShiftHistory(remoteShifts);
         localStorage.setItem('athree_shift_history', JSON.stringify(remoteShifts));
       }
     });
 
+    const unsubStockMovements = subscribeToStockMovements((remoteMovements) => {
+      if (remoteMovements && remoteMovements.length > 0) {
+        setIsFirebaseConnected(true);
+        setStockMovements(remoteMovements);
+        localStorage.setItem('athree_stock_movements', JSON.stringify(remoteMovements));
+      }
+    });
+
     const unsubUsers = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
+        setIsFirebaseConnected(true);
         setUsers(remoteUsers);
         localStorage.setItem('athree_users', JSON.stringify(remoteUsers));
+        setCurrentUser((prev) => {
+          const match = remoteUsers.find(
+            (u) => u.id === prev.id || u.username === prev.username || u.name.toLowerCase() === prev.name.toLowerCase()
+          );
+          if (match) {
+            localStorage.setItem('athree_current_user', JSON.stringify(match));
+            return match;
+          }
+          return prev;
+        });
       }
     });
 
@@ -604,6 +637,7 @@ export default function App() {
       unsubCashFlow();
       unsubCustomers();
       unsubShifts();
+      unsubStockMovements();
       unsubUsers();
       unsubAuth();
     };
@@ -1192,6 +1226,7 @@ export default function App() {
       operatorName: currentUser.name
     };
     setStockMovements((prev) => [movement, ...prev]);
+    saveStockMovementToFirestore(movement).catch(() => {});
   };
 
   const handleUpdateProduct = (updatedProduct: Product) => {
@@ -1236,6 +1271,7 @@ export default function App() {
             operatorName: currentUser.name
           };
           setStockMovements((sm) => [movement, ...sm]);
+          saveStockMovementToFirestore(movement).catch(() => {});
 
           const updatedProd = { ...p, stock: newStock };
           saveProductToFirestore(updatedProd).catch(() => {});
@@ -1443,6 +1479,7 @@ export default function App() {
 
     if (newMovements.length > 0) {
       setStockMovements((prev) => [...newMovements, ...prev]);
+      saveMultipleStockMovementsToFirestore(newMovements).catch(() => {});
     }
 
     return { addedCount, updatedCount, skippedCount };

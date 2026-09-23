@@ -369,6 +369,52 @@ export async function deleteCustomerFromFirestore(customerId: string): Promise<v
   }
 }
 
+export function subscribeToStockMovements(
+  onData: (movements: StockMovement[]) => void,
+  onError?: (err: any) => void
+) {
+  const path = 'stockMovements';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const items: StockMovement[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as StockMovement);
+      });
+      items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      onData(items);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.GET, path);
+      } catch (e) {
+        if (onError) onError(e);
+      }
+    }
+  );
+}
+
+export async function saveStockMovementToFirestore(movement: StockMovement): Promise<void> {
+  const path = `stockMovements/${movement.id}`;
+  try {
+    await setDoc(doc(db, 'stockMovements', movement.id), movement);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveMultipleStockMovementsToFirestore(movements: StockMovement[]): Promise<void> {
+  const batch = writeBatch(db);
+  for (const m of movements.slice(0, 100)) {
+    batch.set(doc(db, 'stockMovements', m.id), m);
+  }
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'batch-movements-save');
+  }
+}
+
 export function subscribeToUsers(
   onData: (users: User[]) => void,
   onError?: (err: any) => void
@@ -420,6 +466,7 @@ export async function fetchAllDataFromFirestore(): Promise<{
   kaosStocks: KaosStockItem[];
   customers: Customer[];
   users: User[];
+  stockMovements: StockMovement[];
 }> {
   const results = {
     products: [] as Product[],
@@ -428,7 +475,8 @@ export async function fetchAllDataFromFirestore(): Promise<{
     shifts: [] as CashierShift[],
     kaosStocks: [] as KaosStockItem[],
     customers: [] as Customer[],
-    users: [] as User[]
+    users: [] as User[],
+    stockMovements: [] as StockMovement[]
   };
 
   try {
@@ -454,6 +502,10 @@ export async function fetchAllDataFromFirestore(): Promise<{
 
     const userSnap = await getDocs(collection(db, 'users'));
     userSnap.forEach((d) => results.users.push(d.data() as User));
+
+    const smSnap = await getDocs(collection(db, 'stockMovements'));
+    smSnap.forEach((d) => results.stockMovements.push(d.data() as StockMovement));
+    results.stockMovements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, 'batch-fetch');
   }
@@ -470,6 +522,7 @@ export async function syncAllLocalDataToFirestore(data: {
   kaosStocks?: KaosStockItem[];
   customers?: Customer[];
   users?: User[];
+  stockMovements?: StockMovement[];
 }): Promise<{ productsCount: number; transactionsCount: number; cashFlowCount: number; kaosCount: number }> {
   const batch = writeBatch(db);
 
@@ -512,6 +565,13 @@ export async function syncAllLocalDataToFirestore(data: {
   if (data.users) {
     for (const u of data.users.slice(0, 20)) {
       batch.set(doc(db, 'users', u.id), u);
+      count++;
+    }
+  }
+
+  if (data.stockMovements) {
+    for (const m of data.stockMovements.slice(0, 50)) {
+      batch.set(doc(db, 'stockMovements', m.id), m);
       count++;
     }
   }
