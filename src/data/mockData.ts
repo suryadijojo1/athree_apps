@@ -723,11 +723,12 @@ export const INITIAL_SHIFT: CashierShift = {
   outletName: 'Athree Studio Jayapura',
   cashierName: 'DIMAS',
   startTime: `${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, 08:00`,
+  startTimestamp: Date.now(),
   startingCash: 500000,
-  cashSales: 490000,
-  nonCashSales: 5200000,
-  totalSales: 5690000,
-  expectedCash: 990000,
+  cashSales: 0,
+  nonCashSales: 0,
+  totalSales: 0,
+  expectedCash: 500000,
   isOpen: true,
   notes: 'Shift Pagi - Siang aktif Kasir Dimas'
 };

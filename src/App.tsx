@@ -191,7 +191,28 @@ export default function App() {
 
   const [shift, setShift] = useState<CashierShift>(() => {
     const saved = localStorage.getItem('athree_shift');
-    return saved ? JSON.parse(saved) : INITIAL_SHIFT;
+    if (saved) {
+      try {
+        const parsed: CashierShift = JSON.parse(saved);
+        if (
+          parsed.isOpen &&
+          (parsed.cashSales === 490000 || (parsed.cashSales === 130000 && parsed.nonCashSales === 9125000))
+        ) {
+          return {
+            ...parsed,
+            cashSales: 0,
+            nonCashSales: 0,
+            totalSales: 0,
+            expectedCash: parsed.startingCash,
+            startTimestamp: parsed.startTimestamp || Date.now()
+          };
+        }
+        return parsed;
+      } catch {
+        return INITIAL_SHIFT;
+      }
+    }
+    return INITIAL_SHIFT;
   });
 
   const [shiftHistory, setShiftHistory] = useState<CashierShift[]>(() => {
@@ -231,28 +252,18 @@ export default function App() {
 
   const [cashFlowRecords, setCashFlowRecords] = useState<CashFlowRecord[]>(() => {
     const saved = localStorage.getItem('athree_cash_flow');
-    return saved
-      ? JSON.parse(saved)
-      : [
-          {
-            id: 'cf-1',
-            type: 'INCOME',
-            category: 'Jasa Desain Tambahan',
-            amount: 150000,
-            description: 'Jasa redesign logo jersey futsal',
-            date: '2026-09-17 10:15',
-            recordedBy: 'ATHREE(Owner)'
-          },
-          {
-            id: 'cf-2',
-            type: 'EXPENSE',
-            category: 'Bahan Baku & Tinta',
-            amount: 85000,
-            description: 'Beli lakban packing & cutter',
-            date: '2026-09-17 11:30',
-            recordedBy: 'ATHREE(Owner)'
-          }
-        ];
+    if (saved) {
+      try {
+        const parsed: CashFlowRecord[] = JSON.parse(saved);
+        const cleaned = parsed.filter(
+          (r) => r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
+        );
+        return cleaned;
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
 
   // Navigation and UI states
@@ -352,8 +363,11 @@ export default function App() {
         localStorage.setItem('athree_transactions', JSON.stringify(payload.transactions));
       }
       if (payload.cashFlowRecords && Array.isArray(payload.cashFlowRecords)) {
-        setCashFlowRecords(payload.cashFlowRecords);
-        localStorage.setItem('athree_cash_flow', JSON.stringify(payload.cashFlowRecords));
+        const cleaned = payload.cashFlowRecords.filter(
+          (r) => r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
+        );
+        setCashFlowRecords(cleaned);
+        localStorage.setItem('athree_cash_flow', JSON.stringify(cleaned));
       }
       if (payload.shiftHistory && Array.isArray(payload.shiftHistory)) {
         setShiftHistory(payload.shiftHistory);
@@ -698,8 +712,11 @@ export default function App() {
       localStorage.setItem('athree_transactions', JSON.stringify(cloudData.transactions));
     }
     if (cloudData.cashFlowRecords && cloudData.cashFlowRecords.length > 0) {
-      setCashFlowRecords(cloudData.cashFlowRecords);
-      localStorage.setItem('athree_cash_flow', JSON.stringify(cloudData.cashFlowRecords));
+      const cleaned = cloudData.cashFlowRecords.filter(
+        (r) => r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
+      );
+      setCashFlowRecords(cleaned);
+      localStorage.setItem('athree_cash_flow', JSON.stringify(cleaned));
     }
     if (cloudData.shifts && cloudData.shifts.length > 0) {
       setShiftHistory(cloudData.shifts);
@@ -799,7 +816,9 @@ export default function App() {
   const handleAddCashFlow = (newRecord: Omit<CashFlowRecord, 'id'>) => {
     const rec: CashFlowRecord = {
       ...newRecord,
-      id: `cf-${Date.now()}`
+      id: `cf-${Date.now()}`,
+      shiftId: shift?.id,
+      createdAt: new Date().toISOString()
     };
     setCashFlowRecords((prev) => [rec, ...prev]);
     saveCashFlowToFirestore(rec).catch((err) => console.warn('Sync cashflow error:', err));
@@ -851,7 +870,9 @@ export default function App() {
   const handleCompletePayment = (newTxData: Omit<Transaction, 'id'>) => {
     const newTx: Transaction = {
       ...newTxData,
-      id: `tx-${Date.now()}`
+      id: `tx-${Date.now()}`,
+      shiftId: shift?.id,
+      createdAt: new Date().toISOString()
     };
 
     // 1. Deduct Stock for each master product & record Stock Movement
@@ -941,7 +962,9 @@ export default function App() {
   const handleSaveAsPendingOrder = (newTxData: Omit<Transaction, 'id'>) => {
     const newTx: Transaction = {
       ...newTxData,
-      id: `tx-${Date.now()}`
+      id: `tx-${Date.now()}`,
+      shiftId: shift?.id,
+      createdAt: new Date().toISOString()
     };
 
     // Deduct stock if physical inventory

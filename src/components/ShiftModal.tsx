@@ -142,55 +142,130 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
   const [revisedStartingCash, setRevisedStartingCash] = useState<number>(shift.startingCash);
   const [startingCashInput, setStartingCashInput] = useState<number>(500000);
 
-  // Calculate live shift statistics from transactions
+  // Helper to parse date strings in various formats safely
+  const parseDateString = (dateStr?: string): number | null => {
+    if (!dateStr) return null;
+    const direct = Date.parse(dateStr);
+    if (!isNaN(direct)) return direct;
+
+    try {
+      const cleaned = dateStr.replace(/\./g, ':');
+      const monthNames: Record<string, string> = {
+        jan: '01', feb: '02', mar: '03', apr: '04', mei: '05', may: '05',
+        jun: '06', jul: '07', agu: '08', aug: '08', sep: '09', okt: '10',
+        oct: '10', nop: '11', nov: '11', des: '12', dec: '12'
+      };
+      const match = cleaned.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:,\s*(\d{1,2}):(\d{2}))?/);
+      if (match) {
+        const day = match[1].padStart(2, '0');
+        const monStr = match[2].toLowerCase().slice(0, 3);
+        const mon = monthNames[monStr] || '01';
+        const year = match[3];
+        const hour = (match[4] || '00').padStart(2, '0');
+        const min = (match[5] || '00').padStart(2, '0');
+        const iso = `${year}-${mon}-${day}T${hour}:${min}:00`;
+        const t = Date.parse(iso);
+        if (!isNaN(t)) return t;
+      }
+    } catch {}
+    return null;
+  };
+
+  // Calculate live shift statistics strictly isolated to THIS active shift
   const shiftStats = useMemo(() => {
-    // Calculate totals
-    const cashTx = transactions.filter((t) => t.paymentMethod === 'Tunai' && t.status !== 'BATAL');
-    const nonCashTx = transactions.filter((t) => t.paymentMethod !== 'Tunai' && t.status !== 'BATAL');
-    const qrisTx = transactions.filter((t) => t.paymentMethod === 'QRIS' && t.status !== 'BATAL');
-    const transferTx = transactions.filter(
+    // Determine shift timeframe boundaries
+    const shiftStart = shift.startTimestamp || parseDateString(shift.startTime);
+    const shiftEnd = shift.endTimestamp || (shift.endTime ? parseDateString(shift.endTime) : null);
+
+    // Filter transactions belonging STRICTLY to this shift
+    const shiftTransactions = transactions.filter((t) => {
+      // 1. Matched by shiftId
+      if (t.shiftId) {
+        return t.shiftId === shift.id;
+      }
+      // 2. If transaction does not have shiftId, check timestamp against shift start and end
+      const txTime = parseDateString(t.createdAt || t.date);
+      if (shiftStart && txTime) {
+        if (txTime < shiftStart - 60000) return false;
+        if (shiftEnd && txTime > shiftEnd + 60000) return false;
+        return true;
+      }
+      // 3. Fallback: if shift is open and created today, match same day string
+      if (shift.isOpen && t.date) {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        return t.date.startsWith(todayIso);
+      }
+      return false;
+    });
+
+    // Filter cash flow records belonging STRICTLY to this shift
+    const shiftCashFlows = cashFlowRecords.filter((c) => {
+      // 1. Matched by shiftId
+      if (c.shiftId) {
+        return c.shiftId === shift.id;
+      }
+      // 2. If no shiftId, check timestamp
+      const flowTime = parseDateString(c.createdAt || c.date);
+      if (shiftStart && flowTime) {
+        if (flowTime < shiftStart - 60000) return false;
+        if (shiftEnd && flowTime > shiftEnd + 60000) return false;
+        return true;
+      }
+      // 3. Fallback: if shift is open, match same day string
+      if (shift.isOpen && c.date) {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        return c.date.startsWith(todayIso);
+      }
+      return false;
+    });
+
+    const cashTx = shiftTransactions.filter((t) => t.paymentMethod === 'Tunai' && t.status !== 'BATAL');
+    const nonCashTx = shiftTransactions.filter((t) => t.paymentMethod !== 'Tunai' && t.status !== 'BATAL');
+    const qrisTx = shiftTransactions.filter((t) => t.paymentMethod === 'QRIS' && t.status !== 'BATAL');
+    const transferTx = shiftTransactions.filter(
       (t) => (t.paymentMethod === 'Transfer Bank' || t.paymentMethod === 'Kartu Debit' || t.paymentMethod === 'Kartu Kredit') && t.status !== 'BATAL'
     );
 
-    const calcCashSales = cashTx.reduce((sum, t) => sum + t.total, 0);
-    const calcNonCashSales = nonCashTx.reduce((sum, t) => sum + t.total, 0);
-    const totalOmzet = calcCashSales + calcNonCashSales || shift.totalSales;
+    const calcCashSales = cashTx.reduce((sum, t) => sum + (t.amountPaid || t.total), 0);
+    const calcNonCashSales = nonCashTx.reduce((sum, t) => sum + (t.amountPaid || t.total), 0);
+    const totalOmzet = calcCashSales + calcNonCashSales;
 
-    const totalDiscount = transactions.reduce((sum, t) => sum + (t.discount || 0), 0);
-    const completedCount = transactions.filter((t) => t.status === 'SELESAI').length;
+    const totalDiscount = shiftTransactions.reduce((sum, t) => sum + (t.discount || 0), 0);
+    const completedCount = shiftTransactions.filter((t) => t.status === 'SELESAI').length;
 
-    // Unpaid transactions (Dalam Proses / Pending)
-    const unpaidOrders = transactions.filter(
+    // Unpaid transactions (Dalam Proses / Pending) in this shift
+    const unpaidOrders = shiftTransactions.filter(
       (t) => t.status === 'DALAM_PROSES' || t.status === 'PENDING'
     );
     const unpaidCount = unpaidOrders.length;
-    const unpaidAmount = unpaidOrders.reduce((sum, t) => sum + t.total, 0);
+    const unpaidAmount = unpaidOrders.reduce((sum, t) => sum + (t.remainingAmount || 0), 0);
 
-    // Cash flow additions (other income & operational expense)
-    const cashIncome = cashFlowRecords
+    // Cash flow additions (other income & operational expense) in this shift
+    const cashIncome = shiftCashFlows
       .filter((c) => c.type === 'INCOME')
       .reduce((sum, c) => sum + c.amount, 0);
-    const cashExpense = cashFlowRecords
+    const cashExpense = shiftCashFlows
       .filter((c) => c.type === 'EXPENSE')
       .reduce((sum, c) => sum + c.amount, 0);
 
-    // System theoretical cash in drawer
-    const effectiveCashSales = calcCashSales > 0 ? calcCashSales : shift.cashSales;
-    const systemCash = shift.startingCash + effectiveCashSales + cashIncome - cashExpense;
+    // System theoretical cash in drawer for this shift:
+    // Modal Awal + Penjualan Tunai Aktual + Kas Masuk Aktual - Pengeluaran Kas Aktual
+    const systemCash = shift.startingCash + calcCashSales + cashIncome - cashExpense;
 
     return {
-      cashSales: effectiveCashSales,
-      nonCashSales: calcNonCashSales > 0 ? calcNonCashSales : shift.nonCashSales,
+      cashSales: calcCashSales,
+      nonCashSales: calcNonCashSales,
       totalOmzet,
       totalDiscount,
       completedCount,
       unpaidCount,
       unpaidAmount,
-      qrisSales: qrisTx.reduce((sum, t) => sum + t.total, 0),
-      transferSales: transferTx.reduce((sum, t) => sum + t.total, 0),
+      qrisSales: qrisTx.reduce((sum, t) => sum + (t.amountPaid || t.total), 0),
+      transferSales: transferTx.reduce((sum, t) => sum + (t.amountPaid || t.total), 0),
       cashIncome,
       cashExpense,
-      systemCash
+      systemCash,
+      shiftTransactionsCount: shiftTransactions.length
     };
   }, [transactions, cashFlowRecords, shift]);
 
@@ -273,6 +348,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       shiftNumber,
       outletName: shift.outletName || 'athree studio jayapura',
       endTime: fullEndDateTime,
+      endTimestamp: now.getTime(),
       actualCash: physicalCashTotal,
       difference: cashDifference,
       expectedCash: shiftStats.systemCash,
@@ -320,6 +396,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       shiftNumber,
       outletName: shift.outletName || 'Default Outlet',
       endTime: fullEndDateTime,
+      endTimestamp: now.getTime(),
       actualCash: physicalCash,
       difference: diff,
       expectedCash: shiftStats.systemCash,
@@ -373,6 +450,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       outletName: 'athree studio jayapura',
       cashierName: assignedCashierName,
       startTime: fullStartDateTime,
+      startTimestamp: now.getTime(),
       startingCash: startingCashInput,
       cashSales: 0,
       nonCashSales: 0,
