@@ -365,7 +365,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Contoh: Dian Octaviani"
+                      placeholder="Contoh: Dimas Saputra"
                       className="w-full text-xs font-medium bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00871f]"
                       required
                     />

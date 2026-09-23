@@ -9,7 +9,7 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
-  const [usernameInput, setUsernameInput] = useState<string>('admin');
+  const [usernameInput, setUsernameInput] = useState<string>('admin_athree');
   const [passwordInput, setPasswordInput] = useState<string>('1234');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -20,10 +20,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
     setErrorMsg('');
     const target = users.find((u) => u.role === role);
     if (target) {
-      setUsernameInput(target.username || role);
+      setUsernameInput(target.username || (role === 'admin' ? 'admin_athree' : role === 'kasir' ? 'kasir_dimas' : 'staff_budi'));
       setPasswordInput(target.pin || '1234');
     } else {
-      setUsernameInput(role);
+      setUsernameInput(role === 'admin' ? 'admin_athree' : role === 'kasir' ? 'kasir_dimas' : 'staff_budi');
       setPasswordInput('1234');
     }
   };
@@ -40,8 +40,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
         u.name.toLowerCase() === cleanUser ||
         u.name.toLowerCase().includes(cleanUser) ||
         (cleanUser === 'admin' && u.role === 'admin') ||
+        (cleanUser === 'athree' && u.role === 'admin') ||
+        (cleanUser === 'deazbar' && u.role === 'admin') ||
         (cleanUser === 'kasir' && u.role === 'kasir') ||
-        (cleanUser === 'staff' && u.role === 'staff')
+        (cleanUser === 'dimas' && u.role === 'kasir') ||
+        (cleanUser === 'staff' && u.role === 'staff') ||
+        (cleanUser === 'budi' && u.role === 'staff')
     );
 
     if (!matchedUser) {
@@ -183,7 +187,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  Admin
+                  Admin (ATHREE)
                 </button>
                 <button
                   type="button"
@@ -194,7 +198,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  Kasir (DO)
+                  Kasir (Dimas)
                 </button>
                 <button
                   type="button"
@@ -205,7 +209,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  Staf
+                  Staf (Budi)
                 </button>
               </div>
             </div>

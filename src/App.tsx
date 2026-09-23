@@ -80,7 +80,16 @@ export default function App() {
   // Persistence via localStorage
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('athree_users');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const hasOld = parsed.some((u: any) => u.name === 'Dian Octaviani' || u.name === 'Ahmad Rizky (Owner)');
+        if (!hasOld && parsed.length > 0) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return INITIAL_USERS;
   });
 
   useEffect(() => {
@@ -94,7 +103,19 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const saved = localStorage.getItem('athree_current_user');
-    return saved ? JSON.parse(saved) : INITIAL_USERS[0]; // Dian Octaviani (DO)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.name === 'Dian Octaviani') {
+          return INITIAL_USERS[0]; // DIMAS (kasir)
+        }
+        if (parsed.name === 'Ahmad Rizky (Owner)') {
+          return INITIAL_USERS[1]; // ATHREE(Owner) (admin)
+        }
+        return parsed;
+      } catch {}
+    }
+    return INITIAL_USERS[1]; // Default: ATHREE(Owner)
   });
 
   const [products, setProducts] = useState<Product[]>(() => {
@@ -114,7 +135,15 @@ export default function App() {
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('athree_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (isRealUserData(parsed)) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return INITIAL_TRANSACTIONS;
   });
 
   const [kaosStocks, setKaosStocks] = useState<KaosStockItem[]>(() => {
@@ -171,7 +200,7 @@ export default function App() {
             id: 'shift-1',
             shiftNumber: 1,
             outletName: 'Default Outlet',
-            cashierName: 'Dian Octaviani',
+            cashierName: 'DIMAS',
             startTime: '16 Sep 2026, 08:00',
             endTime: '16 Sep 2026, 17:00',
             startingCash: 500000,
@@ -209,7 +238,7 @@ export default function App() {
             amount: 150000,
             description: 'Jasa redesign logo jersey futsal',
             date: '2026-09-17 10:15',
-            recordedBy: 'Ahmad Rizky'
+            recordedBy: 'ATHREE(Owner)'
           },
           {
             id: 'cf-2',
@@ -218,7 +247,7 @@ export default function App() {
             amount: 85000,
             description: 'Beli lakban packing & cutter',
             date: '2026-09-17 11:30',
-            recordedBy: 'Ahmad Rizky'
+            recordedBy: 'ATHREE(Owner)'
           }
         ];
   });
@@ -342,6 +371,17 @@ export default function App() {
       if (payload.users && Array.isArray(payload.users) && payload.users.length > 0) {
         setUsers(payload.users);
         localStorage.setItem('athree_users', JSON.stringify(payload.users));
+        // Keep currentUser synchronized with the server's user data
+        setCurrentUser((prev) => {
+          const match = payload.users?.find(
+            (u) => u.id === prev.id || u.username === prev.username || u.name.toLowerCase() === prev.name.toLowerCase()
+          );
+          if (match) {
+            localStorage.setItem('athree_current_user', JSON.stringify(match));
+            return match;
+          }
+          return prev;
+        });
       }
       if (payload.salesList && Array.isArray(payload.salesList) && payload.salesList.length > 0) {
         setSalesList(payload.salesList);
@@ -387,25 +427,18 @@ export default function App() {
 
         if (serverRes.success && serverRes.data) {
           if (serverRes.isRealData) {
-            if (!localHasRealData || serverRes.data.transactions.length > currentTransactions.length) {
+            if (!localHasRealData || serverRes.data.transactions.length >= currentTransactions.length) {
               console.log('Central Server: Hydrating state from master server database...');
               applyFullDatabasePayload(serverRes.data);
             } else if (localHasRealData && currentTransactions.length > serverRes.data.transactions.length) {
               console.log('Central Server: Local browser has more transactions, updating server...');
               syncCurrentStateToServer();
-            } else if (localHasRealData && currentTransactions.length === serverRes.data.transactions.length) {
-              // Compare timestamps if available
-              const serverTime = new Date(serverRes.data.lastUpdated || 0).getTime();
-              const localLastSave = Number(localStorage.getItem('athree_last_save_time') || 0);
-              if (serverTime > localLastSave && localLastSave > 0) {
-                applyFullDatabasePayload(serverRes.data);
-              }
             }
           } else {
             if (localHasRealData) {
               console.log('Central Server: Seeding master data from current browser to server...');
               syncCurrentStateToServer();
-            } else {
+            } else if (serverRes.data.transactions && serverRes.data.transactions.length > 0) {
               applyFullDatabasePayload(serverRes.data);
             }
           }

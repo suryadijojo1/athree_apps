@@ -19,7 +19,7 @@ export interface AppDatabasePayload {
 // Client ID for this browser tab/session
 export const CLIENT_ID = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-const MOCK_INVOICE_NUMBERS = new Set([
+const LEGACY_DUMMY_INVOICES = new Set([
   '#INV/00001',
   '#INV/00002',
   '#INV/00003',
@@ -31,19 +31,21 @@ const MOCK_INVOICE_NUMBERS = new Set([
 ]);
 
 /**
- * Checks whether a transactions list contains real user-entered orders
- * (e.g. #ORD/41438, #INV/82687, #ORD/86871, or custom names like TALSON, EMEDLUGUN, MELANESIA SENTANI)
- * rather than the standard default 8 mock transactions.
+ * Checks whether a transactions list contains real user-entered or production orders
+ * (e.g. #ORD/41438, #INV/82687, #ORD/86871, #INV/43814, etc.)
+ * rather than the old legacy dummy mock transactions.
  */
 export function isRealUserData(transactions: Transaction[]): boolean {
   if (!transactions || transactions.length === 0) return false;
   
-  // If count is not the default 8, or any invoice/customer is outside the mock set
+  // If there is any non-dummy invoice, it is genuine production data
+  const hasNonDummy = transactions.some((tx) => !LEGACY_DUMMY_INVOICES.has(tx.invoiceNo));
+  if (hasNonDummy) {
+    return true;
+  }
+  
+  // Check specific known real customer or notes names
   for (const tx of transactions) {
-    if (!MOCK_INVOICE_NUMBERS.has(tx.invoiceNo)) {
-      return true;
-    }
-    // Check specific known real customer / notes names from user production data
     const custName = (tx.customer?.name || (tx as any).customerName || '').toLowerCase();
     if (
       custName.includes('talson') ||
@@ -56,7 +58,6 @@ export function isRealUserData(transactions: Transaction[]): boolean {
     }
   }
 
-  // If all transactions are exactly the mock set
   return false;
 }
 

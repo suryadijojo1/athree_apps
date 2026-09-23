@@ -3,20 +3,20 @@ import { Product, User, Customer, Transaction, StockMovement, CashierShift, Kaos
 export const INITIAL_USERS: User[] = [
   {
     id: 'u1',
-    name: 'Dian Octaviani',
-    username: 'kasir_dian',
+    name: 'DIMAS',
+    username: 'kasir_dimas',
     pin: '1234',
     role: 'kasir',
-    avatarText: 'DO',
+    avatarText: 'DI',
     roleLabel: 'Kasir POS'
   },
   {
     id: 'u2',
-    name: 'Ahmad Rizky (Owner)',
-    username: 'admin_ahmad',
+    name: 'ATHREE(Owner)',
+    username: 'admin_athree',
     pin: '1234',
     role: 'admin',
-    avatarText: 'AR',
+    avatarText: 'AT',
     roleLabel: 'Administrator / Pemilik'
   },
   {
@@ -368,10 +368,13 @@ export const INITIAL_KAOS_STOCK: KaosStockItem[] = [
 
 export const INITIAL_CUSTOMERS: Customer[] = [
   { id: 'c0', name: 'Pelanggan Umum (Walk-in)', phone: '-' },
-  { id: 'c1', name: 'FC Garuda Jayapura (Bpk. Yohan)', phone: '0812-4899-2311', address: 'Abepura, Jayapura' },
-  { id: 'c2', name: 'Komunitas Motor Noken', phone: '0821-9988-1234', address: 'Entrop, Jayapura' },
-  { id: 'c3', name: 'Dinas Pariwisata Papua', phone: '0813-4455-6677', address: 'Dok V, Kota Jayapura' },
-  { id: 'c4', name: 'SMA Negeri 1 Jayapura (OSIS)', phone: '0852-3322-1100', address: 'Kotaraja' }
+  { id: 'c1', name: 'TALSON FC (Jayapura)', phone: '0812-4899-2311', address: 'Abepura, Jayapura' },
+  { id: 'c2', name: 'EMEDLUGUN Papuan Club', phone: '0821-9988-1234', address: 'Entrop, Jayapura' },
+  { id: 'c3', name: 'MELANESIA SENTANI', phone: '0813-4455-6677', address: 'Sentani, Jayapura' },
+  { id: 'c4', name: 'FC Garuda Jayapura (Bpk. Yohan)', phone: '0812-4899-2311', address: 'Abepura, Jayapura' },
+  { id: 'c5', name: 'Komunitas Motor Noken', phone: '0821-9988-1234', address: 'Entrop, Jayapura' },
+  { id: 'c6', name: 'Dinas Pariwisata Papua', phone: '0813-4455-6677', address: 'Dok V, Kota Jayapura' },
+  { id: 'c7', name: 'SMA Negeri 1 Jayapura (OSIS)', phone: '0852-3322-1100', address: 'Kotaraja' }
 ];
 
 // Helper to generate dynamic dates relative to current calendar today
@@ -389,6 +392,8 @@ const d1 = getRelativeIsoDate(1); // Kemarin
 const d2 = getRelativeIsoDate(2);
 const d3 = getRelativeIsoDate(3);
 const d4 = getRelativeIsoDate(4);
+const d5 = getRelativeIsoDate(5);
+const d6 = getRelativeIsoDate(6);
 const d7 = getRelativeIsoDate(7);
 
 export const INITIAL_SALES: string[] = [
@@ -398,22 +403,22 @@ export const INITIAL_SALES: string[] = [
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
-    id: 'tx-1001',
-    invoiceNo: '#INV/00001',
-    date: `${d0} 09:30`,
-    dueDate: `${d0} 16:00`, // Tanggal Jatuh Tempo Penyelesaian
+    id: 'tx-41438',
+    invoiceNo: '#ORD/41438',
+    date: `${d1} 14:15`,
+    dueDate: `${d0} 16:00`,
     customer: INITIAL_CUSTOMERS[1],
-    orderType: 'Kasir (Dimas)',
+    orderType: 'Admin (DEAZBAR)',
     items: [
       {
-        productId: 'p2',
-        name: 'JERSEY ATASAN (>7PCS)',
-        sku: 'SKU/00007',
-        price: 135000,
-        costPrice: 90000,
-        quantity: 12,
-        notes: 'Nomor punggung 1-12, font block putih',
-        subtotal: 1620000
+        productId: 'p3',
+        name: 'JERSEY FULL PRINTING (ATASAN + CELANA)',
+        sku: 'SKU/00008',
+        price: 260000,
+        costPrice: 165000,
+        quantity: 18,
+        notes: 'Desain TALSON Custom Printing Depan & Belakang',
+        subtotal: 4680000
       },
       {
         productId: 'p7',
@@ -421,215 +426,63 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
         sku: 'SKU/00010',
         price: 20000,
         costPrice: 9000,
-        quantity: 12,
-        subtotal: 240000
+        quantity: 18,
+        notes: 'Kerah Polo warna Hitam variasi Merah',
+        subtotal: 360000
       }
     ],
-    subtotal: 1860000,
-    discount: 60000,
+    subtotal: 5040000,
+    discount: 40000,
     tax: 0,
-    total: 1800000,
+    total: 5000000,
     paymentMethod: 'Transfer Bank',
-    amountPaid: 1800000,
+    amountPaid: 3000000,
+    remainingAmount: 2000000,
     change: 0,
     status: 'Sedang Dikerjakan',
-    cashierName: 'Dian Octaviani',
-    cashierId: 'u1',
-    notes: 'Jatuh tempo hari ini sebelum tanding'
+    cashierName: 'ATHREE(Owner)',
+    cashierId: 'u2',
+    notes: 'Seragam TALSON Jayapura - DP 3jt via Transfer Bank'
   },
   {
-    id: 'tx-1002',
-    invoiceNo: '#INV/00002',
-    date: `${d0} 10:15`,
-    dueDate: `${d0} 14:00`,
-    customer: INITIAL_CUSTOMERS[2],
-    orderType: 'Admin (DEAZBAR)',
-    items: [
-      {
-        productId: 'p5',
-        name: 'SABLON + KAOS A3',
-        sku: 'SKU/00002',
-        price: 90000,
-        costPrice: 52000,
-        quantity: 5,
-        notes: 'Warna kaos hitam, sablon emas',
-        subtotal: 450000
-      }
-    ],
-    subtotal: 450000,
-    discount: 0,
-    tax: 0,
-    total: 450000,
-    paymentMethod: 'Tunai',
-    amountPaid: 500000,
-    change: 50000,
-    status: 'Selesai',
-    cashierName: 'Dian Octaviani',
-    cashierId: 'u1',
-    notes: 'Sudah lunas tunai'
-  },
-  {
-    id: 'tx-1003',
-    invoiceNo: '#INV/00003',
-    date: `${d0} 11:45`,
+    id: 'tx-82687',
+    invoiceNo: '#INV/82687',
+    date: `${d1} 11:30`,
     dueDate: `${d0} 17:00`,
-    customer: INITIAL_CUSTOMERS[4],
-    orderType: 'Kasir (Dimas)',
-    items: [
-      {
-        productId: 'p4',
-        name: 'MUG CUSTOM',
-        sku: 'SKU/00012',
-        price: 45000,
-        costPrice: 22000,
-        quantity: 20,
-        notes: 'Logo Dies Natalis OSIS',
-        subtotal: 900000
-      }
-    ],
-    subtotal: 900000,
-    discount: 50000,
-    tax: 0,
-    total: 850000,
-    paymentMethod: 'QRIS',
-    amountPaid: 850000,
-    change: 0,
-    status: 'Sedang Dikerjakan',
-    cashierName: 'Dian Octaviani',
-    cashierId: 'u1',
-    notes: 'Pesanan untuk acara sekolah'
-  },
-  {
-    id: 'tx-1004',
-    invoiceNo: '#INV/00004',
-    date: `${d1} 14:20`,
-    dueDate: `${d0} 12:00`,
-    customer: INITIAL_CUSTOMERS[1],
-    orderType: 'Admin (DEAZBAR)',
-    items: [
-      {
-        productId: 'p1',
-        name: 'JERSEY ATASAN (STANDARD)',
-        sku: 'SKU/00006',
-        price: 150000,
-        costPrice: 95000,
-        quantity: 8,
-        notes: 'Ukuran L 5pcs, XL 3pcs',
-        subtotal: 1200000
-      }
-    ],
-    subtotal: 1200000,
-    discount: 50000,
-    tax: 0,
-    total: 1150000,
-    paymentMethod: 'Tunai',
-    amountPaid: 1200000,
-    change: 50000,
-    status: 'Selesai',
-    cashierName: 'Ahmad Rizky (Owner)',
-    cashierId: 'u0',
-    notes: 'Sudah diambil oleh Bpk. Yohan'
-  },
-  {
-    id: 'tx-1005',
-    invoiceNo: '#INV/00005',
-    date: `${d1} 16:45`,
-    dueDate: `${d1} 17:00`,
-    customer: INITIAL_CUSTOMERS[3],
-    orderType: 'Kasir (Dimas)',
-    items: [
-      {
-        productId: 'p15',
-        name: 'TOTE BAG CANVAS CUSTOM',
-        sku: 'SKU/00016',
-        price: 35000,
-        costPrice: 18000,
-        quantity: 30,
-        notes: 'Sablon 1 sisi Festival Danau Sentani',
-        subtotal: 1050000
-      }
-    ],
-    subtotal: 1050000,
-    discount: 50000,
-    tax: 0,
-    total: 1000000,
-    paymentMethod: 'QRIS',
-    amountPaid: 1000000,
-    change: 0,
-    status: 'Sedang Dikerjakan',
-    cashierName: 'Dian Octaviani',
-    cashierId: 'u1',
-    notes: 'Event Dinas Pariwisata'
-  },
-  {
-    id: 'tx-1006',
-    invoiceNo: '#INV/00006',
-    date: `${d2} 11:10`,
-    dueDate: `${d1} 15:00`,
     customer: INITIAL_CUSTOMERS[2],
     orderType: 'Kasir (Dimas)',
     items: [
       {
-        productId: 'p14',
-        name: 'HOODIE CUSTOM PRINT FLEECE',
-        sku: 'SKU/00015',
-        price: 175000,
-        costPrice: 110000,
-        quantity: 6,
-        notes: 'Hoodie hitam sablon punggung Noken Club',
-        subtotal: 1050000
-      }
-    ],
-    subtotal: 1050000,
-    discount: 0,
-    tax: 0,
-    total: 1050000,
-    paymentMethod: 'Transfer Bank',
-    amountPaid: 1050000,
-    change: 0,
-    status: 'Selesai',
-    cashierName: 'Dian Octaviani',
-    cashierId: 'u1',
-    notes: 'Pelunasan transfer BCA'
-  },
-  {
-    id: 'tx-1007',
-    invoiceNo: '#INV/00007',
-    date: `${d3} 15:30`,
-    dueDate: `${d1} 12:00`,
-    customer: INITIAL_CUSTOMERS[0],
-    orderType: 'Admin (DEAZBAR)',
-    items: [
-      {
         productId: 'p5',
-        name: 'SABLON + KAOS A3',
+        name: 'PAKET SABLON + KAOS A3',
         sku: 'SKU/00002',
         price: 90000,
         costPrice: 52000,
-        quantity: 10,
-        notes: 'Kaos putih katun 30s',
-        subtotal: 900000
+        quantity: 24,
+        notes: 'Warna kaos hitam combed 30s, sablon emas metalik EMEDLUGUN',
+        subtotal: 2160000
       }
     ],
-    subtotal: 900000,
+    subtotal: 2160000,
     discount: 0,
     tax: 0,
-    total: 900000,
-    paymentMethod: 'Tunai',
-    amountPaid: 900000,
+    total: 2160000,
+    paymentMethod: 'QRIS',
+    amountPaid: 2160000,
+    remainingAmount: 0,
     change: 0,
-    status: 'Selesai',
-    cashierName: 'Ahmad Rizky (Owner)',
-    cashierId: 'u0',
-    notes: 'Order walk-in'
+    status: 'Sedang Dikerjakan',
+    cashierName: 'DIMAS',
+    cashierId: 'u1',
+    notes: 'Lunas QRIS - Produksi sablon emas metalik'
   },
   {
-    id: 'tx-1008',
-    invoiceNo: '#INV/00008',
-    date: `${d7} 13:00`,
-    dueDate: `${d4} 16:00`,
-    customer: INITIAL_CUSTOMERS[4],
-    orderType: 'Kasir (Dimas)',
+    id: 'tx-86871',
+    invoiceNo: '#ORD/86871',
+    date: `${d2} 15:45`,
+    dueDate: `${d1} 15:00`,
+    customer: INITIAL_CUSTOMERS[3],
+    orderType: 'Admin (DEAZBAR)',
     items: [
       {
         productId: 'p2',
@@ -638,65 +491,243 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
         price: 135000,
         costPrice: 90000,
         quantity: 15,
-        notes: 'Tim Futsal OSIS',
+        notes: 'Nomor punggung 1-15 font block emas',
         subtotal: 2025000
+      },
+      {
+        productId: 'p10',
+        name: 'SABLON DTF PRINT A3',
+        sku: 'SKU/00004',
+        price: 35000,
+        costPrice: 18000,
+        quantity: 15,
+        notes: 'Logo Melanesia Sentani dada kiri & belakang',
+        subtotal: 525000
       }
     ],
-    subtotal: 2025000,
-    discount: 75000,
+    subtotal: 2550000,
+    discount: 50000,
     tax: 0,
-    total: 1950000,
-    paymentMethod: 'QRIS',
-    amountPaid: 1950000,
+    total: 2500000,
+    paymentMethod: 'Transfer Bank',
+    amountPaid: 1500000,
+    remainingAmount: 1000000,
+    change: 0,
+    status: 'Sedang Dikerjakan',
+    cashierName: 'ATHREE(Owner)',
+    cashierId: 'u2',
+    notes: 'Pesanan Komunitas Melanesia Sentani - DP 1.5jt'
+  },
+  {
+    id: 'tx-43814',
+    invoiceNo: '#INV/43814',
+    date: `${d1} 08:20`,
+    dueDate: `${d1} 17:00`,
+    customer: INITIAL_CUSTOMERS[6],
+    orderType: 'Kasir (Dimas)',
+    items: [
+      {
+        productId: 'p5',
+        name: 'PAKET SABLON + KAOS A3',
+        sku: 'SKU/00002',
+        price: 90000,
+        costPrice: 52000,
+        quantity: 4,
+        notes: 'Kaos Polos Hitam Size L - Event Pariwisata',
+        subtotal: 360000
+      }
+    ],
+    subtotal: 360000,
+    discount: 0,
+    tax: 0,
+    total: 360000,
+    paymentMethod: 'Tunai',
+    amountPaid: 400000,
+    remainingAmount: 0,
+    change: 40000,
+    status: 'Selesai',
+    cashierName: 'DIMAS',
+    cashierId: 'u1',
+    notes: 'Lunas tunai kasir'
+  },
+  {
+    id: 'tx-39983',
+    invoiceNo: '#INV/39983',
+    date: `${d3} 04:50`,
+    dueDate: `${d2} 16:00`,
+    customer: INITIAL_CUSTOMERS[4],
+    orderType: 'Admin (DEAZBAR)',
+    items: [
+      {
+        productId: 'p2',
+        name: 'JERSEY ATASAN (>7PCS)',
+        sku: 'SKU/00007',
+        price: 135000,
+        costPrice: 90000,
+        quantity: 8,
+        notes: 'Jersey Atasan Garuda Jayapura',
+        subtotal: 1080000
+      },
+      {
+        productId: 'p7',
+        name: 'TAMBAHAN KERAH POLO',
+        sku: 'SKU/00010',
+        price: 20000,
+        costPrice: 9000,
+        quantity: 8,
+        notes: 'Kerah Polo variasi',
+        subtotal: 160000
+      }
+    ],
+    subtotal: 1240000,
+    discount: 40000,
+    tax: 0,
+    total: 1200000,
+    paymentMethod: 'Transfer Bank',
+    amountPaid: 1200000,
+    remainingAmount: 0,
     change: 0,
     status: 'Selesai',
-    cashierName: 'Dian Octaviani',
-    cashierId: 'u1',
+    cashierName: 'ATHREE(Owner)',
+    cashierId: 'u2',
     notes: 'Selesai tepat waktu'
+  },
+  {
+    id: 'tx-18529',
+    invoiceNo: '#INV/18529',
+    date: `${d5} 07:20`,
+    dueDate: `${d5} 12:00`,
+    customer: INITIAL_CUSTOMERS[0],
+    orderType: 'Kasir (Dimas)',
+    items: [
+      {
+        productId: 'p13',
+        name: 'KAOS POLOS COTTON COMBED 30S',
+        sku: 'SKU/00014',
+        price: 65000,
+        costPrice: 42000,
+        quantity: 2,
+        notes: 'Kaos polos hitam & putih',
+        subtotal: 130000
+      }
+    ],
+    subtotal: 130000,
+    discount: 0,
+    tax: 0,
+    total: 130000,
+    paymentMethod: 'Tunai',
+    amountPaid: 150000,
+    remainingAmount: 0,
+    change: 20000,
+    status: 'Selesai',
+    cashierName: 'DIMAS',
+    cashierId: 'u1',
+    notes: 'Pembelian langsung walk-in'
+  },
+  {
+    id: 'tx-11028',
+    invoiceNo: '#INV/11028',
+    date: `${d6} 05:39`,
+    dueDate: `${d5} 16:00`,
+    customer: INITIAL_CUSTOMERS[5],
+    orderType: 'Admin (DEAZBAR)',
+    items: [
+      {
+        productId: 'p3',
+        name: 'JERSEY FULL PRINTING (ATASAN + CELANA)',
+        sku: 'SKU/00008',
+        price: 260000,
+        costPrice: 165000,
+        quantity: 4,
+        notes: 'Jersey Touring Komunitas Motor Noken',
+        subtotal: 1040000
+      }
+    ],
+    subtotal: 1040000,
+    discount: 0,
+    tax: 0,
+    total: 1040000,
+    paymentMethod: 'Transfer Bank',
+    amountPaid: 1040000,
+    remainingAmount: 0,
+    change: 0,
+    status: 'Selesai',
+    cashierName: 'ATHREE(Owner)',
+    cashierId: 'u2',
+    notes: 'Lunas Transfer Bank'
   }
 ];
 
 export const INITIAL_STOCK_MOVEMENTS: StockMovement[] = [
   {
     id: 'sm-1',
-    productId: 'p1',
-    productName: 'JERSEY ATASAN (STANDARD)',
-    sku: 'SKU/00006',
-    type: 'IN',
-    qty: 50,
-    prevStock: 0,
-    newStock: 50,
-    date: '2026-09-15 10:00',
-    reason: 'Restock bahan jersey polos dari supplier',
-    operatorName: 'Ahmad Rizky (Owner)'
+    productId: 'p3',
+    productName: 'JERSEY FULL PRINTING (ATASAN + CELANA)',
+    sku: 'SKU/00008',
+    type: 'SALE',
+    qty: 18,
+    prevStock: 48,
+    newStock: 30,
+    date: `${d1} 14:15`,
+    reason: 'Penjualan Pesanan #ORD/41438 (TALSON)',
+    operatorName: 'ATHREE(Owner)',
+    referenceNo: '#ORD/41438'
   },
   {
     id: 'sm-2',
+    productId: 'p5',
+    productName: 'PAKET SABLON + KAOS A3',
+    sku: 'SKU/00002',
+    type: 'SALE',
+    qty: 24,
+    prevStock: 63,
+    newStock: 39,
+    date: `${d1} 11:30`,
+    reason: 'Penjualan Kasir #INV/82687 (EMEDLUGUN)',
+    operatorName: 'DIMAS',
+    referenceNo: '#INV/82687'
+  },
+  {
+    id: 'sm-3',
     productId: 'p2',
     productName: 'JERSEY ATASAN (>7PCS)',
     sku: 'SKU/00007',
     type: 'SALE',
-    qty: 12,
+    qty: 15,
     prevStock: 92,
-    newStock: 80,
-    date: `${d0} 09:30`,
-    reason: 'Penjualan #INV/00001',
-    operatorName: 'Dian Octaviani',
-    referenceNo: '#INV/00001'
+    newStock: 77,
+    date: `${d2} 15:45`,
+    reason: 'Penjualan Pesanan #ORD/86871 (MELANESIA)',
+    operatorName: 'ATHREE(Owner)',
+    referenceNo: '#ORD/86871'
+  },
+  {
+    id: 'sm-4',
+    productId: 'p5',
+    productName: 'PAKET SABLON + KAOS A3',
+    sku: 'SKU/00002',
+    type: 'SALE',
+    qty: 4,
+    prevStock: 43,
+    newStock: 39,
+    date: `${d1} 08:20`,
+    reason: 'Penjualan Kasir #INV/43814',
+    operatorName: 'DIMAS',
+    referenceNo: '#INV/43814'
   }
 ];
 
 export const INITIAL_SHIFT: CashierShift = {
   id: 'shift-today',
-  shiftNumber: 2,
-  outletName: 'Default Outlet',
-  cashierName: 'Dian Octaviani',
+  shiftNumber: 1,
+  outletName: 'Athree Studio Jayapura',
+  cashierName: 'DIMAS',
   startTime: `${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, 08:00`,
   startingCash: 500000,
-  cashSales: 450000,
-  nonCashSales: 2650000,
-  totalSales: 3100000,
-  expectedCash: 950000,
+  cashSales: 490000,
+  nonCashSales: 5200000,
+  totalSales: 5690000,
+  expectedCash: 990000,
   isOpen: true,
-  notes: 'Shift Pagi - Siang aktif'
+  notes: 'Shift Pagi - Siang aktif Kasir Dimas'
 };

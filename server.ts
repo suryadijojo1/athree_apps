@@ -73,22 +73,61 @@ async function startServer() {
         return res.status(400).json({ error: 'Invalid payload' });
       }
 
+      // Safeguard: Never allow an empty transactions array to wipe existing database transactions
+      if (currentDbState?.transactions?.length > 0 && payload.transactions.length === 0) {
+        console.warn('Blocked database wipe: incoming payload has 0 transactions while server has', currentDbState.transactions.length);
+        payload.transactions = currentDbState.transactions;
+        payload.isRealData = true;
+      }
+
+      // Safeguard: Preserve real production database if incoming client payload has fewer transactions or claims isRealData=false
+      if (currentDbState?.isRealData && !payload.isRealData && currentDbState.transactions.length > payload.transactions.length) {
+        console.warn('Preserved real master database: rejected downgrade from client without real data');
+        return res.json({ success: true, preserved: true, timestamp: currentDbState.lastUpdated });
+      }
+
+      // Safeguard: Retain existing users if incoming payload has no users
+      if (!payload.users || !Array.isArray(payload.users) || payload.users.length === 0) {
+        if (currentDbState?.users?.length > 0) {
+          payload.users = currentDbState.users;
+        }
+      }
+
+      // Safeguard: Retain existing customers if incoming payload has no customers
+      if (!payload.customers || !Array.isArray(payload.customers) || payload.customers.length === 0) {
+        if (currentDbState?.customers?.length > 0) {
+          payload.customers = currentDbState.customers;
+        }
+      }
+
       currentDbState = payload;
 
-      // Asynchronously persist to disk
+      // Atomically persist to disk
       const dir = path.dirname(DB_FILE_PATH);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      fs.writeFile(DB_FILE_PATH, JSON.stringify(payload, null, 2), 'utf-8', (err) => {
-        if (err) console.warn('Could not write database file:', err);
-      });
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(payload, null, 2), 'utf-8');
 
       broadcastDatabaseUpdate(payload);
       res.json({ success: true, timestamp: payload.lastUpdated });
     } catch (err: any) {
       console.error('Failed to save central database:', err);
       res.status(500).json({ error: err.message || 'Server error' });
+    }
+  });
+
+  app.get('/api/database/reload', (req, res) => {
+    try {
+      if (fs.existsSync(DB_FILE_PATH)) {
+        const fileData = fs.readFileSync(DB_FILE_PATH, 'utf-8');
+        currentDbState = JSON.parse(fileData);
+        broadcastDatabaseUpdate(currentDbState);
+        return res.json({ success: true, count: currentDbState?.transactions?.length, isRealData: currentDbState?.isRealData });
+      }
+      res.status(404).json({ error: 'Database file not found' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
