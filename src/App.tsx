@@ -42,7 +42,31 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { GoogleDriveView } from './components/GoogleDriveView';
 import { KaosStockManagementView } from './components/KaosStockManagementView';
 import { FirebaseSyncModal } from './components/FirebaseSyncModal';
-import { subscribeToAuth, testConnection } from './services/firebase';
+import {
+  subscribeToAuth,
+  testConnection,
+  subscribeToProducts,
+  subscribeToTransactions,
+  subscribeToKaosStocks,
+  subscribeToCashFlow,
+  subscribeToCustomers,
+  subscribeToShifts,
+  saveProductToFirestore,
+  deleteProductFromFirestore,
+  saveMultipleProductsToFirestore,
+  saveTransactionToFirestore,
+  deleteTransactionFromFirestore,
+  saveCashFlowToFirestore,
+  saveShiftToFirestore,
+  saveKaosStockToFirestore,
+  saveMultipleKaosStocksToFirestore,
+  saveCustomerToFirestore,
+  subscribeToUsers,
+  saveUserToFirestore,
+  deleteUserFromFirestore,
+  fetchAllDataFromFirestore,
+  syncAllLocalDataToFirestore
+} from './services/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
 
 export default function App() {
@@ -241,15 +265,133 @@ export default function App() {
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Set up Automatic Cloud Synchronization
   useEffect(() => {
-    testConnection().then((connected) => {
+    let isSubscribed = true;
+
+    // 1. Initial Connection & Seed Check
+    testConnection().then(async (connected) => {
+      if (!isSubscribed) return;
       setIsFirebaseConnected(connected);
+
+      if (connected) {
+        try {
+          const cloudData = await fetchAllDataFromFirestore();
+          if (!isSubscribed) return;
+
+          const hasCloudData = cloudData.products.length > 0 || cloudData.transactions.length > 0;
+          if (hasCloudData) {
+            // Cloud has data -> synchronize to current browser
+            if (cloudData.products.length > 0) {
+              setProducts(cloudData.products);
+              localStorage.setItem('athree_products', JSON.stringify(cloudData.products));
+            }
+            if (cloudData.transactions.length > 0) {
+              setTransactions(cloudData.transactions);
+              localStorage.setItem('athree_transactions', JSON.stringify(cloudData.transactions));
+            }
+            if (cloudData.cashFlowRecords.length > 0) {
+              setCashFlowRecords(cloudData.cashFlowRecords);
+              localStorage.setItem('athree_cash_flow', JSON.stringify(cloudData.cashFlowRecords));
+            }
+            if (cloudData.shifts.length > 0) {
+              setShiftHistory(cloudData.shifts);
+              localStorage.setItem('athree_shift_history', JSON.stringify(cloudData.shifts));
+            }
+            if (cloudData.kaosStocks.length > 0) {
+              setKaosStocks(cloudData.kaosStocks);
+              localStorage.setItem('athree_kaos_stocks', JSON.stringify(cloudData.kaosStocks));
+            }
+            if (cloudData.customers.length > 0) {
+              setCustomers(cloudData.customers);
+              localStorage.setItem('athree_customers', JSON.stringify(cloudData.customers));
+            }
+            if (cloudData.users && cloudData.users.length > 0) {
+              setUsers(cloudData.users);
+              localStorage.setItem('athree_users', JSON.stringify(cloudData.users));
+            }
+          } else {
+            // First time ever on cloud -> upload current local master data to cloud so other browsers can immediately receive it
+            syncAllLocalDataToFirestore({
+              products,
+              transactions,
+              cashFlowRecords,
+              shifts: shiftHistory,
+              kaosStocks,
+              customers,
+              users
+            }).catch((err) => console.warn('Cloud auto-seed error:', err));
+          }
+        } catch (err) {
+          console.warn('Initial cloud synchronization fetch:', err);
+        }
+      }
     });
-    const unsubscribe = subscribeToAuth((user) => {
-      setFirebaseUser(user);
+
+    // 2. Real-time Listeners across all browser tabs, windows, and devices
+    const unsubProducts = subscribeToProducts((remoteProducts) => {
+      if (remoteProducts && remoteProducts.length > 0) {
+        setProducts(remoteProducts);
+        localStorage.setItem('athree_products', JSON.stringify(remoteProducts));
+      }
     });
+
+    const unsubTransactions = subscribeToTransactions((remoteTransactions) => {
+      if (remoteTransactions && remoteTransactions.length > 0) {
+        setTransactions(remoteTransactions);
+        localStorage.setItem('athree_transactions', JSON.stringify(remoteTransactions));
+      }
+    });
+
+    const unsubKaos = subscribeToKaosStocks((remoteKaos) => {
+      if (remoteKaos && remoteKaos.length > 0) {
+        setKaosStocks(remoteKaos);
+        localStorage.setItem('athree_kaos_stocks', JSON.stringify(remoteKaos));
+      }
+    });
+
+    const unsubCashFlow = subscribeToCashFlow((remoteCashFlow) => {
+      if (remoteCashFlow && remoteCashFlow.length > 0) {
+        setCashFlowRecords(remoteCashFlow);
+        localStorage.setItem('athree_cash_flow', JSON.stringify(remoteCashFlow));
+      }
+    });
+
+    const unsubCustomers = subscribeToCustomers((remoteCustomers) => {
+      if (remoteCustomers && remoteCustomers.length > 0) {
+        setCustomers(remoteCustomers);
+        localStorage.setItem('athree_customers', JSON.stringify(remoteCustomers));
+      }
+    });
+
+    const unsubShifts = subscribeToShifts((remoteShifts) => {
+      if (remoteShifts && remoteShifts.length > 0) {
+        setShiftHistory(remoteShifts);
+        localStorage.setItem('athree_shift_history', JSON.stringify(remoteShifts));
+      }
+    });
+
+    const unsubUsers = subscribeToUsers((remoteUsers) => {
+      if (remoteUsers && remoteUsers.length > 0) {
+        setUsers(remoteUsers);
+        localStorage.setItem('athree_users', JSON.stringify(remoteUsers));
+      }
+    });
+
+    const unsubAuth = subscribeToAuth((user) => {
+      if (isSubscribed) setFirebaseUser(user);
+    });
+
     return () => {
-      unsubscribe();
+      isSubscribed = false;
+      unsubProducts();
+      unsubTransactions();
+      unsubKaos();
+      unsubCashFlow();
+      unsubCustomers();
+      unsubShifts();
+      unsubUsers();
+      unsubAuth();
     };
   }, []);
 
@@ -260,6 +402,7 @@ export default function App() {
     shifts: CashierShift[];
     kaosStocks?: KaosStockItem[];
     customers?: Customer[];
+    users?: User[];
   }) => {
     if (cloudData.products && cloudData.products.length > 0) {
       setProducts(cloudData.products);
@@ -285,6 +428,10 @@ export default function App() {
       setCustomers(cloudData.customers);
       localStorage.setItem('athree_customers', JSON.stringify(cloudData.customers));
     }
+    if (cloudData.users && cloudData.users.length > 0) {
+      setUsers(cloudData.users);
+      localStorage.setItem('athree_users', JSON.stringify(cloudData.users));
+    }
   };
 
   // User management handlers
@@ -292,6 +439,7 @@ export default function App() {
     setUsers((prev) =>
       prev.map((u) => (u.id === updatedUser.id ? updatedUser : u))
     );
+    saveUserToFirestore(updatedUser).catch(() => {});
     // If updating current logged in user, also update currentUser
     if (currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
@@ -312,6 +460,7 @@ export default function App() {
 
   const handleAddUser = (newUser: User) => {
     setUsers((prev) => [...prev, newUser]);
+    saveUserToFirestore(newUser).catch(() => {});
   };
 
   const handleDeleteUser = (userId: string) => {
@@ -320,6 +469,7 @@ export default function App() {
       return;
     }
     setUsers((prev) => prev.filter((u) => u.id !== userId));
+    deleteUserFromFirestore(userId).catch(() => {});
   };
 
   // Save changes to localStorage
@@ -353,6 +503,7 @@ export default function App() {
 
   const handleSaveShiftToHistory = (closedShift: CashierShift) => {
     setShiftHistory((prev) => [closedShift, ...prev]);
+    saveShiftToFirestore(closedShift).catch((err) => console.warn('Sync shift error:', err));
   };
 
   useEffect(() => {
@@ -366,6 +517,7 @@ export default function App() {
       id: `cf-${Date.now()}`
     };
     setCashFlowRecords((prev) => [rec, ...prev]);
+    saveCashFlowToFirestore(rec).catch((err) => console.warn('Sync cashflow error:', err));
   };
 
   // Handler: Full Login (from LoginScreen)
@@ -407,6 +559,7 @@ export default function App() {
   // Handler: Add customer
   const handleAddCustomer = (newCust: Customer) => {
     setCustomers((prev) => [newCust, ...prev]);
+    saveCustomerToFirestore(newCust).catch((err) => console.warn('Sync customer error:', err));
   };
 
   // Handler: Complete Payment
@@ -437,7 +590,9 @@ export default function App() {
             operatorName: currentUser.name,
             referenceNo: newTx.invoiceNo
           });
-          return { ...prod, stock: newQty };
+          const updatedProd = { ...prod, stock: newQty };
+          saveProductToFirestore(updatedProd).catch(() => {});
+          return updatedProd;
         }
         return prod;
       });
@@ -455,6 +610,9 @@ export default function App() {
       if (movements.length > 0) {
         newMovements.push(...movements);
       }
+      if (updatedStocks && updatedStocks.length > 0) {
+        saveMultipleKaosStocksToFirestore(updatedStocks).catch(() => {});
+      }
       return updatedStocks;
     });
 
@@ -462,8 +620,9 @@ export default function App() {
       setStockMovements((prev) => [...newMovements, ...prev]);
     }
 
-    // 3. Add to transactions list
+    // 3. Add to transactions list & Firestore
     setTransactions((prev) => [newTx, ...prev]);
+    saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync transaction error:', err));
 
     // 4. Update shift balances (only actual amount received enters the cash drawer)
     const actualReceived = newTx.amountPaid;
@@ -521,7 +680,9 @@ export default function App() {
             operatorName: currentUser.name,
             referenceNo: newTx.invoiceNo
           });
-          return { ...prod, stock: newQty };
+          const updatedProd = { ...prod, stock: newQty };
+          saveProductToFirestore(updatedProd).catch(() => {});
+          return updatedProd;
         }
         return prod;
       });
@@ -539,6 +700,9 @@ export default function App() {
       if (movements.length > 0) {
         newMovements.push(...movements);
       }
+      if (updatedStocks && updatedStocks.length > 0) {
+        saveMultipleKaosStocksToFirestore(updatedStocks).catch(() => {});
+      }
       return updatedStocks;
     });
 
@@ -547,14 +711,16 @@ export default function App() {
     }
 
     setTransactions((prev) => [newTx, ...prev]);
+    saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync pending transaction error:', err));
   };
 
   // Handler: Save Revision of Transaction Invoice (Accessible by Admin and Cashier)
   const handleSaveRevisionInvoice = (updatedTransaction: Transaction, oldTransaction: Transaction) => {
-    // 1. Update transactions
+    // 1. Update transactions & Firestore
     setTransactions((prev) =>
       prev.map((t) => (t.id === updatedTransaction.id ? updatedTransaction : t))
     );
+    saveTransactionToFirestore(updatedTransaction).catch((err) => console.warn('Sync revise invoice error:', err));
 
     // 2. Adjust inventory stock based on quantity differences
     const oldQtyMap = new Map<string, number>();
@@ -592,7 +758,9 @@ export default function App() {
           referenceNo: updatedTransaction.invoiceNo
         });
 
-        return { ...p, stock: updatedStock };
+        const updatedProd = { ...p, stock: updatedStock };
+        saveProductToFirestore(updatedProd).catch(() => {});
+        return updatedProd;
       });
     });
 
@@ -618,6 +786,9 @@ export default function App() {
       );
       if (deducted.movements.length > 0) {
         newMovements.push(...deducted.movements);
+      }
+      if (deducted.updatedStocks && deducted.updatedStocks.length > 0) {
+        saveMultipleKaosStocksToFirestore(deducted.updatedStocks).catch(() => {});
       }
       return deducted.updatedStocks;
     });
@@ -676,7 +847,9 @@ export default function App() {
             referenceNo: txToDelete.invoiceNo
           });
 
-          return { ...p, stock: updatedStock };
+          const updatedProd = { ...p, stock: updatedStock };
+          saveProductToFirestore(updatedProd).catch(() => {});
+          return updatedProd;
         });
       });
 
@@ -692,6 +865,9 @@ export default function App() {
         if (movements.length > 0) {
           newMovements.push(...movements);
         }
+        if (updatedStocks && updatedStocks.length > 0) {
+          saveMultipleKaosStocksToFirestore(updatedStocks).catch(() => {});
+        }
         return updatedStocks;
       });
 
@@ -700,8 +876,9 @@ export default function App() {
       }
     }
 
-    // Remove from transactions state
+    // Remove from transactions state and delete from Firestore
     setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    deleteTransactionFromFirestore(transactionId).catch((err) => console.warn('Sync delete invoice error:', err));
 
     // Reset modals if they were viewing this transaction
     if (successTx && successTx.id === transactionId) {
@@ -716,14 +893,28 @@ export default function App() {
   // Handler: Update order status (Selesai, Sedang Dikerjakan, etc.)
   const handleUpdateOrderStatus = (transactionId: string, status: OrderStatus) => {
     setTransactions((prev) =>
-      prev.map((t) => (t.id === transactionId ? { ...t, status } : t))
+      prev.map((t) => {
+        if (t.id === transactionId) {
+          const updated = { ...t, status };
+          saveTransactionToFirestore(updated).catch(() => {});
+          return updated;
+        }
+        return t;
+      })
     );
   };
 
   // Handler: Update due date
   const handleUpdateDueDate = (transactionId: string, newDueDate: string) => {
     setTransactions((prev) =>
-      prev.map((t) => (t.id === transactionId ? { ...t, dueDate: newDueDate } : t))
+      prev.map((t) => {
+        if (t.id === transactionId) {
+          const updated = { ...t, dueDate: newDueDate };
+          saveTransactionToFirestore(updated).catch(() => {});
+          return updated;
+        }
+        return t;
+      })
     );
   };
 
@@ -734,6 +925,7 @@ export default function App() {
       id: `p-${Date.now()}`
     };
     setProducts((prev) => [newProd, ...prev]);
+    saveProductToFirestore(newProd).catch((err) => console.warn('Sync add product error:', err));
     // Log movement
     const movement: StockMovement = {
       id: `sm-${Date.now()}`,
@@ -755,10 +947,12 @@ export default function App() {
     setProducts((prev) =>
       prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
     );
+    saveProductToFirestore(updatedProduct).catch((err) => console.warn('Sync update product error:', err));
   };
 
   const handleDeleteProduct = (productId: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== productId));
+    deleteProductFromFirestore(productId).catch((err) => console.warn('Sync delete product error:', err));
   };
 
   // Handler: Stock adjustment
@@ -792,7 +986,9 @@ export default function App() {
           };
           setStockMovements((sm) => [movement, ...sm]);
 
-          return { ...p, stock: newStock };
+          const updatedProd = { ...p, stock: newStock };
+          saveProductToFirestore(updatedProd).catch(() => {});
+          return updatedProd;
         }
         return p;
       })
@@ -819,8 +1015,10 @@ export default function App() {
       else if (type === 'OUT') newStock = Math.max(0, prevStock - qty);
       else if (type === 'ADJUST') newStock = qty;
 
+      const updatedItem = { ...item, stock: newStock };
       const updated = [...prev];
-      updated[idx] = { ...item, stock: newStock };
+      updated[idx] = updatedItem;
+      saveKaosStockToFirestore(updatedItem).catch(() => {});
       return updated;
     });
 
@@ -988,6 +1186,7 @@ export default function App() {
         }
       });
 
+      saveMultipleProductsToFirestore(updatedList).catch((err) => console.warn('Sync imported products error:', err));
       return updatedList;
     });
 
@@ -1263,6 +1462,7 @@ export default function App() {
               onUpdateKaosStocks={(newStocks, movements) => {
                 setKaosStocks(newStocks);
                 localStorage.setItem('athree_kaos_stocks', JSON.stringify(newStocks));
+                saveMultipleKaosStocksToFirestore(newStocks).catch((err) => console.warn('Sync kaos error:', err));
                 if (movements && movements.length > 0) {
                   setStockMovements((prev) => {
                     const updated = [...movements, ...prev];
@@ -1340,6 +1540,7 @@ export default function App() {
             isFavorite: false
           };
           setProducts((prev) => [customProd, ...prev]);
+          saveProductToFirestore(customProd).catch(() => {});
         }}
       />
 

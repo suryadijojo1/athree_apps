@@ -96,10 +96,6 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
   };
 
   const handleSyncLocalToCloud = async () => {
-    if (!firebaseUser) {
-      setStatusMessage({ text: 'Silakan login dengan Google terlebih dahulu untuk sinkronisasi ke cloud.', isError: true });
-      return;
-    }
     setIsProcessing(true);
     setStatusMessage(null);
     try {
@@ -123,10 +119,6 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
   };
 
   const handlePullFromCloud = async () => {
-    if (!firebaseUser) {
-      setStatusMessage({ text: 'Silakan login dengan Google terlebih dahulu untuk mengunduh data dari cloud.', isError: true });
-      return;
-    }
     setIsProcessing(true);
     setStatusMessage(null);
     try {
@@ -316,40 +308,30 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
             <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
               <button
                 onClick={handleSyncLocalToCloud}
-                disabled={isProcessing || isSyncing || !firebaseUser}
+                disabled={isProcessing || isSyncing}
                 className="w-full py-2.5 px-4 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
               >
                 <UploadCloud className="w-4 h-4" />
                 <span>
-                  {isProcessing ? 'Mengunggah...' : '1. Unggah & Sinkronkan Data Lokal ke Cloud (Browser Utama)'}
+                  {isProcessing ? 'Mengunggah...' : '1. Unggah & Timpa Data ke Cloud (Jika Perlu Paksa Update)'}
                 </span>
               </button>
 
               <button
                 onClick={handlePullFromCloud}
-                disabled={isProcessing || isSyncing || !firebaseUser}
+                disabled={isProcessing || isSyncing}
                 className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
               >
                 <DownloadCloud className="w-4 h-4" />
                 <span>
-                  {isProcessing ? 'Mengunduh...' : '2. Tarik & Samakan Data dari Cloud ke Browser Ini'}
+                  {isProcessing ? 'Mengunduh...' : '2. Tarik & Segarkan Data dari Cloud Sekarang'}
                 </span>
               </button>
 
-              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
-                <span className="font-bold block mb-1">💡 Solusi Perbedaan Data Antar-Browser:</span>
-                Browser (seperti Chrome, Edge, atau jendela Private/Incognito) memiliki penyimpanan lokal terpisah. Agar data di browser lain sama persis:
-                <ol className="list-decimal pl-4 mt-1 space-y-0.5 text-amber-800">
-                  <li>Di browser lama/utama yang datanya lengkap: Klik <b>Unggah Data ke Cloud</b>.</li>
-                  <li>Di browser baru/lain: Buka menu ini, lalu klik <b>Tarik & Samakan Data dari Cloud</b>.</li>
-                </ol>
+              <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-950 leading-relaxed">
+                <span className="font-bold block mb-1 text-emerald-800">⚡ Sinkronisasi Otomatis Real-time Sudah Aktif:</span>
+                Setiap kali kasir melakukan transaksi, revisi/hapus invoice, menambah/mengubah master produk, penyesuaian stok kaos, maupun mutasi kas di browser mana pun, sistem secara otomatis langsung menyinkronkan data tersebut ke cloud Firestore dan meng-update semua browser lain secara bersamaan.
               </div>
-
-              {!firebaseUser && (
-                <p className="text-[11px] text-slate-500 text-center">
-                  * Login Google diperlukan untuk mengunggah atau mengunduh dari Cloud Firestore.
-                </p>
-              )}
             </div>
           </div>
         </div>

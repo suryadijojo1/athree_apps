@@ -96,16 +96,20 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenFirebaseModal}
-            className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shadow-2xs ${
+            className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shadow-2xs ${
               isFirebaseConnected
-                ? 'bg-amber-500/20 text-amber-100 hover:bg-amber-500/30 border-amber-400/40'
+                ? 'bg-emerald-950/40 text-emerald-100 hover:bg-emerald-900/50 border-emerald-400/40'
                 : 'bg-black/20 text-white/90 hover:bg-black/30 border-white/20'
             }`}
-            title="Pengaturan Database Cloud Firestore"
+            title="Sinkronisasi Cloud Real-time Aktif - Data otomatis tersambung antar semua browser"
           >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
             <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-            <span className="hidden md:inline">Firestore:</span>
-            <span className="font-bold">{firebaseUser ? 'Online' : 'Siap'}</span>
+            <span className="hidden sm:inline">Cloud:</span>
+            <span className="font-bold text-emerald-300">Sinkron Otomatis</span>
           </button>
         )}
 

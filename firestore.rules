@@ -7,20 +7,8 @@ service cloud.firestore {
     }
 
     // Helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
+      return id is string && id.size() <= 128;
     }
 
     // Connection Health Check
@@ -30,83 +18,42 @@ service cloud.firestore {
 
     // Products Collection
     match /products/{productId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(productId)
-        && incoming().id is string
-        && incoming().name is string && incoming().name.size() <= 200
-        && incoming().price is number && incoming().price >= 0
-        && incoming().stock is number;
-      allow update: if isSignedIn() && isValidId(productId)
-        && incoming().id == existing().id
-        && incoming().name is string && incoming().name.size() <= 200
-        && incoming().price is number && incoming().price >= 0
-        && incoming().stock is number;
-      allow delete: if isSignedIn() && isValidId(productId);
+      allow read, write: if isValidId(productId);
     }
 
     // Transactions Collection
     match /transactions/{transactionId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(transactionId)
-        && incoming().id is string
-        && incoming().invoiceNumber is string && incoming().invoiceNumber.size() <= 100
-        && incoming().total is number;
-      allow update: if isSignedIn() && isValidId(transactionId)
-        && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(transactionId);
+      allow read, write: if isValidId(transactionId);
     }
 
     // Cash Flow Records
     match /cashFlowRecords/{recordId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(recordId)
-        && incoming().id is string
-        && incoming().amount is number
-        && incoming().type in ['in', 'out'];
-      allow update: if isSignedIn() && isValidId(recordId)
-        && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(recordId);
+      allow read, write: if isValidId(recordId);
     }
 
     // Cashier Shifts
     match /shifts/{shiftId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(shiftId)
-        && incoming().id is string
-        && incoming().status in ['open', 'closed'];
-      allow update: if isSignedIn() && isValidId(shiftId)
-        && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(shiftId);
+      allow read, write: if isValidId(shiftId);
     }
 
     // Kaos Stocks Collection
     match /kaosStocks/{stockId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(stockId)
-        && incoming().id is string;
-      allow update: if isSignedIn() && isValidId(stockId)
-        && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(stockId);
+      allow read, write: if isValidId(stockId);
     }
 
     // Stock Movements Collection
     match /stockMovements/{movementId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(movementId)
-        && incoming().id is string;
-      allow update: if isSignedIn() && isValidId(movementId)
-        && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(movementId);
+      allow read, write: if isValidId(movementId);
     }
 
     // Customers Collection
     match /customers/{customerId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(customerId)
-        && incoming().id is string;
-      allow update: if isSignedIn() && isValidId(customerId)
-        && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(customerId);
+      allow read, write: if isValidId(customerId);
+    }
+
+    // POS App Users Collection
+    match /users/{userId} {
+      allow read, write: if isValidId(userId);
     }
   }
 }

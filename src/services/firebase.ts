@@ -18,7 +18,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, StockMovement, Customer } from '../types';
+import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, StockMovement, Customer, User } from '../types';
 import { getDocs } from 'firebase/firestore';
 
 // Initialize Firebase with exact config and database ID
@@ -294,6 +294,123 @@ export function subscribeToKaosStocks(
   );
 }
 
+export function subscribeToCustomers(
+  onData: (customers: Customer[]) => void,
+  onError?: (err: any) => void
+) {
+  const path = 'customers';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const items: Customer[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as Customer);
+      });
+      onData(items);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.GET, path);
+      } catch (e) {
+        if (onError) onError(e);
+      }
+    }
+  );
+}
+
+export async function saveKaosStockToFirestore(item: KaosStockItem): Promise<void> {
+  const path = `kaosStocks/${item.id}`;
+  try {
+    await setDoc(doc(db, 'kaosStocks', item.id), item);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveMultipleKaosStocksToFirestore(items: KaosStockItem[]): Promise<void> {
+  const batch = writeBatch(db);
+  for (const item of items) {
+    batch.set(doc(db, 'kaosStocks', item.id), item);
+  }
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'batch-kaos-save');
+  }
+}
+
+export async function saveMultipleProductsToFirestore(products: Product[]): Promise<void> {
+  const batch = writeBatch(db);
+  for (const product of products) {
+    batch.set(doc(db, 'products', product.id), product);
+  }
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'batch-products-save');
+  }
+}
+
+export async function saveCustomerToFirestore(customer: Customer): Promise<void> {
+  const path = `customers/${customer.id}`;
+  try {
+    await setDoc(doc(db, 'customers', customer.id), customer);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteCustomerFromFirestore(customerId: string): Promise<void> {
+  const path = `customers/${customerId}`;
+  try {
+    await deleteDoc(doc(db, 'customers', customerId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export function subscribeToUsers(
+  onData: (users: User[]) => void,
+  onError?: (err: any) => void
+) {
+  const path = 'users';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const items: User[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as User);
+      });
+      onData(items);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.GET, path);
+      } catch (e) {
+        if (onError) onError(e);
+      }
+    }
+  );
+}
+
+export async function saveUserToFirestore(user: User): Promise<void> {
+  const path = `users/${user.id}`;
+  try {
+    await setDoc(doc(db, 'users', user.id), user);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteUserFromFirestore(userId: string): Promise<void> {
+  const path = `users/${userId}`;
+  try {
+    await deleteDoc(doc(db, 'users', userId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 // Fetch all collections from Firestore
 export async function fetchAllDataFromFirestore(): Promise<{
   products: Product[];
@@ -302,6 +419,7 @@ export async function fetchAllDataFromFirestore(): Promise<{
   shifts: CashierShift[];
   kaosStocks: KaosStockItem[];
   customers: Customer[];
+  users: User[];
 }> {
   const results = {
     products: [] as Product[],
@@ -309,7 +427,8 @@ export async function fetchAllDataFromFirestore(): Promise<{
     cashFlowRecords: [] as CashFlowRecord[],
     shifts: [] as CashierShift[],
     kaosStocks: [] as KaosStockItem[],
-    customers: [] as Customer[]
+    customers: [] as Customer[],
+    users: [] as User[]
   };
 
   try {
@@ -332,6 +451,9 @@ export async function fetchAllDataFromFirestore(): Promise<{
 
     const custSnap = await getDocs(collection(db, 'customers'));
     custSnap.forEach((d) => results.customers.push(d.data() as Customer));
+
+    const userSnap = await getDocs(collection(db, 'users'));
+    userSnap.forEach((d) => results.users.push(d.data() as User));
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, 'batch-fetch');
   }
@@ -347,6 +469,7 @@ export async function syncAllLocalDataToFirestore(data: {
   shifts: CashierShift[];
   kaosStocks?: KaosStockItem[];
   customers?: Customer[];
+  users?: User[];
 }): Promise<{ productsCount: number; transactionsCount: number; cashFlowCount: number; kaosCount: number }> {
   const batch = writeBatch(db);
 
@@ -382,6 +505,13 @@ export async function syncAllLocalDataToFirestore(data: {
   if (data.customers) {
     for (const cust of data.customers.slice(0, 50)) {
       batch.set(doc(db, 'customers', cust.id), cust);
+      count++;
+    }
+  }
+
+  if (data.users) {
+    for (const u of data.users.slice(0, 20)) {
+      batch.set(doc(db, 'users', u.id), u);
       count++;
     }
   }
