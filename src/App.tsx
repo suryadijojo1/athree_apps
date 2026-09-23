@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   INITIAL_PRODUCTS,
   INITIAL_CATEGORIES,
@@ -67,6 +67,13 @@ import {
   fetchAllDataFromFirestore,
   syncAllLocalDataToFirestore
 } from './services/firebase';
+import {
+  fetchServerDatabase,
+  saveServerDatabase,
+  subscribeToServerEvents,
+  isRealUserData,
+  AppDatabasePayload
+} from './services/serverSync';
 import { User as FirebaseUser } from 'firebase/auth';
 
 export default function App() {
@@ -259,15 +266,185 @@ export default function App() {
   const [revisingTx, setRevisingTx] = useState<Transaction | null>(null);
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
 
-  // Firebase Cloud Sync State
+  // Firebase & Server Cloud Sync State
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Maintain latest state reference to avoid stale closures during sync
+  const latestStateRef = useRef({
+    products,
+    categories,
+    transactions,
+    cashFlowRecords,
+    shiftHistory,
+    kaosStocks,
+    stockMovements,
+    customers,
+    users,
+    salesList
+  });
+
+  useEffect(() => {
+    latestStateRef.current = {
+      products,
+      categories,
+      transactions,
+      cashFlowRecords,
+      shiftHistory,
+      kaosStocks,
+      stockMovements,
+      customers,
+      users,
+      salesList
+    };
+  }, [products, categories, transactions, cashFlowRecords, shiftHistory, kaosStocks, stockMovements, customers, users, salesList]);
+
+  // Set up Central Server & Cloud Synchronization
+  const isApplyingRemoteRef = useRef(false);
+
+  const applyFullDatabasePayload = (payload: AppDatabasePayload) => {
+    isApplyingRemoteRef.current = true;
+    try {
+      if (payload.products && Array.isArray(payload.products) && payload.products.length > 0) {
+        setProducts(payload.products);
+        localStorage.setItem('athree_products', JSON.stringify(payload.products));
+      }
+      if (payload.categories && Array.isArray(payload.categories) && payload.categories.length > 0) {
+        setCategories(payload.categories);
+        localStorage.setItem('athree_categories', JSON.stringify(payload.categories));
+      }
+      if (payload.transactions && Array.isArray(payload.transactions) && payload.transactions.length > 0) {
+        setTransactions(payload.transactions);
+        localStorage.setItem('athree_transactions', JSON.stringify(payload.transactions));
+      }
+      if (payload.cashFlowRecords && Array.isArray(payload.cashFlowRecords)) {
+        setCashFlowRecords(payload.cashFlowRecords);
+        localStorage.setItem('athree_cash_flow', JSON.stringify(payload.cashFlowRecords));
+      }
+      if (payload.shiftHistory && Array.isArray(payload.shiftHistory)) {
+        setShiftHistory(payload.shiftHistory);
+        localStorage.setItem('athree_shift_history', JSON.stringify(payload.shiftHistory));
+      }
+      if (payload.kaosStocks && Array.isArray(payload.kaosStocks) && payload.kaosStocks.length > 0) {
+        setKaosStocks(payload.kaosStocks);
+        localStorage.setItem('athree_kaos_stocks', JSON.stringify(payload.kaosStocks));
+      }
+      if (payload.stockMovements && Array.isArray(payload.stockMovements)) {
+        setStockMovements(payload.stockMovements);
+        localStorage.setItem('athree_stock_movements', JSON.stringify(payload.stockMovements));
+      }
+      if (payload.customers && Array.isArray(payload.customers) && payload.customers.length > 0) {
+        setCustomers(payload.customers);
+        localStorage.setItem('athree_customers', JSON.stringify(payload.customers));
+      }
+      if (payload.users && Array.isArray(payload.users) && payload.users.length > 0) {
+        setUsers(payload.users);
+        localStorage.setItem('athree_users', JSON.stringify(payload.users));
+      }
+      if (payload.salesList && Array.isArray(payload.salesList) && payload.salesList.length > 0) {
+        setSalesList(payload.salesList);
+        localStorage.setItem('athree_sales_list', JSON.stringify(payload.salesList));
+      }
+      localStorage.setItem('athree_last_save_time', String(Date.now()));
+    } finally {
+      setTimeout(() => {
+        isApplyingRemoteRef.current = false;
+      }, 500);
+    }
+  };
+
+  const syncCurrentStateToServer = () => {
+    const currentState = latestStateRef.current;
+    saveServerDatabase({
+      products: currentState.products,
+      categories: currentState.categories,
+      transactions: currentState.transactions,
+      cashFlowRecords: currentState.cashFlowRecords,
+      shiftHistory: currentState.shiftHistory,
+      kaosStocks: currentState.kaosStocks,
+      stockMovements: currentState.stockMovements,
+      customers: currentState.customers,
+      users: currentState.users,
+      salesList: currentState.salesList,
+      isRealData: isRealUserData(currentState.transactions)
+    }).catch((err) => console.warn('Sync to central server error:', err));
+  };
+
   // Set up Automatic Cloud Synchronization
   useEffect(() => {
     let isSubscribed = true;
+
+    // A. Central Server Real-Time Sync (Cross-browser automatic hydration)
+    const checkAndSyncCentralServer = async () => {
+      try {
+        const serverRes = await fetchServerDatabase();
+        if (!isSubscribed) return;
+
+        const currentTransactions = latestStateRef.current.transactions;
+        const localHasRealData = isRealUserData(currentTransactions);
+
+        if (serverRes.success && serverRes.data) {
+          if (serverRes.isRealData) {
+            if (!localHasRealData || serverRes.data.transactions.length > currentTransactions.length) {
+              console.log('Central Server: Hydrating state from master server database...');
+              applyFullDatabasePayload(serverRes.data);
+            } else if (localHasRealData && currentTransactions.length > serverRes.data.transactions.length) {
+              console.log('Central Server: Local browser has more transactions, updating server...');
+              syncCurrentStateToServer();
+            } else if (localHasRealData && currentTransactions.length === serverRes.data.transactions.length) {
+              // Compare timestamps if available
+              const serverTime = new Date(serverRes.data.lastUpdated || 0).getTime();
+              const localLastSave = Number(localStorage.getItem('athree_last_save_time') || 0);
+              if (serverTime > localLastSave && localLastSave > 0) {
+                applyFullDatabasePayload(serverRes.data);
+              }
+            }
+          } else {
+            if (localHasRealData) {
+              console.log('Central Server: Seeding master data from current browser to server...');
+              syncCurrentStateToServer();
+            } else {
+              applyFullDatabasePayload(serverRes.data);
+            }
+          }
+        } else {
+          // Server has no data stored yet, initialize server with current browser data
+          console.log('Central Server: Initializing master data from current browser to server...');
+          syncCurrentStateToServer();
+        }
+      } catch (err) {
+        console.warn('Central server sync init error:', err);
+      }
+    };
+
+    checkAndSyncCentralServer();
+
+    const unsubServer = subscribeToServerEvents((remoteData) => {
+      if (!isSubscribed) return;
+      console.log('Central Server: Received real-time live update from another browser');
+      applyFullDatabasePayload(remoteData);
+    });
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndSyncCentralServer();
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', checkAndSyncCentralServer);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('athree_cross_tab_sync');
+      bc.onmessage = (event) => {
+        if (!isSubscribed) return;
+        if (event.data && event.data.payload) {
+          applyFullDatabasePayload(event.data.payload);
+        }
+      };
+    } catch {}
 
     // 1. Initial Connection & Seed Check
     testConnection().then(async (connected) => {
@@ -384,6 +561,10 @@ export default function App() {
 
     return () => {
       isSubscribed = false;
+      unsubServer();
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', checkAndSyncCentralServer);
+      if (bc) bc.close();
       unsubProducts();
       unsubTransactions();
       unsubKaos();
@@ -394,6 +575,43 @@ export default function App() {
       unsubAuth();
     };
   }, []);
+
+  // 2. Debounced automatic push to central server whenever state changes
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (isApplyingRemoteRef.current) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      syncCurrentStateToServer();
+      localStorage.setItem('athree_last_save_time', String(Date.now()));
+      try {
+        const bc = new BroadcastChannel('athree_cross_tab_sync');
+        bc.postMessage({
+          payload: {
+            products,
+            categories,
+            transactions,
+            cashFlowRecords,
+            shiftHistory,
+            kaosStocks,
+            stockMovements,
+            customers,
+            users,
+            salesList,
+            lastUpdated: new Date().toISOString(),
+            isRealData: isRealUserData(transactions)
+          }
+        });
+        bc.close();
+      } catch {}
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [products, categories, transactions, cashFlowRecords, shiftHistory, kaosStocks, stockMovements, customers, users, salesList]);
 
   const handleApplyCloudData = (cloudData: {
     products: Product[];

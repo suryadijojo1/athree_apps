@@ -272,14 +272,27 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
 
             {/* Import CSV / Excel Button - Only Admin */}
             {isAdmin && (
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                title="Impor master produk dari file CSV atau Excel"
-              >
-                <UploadCloud className="w-4 h-4 text-blue-600" />
-                <span>Impor CSV / Excel</span>
-              </button>
+              <>
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                  title="Impor master produk umum dari file CSV atau Excel"
+                >
+                  <UploadCloud className="w-4 h-4 text-blue-600" />
+                  <span>Impor CSV / Excel</span>
+                </button>
+
+                {onOpenKaosStock && (
+                  <button
+                    onClick={onOpenKaosStock}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                    title="Menu Impor Penyesuaian Stok Khusus Kaos Polos (Warna & Ukuran)"
+                  >
+                    <Shirt className="w-4 h-4 text-emerald-600" />
+                    <span>Impor Stok Kaos</span>
+                  </button>
+                )}
+              </>
             )}
 
             {/* Add Product button - Only Admin can add products */}

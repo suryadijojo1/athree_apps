@@ -414,17 +414,24 @@ export const KaosStockManagementView: React.FC<KaosStockManagementViewProps> = (
               Laporan PDF
             </button>
 
+            {/* Dedicated Menu Impor Penyesuaian Stok Khusus Kaos */}
+            <button
+              onClick={() => {
+                if (!isAdmin) {
+                  alert('Perhatian: Fitur Impor Penyesuaian Stok Kaos memerlukan hak akses Admin atau Supervisor Gudang.');
+                  return;
+                }
+                setShowImportKaosModal(true);
+              }}
+              title="Menu Impor Penyesuaian Stok Khusus Kaos Polos dari file Excel (.xlsx) atau CSV"
+              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white border border-blue-400/50 text-xs font-bold flex items-center gap-1.5 transition-all shadow-md hover:shadow-lg cursor-pointer active:scale-95"
+            >
+              <UploadCloud className="w-4 h-4 text-white" />
+              <span>Menu Impor Stok Kaos</span>
+            </button>
+
             {isAdmin && (
               <>
-                <button
-                  onClick={() => setShowImportKaosModal(true)}
-                  title="Impor Penyesuaian Stok Kaos dari file Excel (.xlsx) atau CSV"
-                  className="px-3.5 py-2 rounded-xl bg-blue-950/70 hover:bg-blue-900 text-blue-200 border border-blue-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <UploadCloud className="w-4 h-4 text-blue-400" />
-                  Impor Penyesuaian Stok
-                </button>
-
                 <button
                   onClick={() => setShowAddColorModal(true)}
                   className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -558,6 +565,20 @@ export const KaosStockManagementView: React.FC<KaosStockManagementViewProps> = (
             >
               <History className="w-3.5 h-3.5" />
               Riwayat Mutasi ({kaosMovements.length})
+            </button>
+            <button
+              onClick={() => {
+                if (!isAdmin) {
+                  alert('Perhatian: Fitur Impor Penyesuaian Stok Kaos memerlukan hak akses Admin atau Supervisor Gudang.');
+                  return;
+                }
+                setShowImportKaosModal(true);
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-blue-950/80 hover:bg-blue-900 text-blue-300 border border-blue-800/80 shadow-xs"
+              title="Menu Impor Penyesuaian Stok Khusus Kaos Polos dari file Excel (.xlsx) atau CSV"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-blue-400" />
+              <span>Menu Impor Stok Kaos</span>
             </button>
           </div>
 

@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
   Flame,
-  Cloud,
-  CloudCheck,
   CheckCircle2,
   AlertCircle,
   UploadCloud,
@@ -10,11 +8,7 @@ import {
   LogOut,
   LogIn,
   X,
-  Database,
-  Layers,
-  ShoppingBag,
-  Receipt,
-  ArrowRightLeft
+  Server
 } from 'lucide-react';
 import { User as FirebaseUser } from 'firebase/auth';
 import {
@@ -23,7 +17,12 @@ import {
   syncAllLocalDataToFirestore,
   fetchAllDataFromFirestore
 } from '../services/firebase';
-import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, Customer } from '../types';
+import {
+  saveServerDatabase,
+  fetchServerDatabase,
+  isRealUserData
+} from '../services/serverSync';
+import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, Customer, User, StockMovement } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 interface FirebaseSyncModalProps {
@@ -38,6 +37,9 @@ interface FirebaseSyncModalProps {
   shifts: CashierShift[];
   kaosStocks?: KaosStockItem[];
   customers?: Customer[];
+  users?: User[];
+  stockMovements?: StockMovement[];
+  salesList?: string[];
   onManualSyncSuccess: () => void;
   onApplyCloudData?: (cloudData: {
     products: Product[];
@@ -46,6 +48,9 @@ interface FirebaseSyncModalProps {
     shifts: CashierShift[];
     kaosStocks?: KaosStockItem[];
     customers?: Customer[];
+    users?: User[];
+    stockMovements?: StockMovement[];
+    salesList?: string[];
   }) => void;
 }
 
@@ -53,14 +58,15 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
   isOpen,
   onClose,
   firebaseUser,
-  isConnected,
-  isSyncing,
   products,
   transactions,
   cashFlowRecords,
   shifts,
   kaosStocks,
   customers,
+  users,
+  stockMovements,
+  salesList,
   onManualSyncSuccess,
   onApplyCloudData
 }) => {
@@ -68,6 +74,79 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError?: boolean } | null>(null);
 
   if (!isOpen) return null;
+
+  const isCurrentBrowserMaster = isRealUserData(transactions);
+
+  // Sync to Central Express Server
+  const handlePushToServerMaster = async () => {
+    setIsProcessing(true);
+    setStatusMessage(null);
+    try {
+      const ok = await saveServerDatabase({
+        products,
+        transactions,
+        cashFlowRecords,
+        shiftHistory: shifts,
+        kaosStocks: kaosStocks || [],
+        stockMovements: stockMovements || [],
+        customers: customers || [],
+        users: users || [],
+        salesList: salesList || [],
+        isRealData: true
+      });
+
+      if (ok) {
+        setStatusMessage({
+          text: `Berhasil! Data browser ini telah dijadikan Master Database di Server Pusat (${transactions.length} pesanan/faktur, ${products.length} produk). Seluruh browser lain akan otomatis menerima data ini!`
+        });
+        onManualSyncSuccess();
+      } else {
+        throw new Error('Gagal menghubungi server pusat');
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: err.message || 'Gagal menyimpan ke server pusat', isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePullFromServer = async () => {
+    setIsProcessing(true);
+    setStatusMessage(null);
+    try {
+      const res = await fetchServerDatabase();
+      if (!res.success || !res.data) {
+        setStatusMessage({
+          text: 'Belum ada data tersimpan di server pusat. Buka browser yang memiliki data asli lalu klik "Jadikan Master Server Pusat".',
+          isError: true
+        });
+        return;
+      }
+
+      if (onApplyCloudData) {
+        onApplyCloudData({
+          products: res.data.products || [],
+          transactions: res.data.transactions || [],
+          cashFlowRecords: res.data.cashFlowRecords || [],
+          shifts: res.data.shiftHistory || [],
+          kaosStocks: res.data.kaosStocks || [],
+          customers: res.data.customers || [],
+          users: res.data.users || [],
+          stockMovements: res.data.stockMovements || [],
+          salesList: res.data.salesList || []
+        });
+      }
+
+      setStatusMessage({
+        text: `Sukses memuat data terbaru dari Server Pusat! (${res.data.transactions?.length || 0} pesanan/faktur, ${res.data.products?.length || 0} produk dimuat ke browser ini)`
+      });
+      onManualSyncSuccess();
+    } catch (err: any) {
+      setStatusMessage({ text: err.message || 'Gagal mengambil data dari server pusat', isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleSignIn = async () => {
     setIsProcessing(true);
@@ -108,7 +187,7 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
         customers
       });
       setStatusMessage({
-        text: `Sukses mengunggah ke Cloud Firestore! (${res.productsCount} produk, ${res.transactionsCount} transaksi, ${res.cashFlowCount} arus kas, ${res.kaosCount} kaos)`
+        text: `Sukses mengunggah ke Cloud Firestore! (${res.productsCount} produk, ${res.transactionsCount} transaksi)`
       });
       onManualSyncSuccess();
     } catch (err: any) {
@@ -131,10 +210,14 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
         return;
       }
       if (onApplyCloudData) {
-        onApplyCloudData(cloudData);
+        onApplyCloudData({
+          ...cloudData,
+          stockMovements: stockMovements || [],
+          salesList: salesList || []
+        });
       }
       setStatusMessage({
-        text: `Sukses menyamakan data dari Cloud! (${cloudData.products.length} produk, ${cloudData.transactions.length} transaksi, ${cloudData.kaosStocks.length} kaos berhasil dimuat di browser ini)`
+        text: `Sukses menyamakan data dari Cloud! (${cloudData.products.length} produk, ${cloudData.transactions.length} transaksi dimuat di browser ini)`
       });
       onManualSyncSuccess();
     } catch (err: any) {
@@ -148,203 +231,163 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white p-5 flex items-center justify-between shadow-xs">
+        <div className="bg-[#00871f] px-5 py-4 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-              <Flame className="w-6 h-6 text-amber-200 fill-amber-300" />
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
+              <Server className="w-5 h-5 text-emerald-200" />
             </div>
             <div>
-              <h3 className="font-bold text-lg text-white">Firebase Cloud Firestore</h3>
-              <p className="text-amber-100 text-xs">Sinkronisasi Database Real-time & Multi-Perangkat</p>
+              <h3 className="font-bold text-base leading-tight">Sinkronisasi Database Pusat Real-time</h3>
+              <p className="text-xs text-emerald-100 mt-0.5">
+                Menyinkronkan data otomatis antar semua browser &amp; perangkat secara langsung
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/20 transition-colors"
+            className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-5 overflow-y-auto space-y-4">
-          {/* Status Alert Message */}
+        <div className="p-5 space-y-4 overflow-y-auto">
+          {/* Status Message */}
           {statusMessage && (
             <div
-              className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+              className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
                 statusMessage.isError
-                  ? 'bg-rose-50 border-rose-200 text-rose-800'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                  : 'bg-emerald-50 border border-emerald-200 text-[#00871f]'
               }`}
             >
               {statusMessage.isError ? (
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
               ) : (
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#00871f]" />
               )}
-              <span className="font-medium leading-relaxed">{statusMessage.text}</span>
+              <div className="flex-1 font-medium">{statusMessage.text}</div>
             </div>
           )}
 
-          {/* Cloud Info Card */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-orange-600" />
-                Status Database Cloud
-              </span>
-              <span
-                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  isConnected
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-amber-100 text-amber-800 border border-amber-300'
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                {isConnected ? 'Terhubung (Online)' : 'Siap Terhubung'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                <span className="text-slate-400 block text-[11px]">Firebase Project:</span>
-                <span className="font-mono font-semibold text-slate-800 truncate block">
-                  {firebaseConfig.projectId}
+          {/* Current Browser Status Card */}
+          <div className="p-4 rounded-xl border bg-slate-50 border-slate-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span className="text-xs font-bold text-slate-800">
+                  Status Database Browser Saat Ini
                 </span>
               </div>
-              <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                <span className="text-slate-400 block text-[11px]">Lokasi Wilayah:</span>
-                <span className="font-mono font-semibold text-slate-800 truncate block">
-                  asia-southeast1 (Singapura)
+              {isCurrentBrowserMaster ? (
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  Data Asli Terdeteksi (Gambar 1)
                 </span>
+              ) : (
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                  Data Browser Lain / Default
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 block">Pesanan / Faktur</span>
+                <span className="text-sm font-bold text-slate-800">{transactions.length}</span>
+              </div>
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 block">Produk Master</span>
+                <span className="text-sm font-bold text-slate-800">{products.length}</span>
+              </div>
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 block">Stok Kaos Polos</span>
+                <span className="text-sm font-bold text-slate-800">{kaosStocks?.length || 0}</span>
               </div>
             </div>
-          </div>
 
-          {/* User Authentication Card */}
-          <div className="border border-slate-200 rounded-xl p-4 bg-white">
-            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Autentikasi Firebase
-            </h4>
-            {firebaseUser ? (
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  {firebaseUser.photoURL ? (
-                    <img
-                      src={firebaseUser.photoURL}
-                      alt="User avatar"
-                      className="w-10 h-10 rounded-full border border-slate-200"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-orange-100 text-orange-700 font-bold flex items-center justify-center text-sm">
-                      {firebaseUser.displayName?.charAt(0) || 'U'}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">
-                      {firebaseUser.displayName || 'Akun Google'}
-                    </p>
-                    <p className="text-xs text-slate-500 truncate">{firebaseUser.email}</p>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 mt-0.5">
-                      <CheckCircle2 className="w-3 h-3" /> Akses Cloud Firestore Aktif
-                    </span>
-                  </div>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  disabled={isProcessing}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Logout</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-slate-600">
-                  Hubungkan dengan akun Google Anda untuk mengaktifkan sinkronisasi otomatis ke cloud Firestore secara aman.
-                </p>
-                <button
-                  onClick={handleSignIn}
-                  disabled={isProcessing}
-                  className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>{isProcessing ? 'Menghubungkan...' : 'Login dengan Google ke Firebase'}</span>
-                </button>
-              </div>
+            {isCurrentBrowserMaster && (
+              <p className="text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                💡 Browser ini memegang <strong>Data Asli (#ORD/41438 TALSON, #INV/82687 EMEDLUGUN, #ORD/86871 MELANESIA SENTANI)</strong>. Klik tombol hijau di bawah untuk memastikan data ini tersimpan sebagai Master di Server Pusat!
+              </p>
             )}
           </div>
 
-          {/* Local vs Cloud Data Summary */}
-          <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
-            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-slate-500" />
-              Data Tersimpan di Aplikasi
+          {/* Central Server Sync Actions */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Aksi Sinkronisasi Server Pusat
             </h4>
-            <div className="grid grid-cols-4 gap-2 text-center text-xs">
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                <ShoppingBag className="w-4 h-4 mx-auto mb-1 text-blue-600" />
-                <span className="font-bold text-slate-900 block text-sm">{products.length}</span>
-                <span className="text-[11px] text-slate-500">Produk</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                <Receipt className="w-4 h-4 mx-auto mb-1 text-emerald-600" />
-                <span className="font-bold text-slate-900 block text-sm">{transactions.length}</span>
-                <span className="text-[11px] text-slate-500">Transaksi</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                <ArrowRightLeft className="w-4 h-4 mx-auto mb-1 text-purple-600" />
-                <span className="font-bold text-slate-900 block text-sm">{cashFlowRecords.length}</span>
-                <span className="text-[11px] text-slate-500">Mutasi Kas</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                <Cloud className="w-4 h-4 mx-auto mb-1 text-amber-600" />
-                <span className="font-bold text-slate-900 block text-sm">{shifts.length}</span>
-                <span className="text-[11px] text-slate-500">Shift</span>
-              </div>
-            </div>
 
-            <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
-                onClick={handleSyncLocalToCloud}
-                disabled={isProcessing || isSyncing}
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                type="button"
+                onClick={handlePushToServerMaster}
+                disabled={isProcessing}
+                className="w-full py-2.5 px-3 rounded-xl bg-[#00871f] hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
               >
-                <UploadCloud className="w-4 h-4" />
-                <span>
-                  {isProcessing ? 'Mengunggah...' : '1. Unggah & Timpa Data ke Cloud (Jika Perlu Paksa Update)'}
-                </span>
+                <UploadCloud className="w-4 h-4 text-emerald-100" />
+                <span>Jadikan Master Server Pusat</span>
               </button>
 
               <button
-                onClick={handlePullFromCloud}
-                disabled={isProcessing || isSyncing}
-                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                type="button"
+                onClick={handlePullFromServer}
+                disabled={isProcessing}
+                className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs border border-slate-300 flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
               >
-                <DownloadCloud className="w-4 h-4" />
-                <span>
-                  {isProcessing ? 'Mengunduh...' : '2. Tarik & Segarkan Data dari Cloud Sekarang'}
-                </span>
+                <DownloadCloud className="w-4 h-4 text-indigo-600" />
+                <span>Tarik Data Terbaru dari Server</span>
               </button>
-
-              <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-950 leading-relaxed">
-                <span className="font-bold block mb-1 text-emerald-800">⚡ Sinkronisasi Otomatis Real-time Sudah Aktif:</span>
-                Setiap kali kasir melakukan transaksi, revisi/hapus invoice, menambah/mengubah master produk, penyesuaian stok kaos, maupun mutasi kas di browser mana pun, sistem secara otomatis langsung menyinkronkan data tersebut ke cloud Firestore dan meng-update semua browser lain secara bersamaan.
-              </div>
             </div>
+          </div>
+
+          {/* Firestore Backup Section (Optional) */}
+          <div className="pt-2 border-t border-slate-200">
+            <details className="text-xs text-slate-600">
+              <summary className="font-semibold cursor-pointer text-slate-700 hover:text-emerald-700 py-1">
+                Cadangan Eksternal (Cloud Firestore)
+              </summary>
+              <div className="mt-2 p-3 bg-slate-50 rounded-xl space-y-2 border border-slate-200">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span>Project ID: <code className="bg-slate-200 px-1 py-0.5 rounded font-mono">{firebaseConfig.projectId}</code></span>
+                  <span>{firebaseUser ? `User: ${firebaseUser.email}` : 'Anonim / Publik'}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSyncLocalToCloud}
+                    disabled={isProcessing}
+                    className="py-1.5 px-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-lg text-[11px] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Upload ke Firestore</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePullFromCloud}
+                    disabled={isProcessing}
+                    className="py-1.5 px-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-lg text-[11px] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <DownloadCloud className="w-3.5 h-3.5" />
+                    <span>Download dari Firestore</span>
+                  </button>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-50 px-5 py-3 border-t border-slate-200 flex justify-between items-center text-xs">
-          <span className="text-slate-500 flex items-center gap-1.5">
-            <Flame className="w-3.5 h-3.5 text-orange-600" />
-            Firestore Cloud Database Aktif
-          </span>
+        <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <span>Real-time Sync: SSE Active</span>
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-semibold transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold cursor-pointer"
           >
             Tutup
           </button>

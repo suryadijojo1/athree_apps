@@ -1,20 +1,123 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import { getUsers, getOrCreateUser } from './src/db/users.ts';
 import { db } from './src/db/index.ts';
 import { products, transactions, cashFlowRecords } from './src/db/schema.ts';
 
+const DB_FILE_PATH = path.join(process.cwd(), 'data', 'app-database.json');
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // In-memory persistent database cache
+  let currentDbState: any = null;
+
+  // Load existing persistent state from disk if present
+  try {
+    if (fs.existsSync(DB_FILE_PATH)) {
+      const fileData = fs.readFileSync(DB_FILE_PATH, 'utf-8');
+      currentDbState = JSON.parse(fileData);
+      console.log('Loaded database from disk:', {
+        transactionsCount: currentDbState?.transactions?.length || 0,
+        productsCount: currentDbState?.products?.length || 0,
+        isRealData: currentDbState?.isRealData
+      });
+    }
+  } catch (err) {
+    console.warn('Could not read existing database file:', err);
+  }
+
+  // SSE connected clients for instant cross-browser broadcasting
+  const sseClients = new Set<express.Response>();
+
+  function broadcastDatabaseUpdate(payload: any) {
+    const data = JSON.stringify({ type: 'sync', data: payload });
+    for (const client of sseClients) {
+      try {
+        client.write(`data: ${data}\n\n`);
+      } catch {
+        sseClients.delete(client);
+      }
+    }
+  }
 
   // API Routes
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', database: 'cloudsql' });
+    res.json({
+      status: 'ok',
+      hasCentralDb: Boolean(currentDbState),
+      transactionsCount: currentDbState?.transactions?.length || 0
+    });
+  });
+
+  // Central Database Endpoints for Instant Real-Time Cross-Browser Sync
+  app.get('/api/database', (req, res) => {
+    res.json({
+      success: true,
+      data: currentDbState,
+      isRealData: Boolean(currentDbState?.isRealData)
+    });
+  });
+
+  app.post('/api/database/save-all', (req, res) => {
+    try {
+      const payload = req.body;
+      if (!payload || !Array.isArray(payload.transactions)) {
+        return res.status(400).json({ error: 'Invalid payload' });
+      }
+
+      currentDbState = payload;
+
+      // Asynchronously persist to disk
+      const dir = path.dirname(DB_FILE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFile(DB_FILE_PATH, JSON.stringify(payload, null, 2), 'utf-8', (err) => {
+        if (err) console.warn('Could not write database file:', err);
+      });
+
+      broadcastDatabaseUpdate(payload);
+      res.json({ success: true, timestamp: payload.lastUpdated });
+    } catch (err: any) {
+      console.error('Failed to save central database:', err);
+      res.status(500).json({ error: err.message || 'Server error' });
+    }
+  });
+
+  app.get('/api/database/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    sseClients.add(res);
+
+    // Send initial snapshot if available
+    if (currentDbState) {
+      res.write(`data: ${JSON.stringify({ type: 'initial', data: currentDbState })}\n\n`);
+    }
+
+    const pingInterval = setInterval(() => {
+      try {
+        res.write(': keep-alive ping\n\n');
+      } catch {
+        clearInterval(pingInterval);
+        sseClients.delete(res);
+      }
+    }, 20000);
+
+    req.on('close', () => {
+      clearInterval(pingInterval);
+      sseClients.delete(res);
+    });
   });
 
   // Users endpoint (secured with Firebase Auth token)
