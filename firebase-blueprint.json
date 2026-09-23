@@ -78,6 +78,43 @@
         "status": { "type": "string", "description": "Status shift (open atau closed)" }
       },
       "required": ["id", "cashierId", "cashierName", "startTime", "startingCash", "status"]
+    },
+    "KaosStockItem": {
+      "title": "KaosStockItem",
+      "description": "Data master stok kaos polos per warna dan ukuran",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID unik warna kaos" },
+        "color": { "type": "string", "description": "Nama warna kaos" },
+        "hex": { "type": "string", "description": "Kode warna hex" },
+        "category": { "type": "string", "description": "Kategori warna" },
+        "sizes": { "type": "object", "description": "Pemetaan ukuran ke jumlah stok" }
+      },
+      "required": ["id", "color", "hex", "sizes"]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Catatan log mutasi stok barang masuk atau keluar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID unik mutasi" },
+        "productId": { "type": "string", "description": "ID produk terkait" },
+        "type": { "type": "string", "description": "Tipe mutasi: IN, OUT, ADJUST, RETURN" },
+        "qty": { "type": "number", "description": "Jumlah kuantitas mutasi" },
+        "date": { "type": "string", "description": "Tanggal dan waktu mutasi" }
+      },
+      "required": ["id", "productId", "type", "qty", "date"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Data kontak dan profil pelanggan toko",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID unik pelanggan" },
+        "name": { "type": "string", "description": "Nama pelanggan" },
+        "phone": { "type": "string", "description": "Nomor WhatsApp atau telepon" }
+      },
+      "required": ["id", "name"]
     }
   },
   "firestore": {
@@ -96,6 +133,18 @@
     "/shifts/{shiftId}": {
       "schema": "CashierShift",
       "description": "Laporan rekonsiliasi dan log pergantian shift kasir"
+    },
+    "/kaosStocks/{stockId}": {
+      "schema": "KaosStockItem",
+      "description": "Stok kaos per varian warna dan ukuran"
+    },
+    "/stockMovements/{movementId}": {
+      "schema": "StockMovement",
+      "description": "Riwayat mutasi stok barang"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Database pelanggan toko"
     }
   }
 }

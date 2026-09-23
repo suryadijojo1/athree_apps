@@ -20,9 +20,10 @@ import { User as FirebaseUser } from 'firebase/auth';
 import {
   signInWithGoogleFirebase,
   signOutFirebase,
-  syncAllLocalDataToFirestore
+  syncAllLocalDataToFirestore,
+  fetchAllDataFromFirestore
 } from '../services/firebase';
-import { Product, Transaction, CashFlowRecord, CashierShift } from '../types';
+import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, Customer } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 interface FirebaseSyncModalProps {
@@ -35,7 +36,17 @@ interface FirebaseSyncModalProps {
   transactions: Transaction[];
   cashFlowRecords: CashFlowRecord[];
   shifts: CashierShift[];
+  kaosStocks?: KaosStockItem[];
+  customers?: Customer[];
   onManualSyncSuccess: () => void;
+  onApplyCloudData?: (cloudData: {
+    products: Product[];
+    transactions: Transaction[];
+    cashFlowRecords: CashFlowRecord[];
+    shifts: CashierShift[];
+    kaosStocks?: KaosStockItem[];
+    customers?: Customer[];
+  }) => void;
 }
 
 export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
@@ -48,7 +59,10 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
   transactions,
   cashFlowRecords,
   shifts,
-  onManualSyncSuccess
+  kaosStocks,
+  customers,
+  onManualSyncSuccess,
+  onApplyCloudData
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError?: boolean } | null>(null);
@@ -93,14 +107,46 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
         products,
         transactions,
         cashFlowRecords,
-        shifts
+        shifts,
+        kaosStocks,
+        customers
       });
       setStatusMessage({
-        text: `Sukses sinkronisasi ke Cloud Firestore! (${res.productsCount} produk, ${res.transactionsCount} transaksi, ${res.cashFlowCount} arus kas)`
+        text: `Sukses mengunggah ke Cloud Firestore! (${res.productsCount} produk, ${res.transactionsCount} transaksi, ${res.cashFlowCount} arus kas, ${res.kaosCount} kaos)`
       });
       onManualSyncSuccess();
     } catch (err: any) {
       setStatusMessage({ text: err.message || 'Gagal mengunggah data ke Firestore', isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    if (!firebaseUser) {
+      setStatusMessage({ text: 'Silakan login dengan Google terlebih dahulu untuk mengunduh data dari cloud.', isError: true });
+      return;
+    }
+    setIsProcessing(true);
+    setStatusMessage(null);
+    try {
+      const cloudData = await fetchAllDataFromFirestore();
+      if (cloudData.products.length === 0 && cloudData.transactions.length === 0) {
+        setStatusMessage({
+          text: 'Database Cloud Firestore masih kosong. Silakan buka browser asal Anda lalu klik "Unggah ke Cloud" terlebih dahulu.',
+          isError: true
+        });
+        return;
+      }
+      if (onApplyCloudData) {
+        onApplyCloudData(cloudData);
+      }
+      setStatusMessage({
+        text: `Sukses menyamakan data dari Cloud! (${cloudData.products.length} produk, ${cloudData.transactions.length} transaksi, ${cloudData.kaosStocks.length} kaos berhasil dimuat di browser ini)`
+      });
+      onManualSyncSuccess();
+    } catch (err: any) {
+      setStatusMessage({ text: err.message || 'Gagal mengambil data dari Firestore', isError: true });
     } finally {
       setIsProcessing(false);
     }
@@ -275,12 +321,33 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
               >
                 <UploadCloud className="w-4 h-4" />
                 <span>
-                  {isProcessing ? 'Mengunggah...' : 'Unggah & Sinkronkan Seluruh Data Lokal ke Firestore'}
+                  {isProcessing ? 'Mengunggah...' : '1. Unggah & Sinkronkan Data Lokal ke Cloud (Browser Utama)'}
                 </span>
               </button>
+
+              <button
+                onClick={handlePullFromCloud}
+                disabled={isProcessing || isSyncing || !firebaseUser}
+                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                <DownloadCloud className="w-4 h-4" />
+                <span>
+                  {isProcessing ? 'Mengunduh...' : '2. Tarik & Samakan Data dari Cloud ke Browser Ini'}
+                </span>
+              </button>
+
+              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+                <span className="font-bold block mb-1">💡 Solusi Perbedaan Data Antar-Browser:</span>
+                Browser (seperti Chrome, Edge, atau jendela Private/Incognito) memiliki penyimpanan lokal terpisah. Agar data di browser lain sama persis:
+                <ol className="list-decimal pl-4 mt-1 space-y-0.5 text-amber-800">
+                  <li>Di browser lama/utama yang datanya lengkap: Klik <b>Unggah Data ke Cloud</b>.</li>
+                  <li>Di browser baru/lain: Buka menu ini, lalu klik <b>Tarik & Samakan Data dari Cloud</b>.</li>
+                </ol>
+              </div>
+
               {!firebaseUser && (
                 <p className="text-[11px] text-slate-500 text-center">
-                  * Login Google diperlukan untuk mengunggah ke database Firestore.
+                  * Login Google diperlukan untuk mengunggah atau mengunduh dari Cloud Firestore.
                 </p>
               )}
             </div>

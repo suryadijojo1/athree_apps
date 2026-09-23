@@ -78,5 +78,35 @@ service cloud.firestore {
         && incoming().id == existing().id;
       allow delete: if isSignedIn() && isValidId(shiftId);
     }
+
+    // Kaos Stocks Collection
+    match /kaosStocks/{stockId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(stockId)
+        && incoming().id is string;
+      allow update: if isSignedIn() && isValidId(stockId)
+        && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(stockId);
+    }
+
+    // Stock Movements Collection
+    match /stockMovements/{movementId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(movementId)
+        && incoming().id is string;
+      allow update: if isSignedIn() && isValidId(movementId)
+        && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(movementId);
+    }
+
+    // Customers Collection
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(customerId)
+        && incoming().id is string;
+      allow update: if isSignedIn() && isValidId(customerId)
+        && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(customerId);
+    }
   }
 }

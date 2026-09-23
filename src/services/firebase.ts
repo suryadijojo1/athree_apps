@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   GoogleAuthProvider,
@@ -18,10 +18,11 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Product, Transaction, CashFlowRecord, CashierShift } from '../types';
+import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, StockMovement, Customer } from '../types';
+import { getDocs } from 'firebase/firestore';
 
 // Initialize Firebase with exact config and database ID
-export const app = initializeApp(firebaseConfig);
+export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-aplikasikasirman-c4020c71-4153-4487-b4fc-621dc809ce75');
 export const auth = getAuth(app);
 
@@ -76,11 +77,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Connection test on boot as required by skill guidelines
 export async function testConnection(): Promise<boolean> {
   try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return false;
+    }
     await getDocFromServer(doc(db, 'test', 'connection'));
     return true;
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration: client is offline.');
+      console.warn('Firebase Firestore is operating in offline/local cache mode.');
+    } else {
+      console.warn('Firebase Firestore connection check:', error instanceof Error ? error.message : error);
     }
     return false;
   }
@@ -263,13 +269,85 @@ export async function saveShiftToFirestore(shift: CashierShift): Promise<void> {
   }
 }
 
+// Kaos Stocks Subscription
+export function subscribeToKaosStocks(
+  onData: (stocks: KaosStockItem[]) => void,
+  onError?: (err: any) => void
+) {
+  const path = 'kaosStocks';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const items: KaosStockItem[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as KaosStockItem);
+      });
+      onData(items);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.GET, path);
+      } catch (e) {
+        if (onError) onError(e);
+      }
+    }
+  );
+}
+
+// Fetch all collections from Firestore
+export async function fetchAllDataFromFirestore(): Promise<{
+  products: Product[];
+  transactions: Transaction[];
+  cashFlowRecords: CashFlowRecord[];
+  shifts: CashierShift[];
+  kaosStocks: KaosStockItem[];
+  customers: Customer[];
+}> {
+  const results = {
+    products: [] as Product[],
+    transactions: [] as Transaction[],
+    cashFlowRecords: [] as CashFlowRecord[],
+    shifts: [] as CashierShift[],
+    kaosStocks: [] as KaosStockItem[],
+    customers: [] as Customer[]
+  };
+
+  try {
+    const prodSnap = await getDocs(collection(db, 'products'));
+    prodSnap.forEach((d) => results.products.push(d.data() as Product));
+
+    const txSnap = await getDocs(collection(db, 'transactions'));
+    txSnap.forEach((d) => results.transactions.push(d.data() as Transaction));
+    results.transactions.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+
+    const cfSnap = await getDocs(collection(db, 'cashFlowRecords'));
+    cfSnap.forEach((d) => results.cashFlowRecords.push(d.data() as CashFlowRecord));
+    results.cashFlowRecords.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+
+    const shiftSnap = await getDocs(collection(db, 'shifts'));
+    shiftSnap.forEach((d) => results.shifts.push(d.data() as CashierShift));
+
+    const kaosSnap = await getDocs(collection(db, 'kaosStocks'));
+    kaosSnap.forEach((d) => results.kaosStocks.push(d.data() as KaosStockItem));
+
+    const custSnap = await getDocs(collection(db, 'customers'));
+    custSnap.forEach((d) => results.customers.push(d.data() as Customer));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'batch-fetch');
+  }
+
+  return results;
+}
+
 // Batch Sync Local Data to Firestore
 export async function syncAllLocalDataToFirestore(data: {
   products: Product[];
   transactions: Transaction[];
   cashFlowRecords: CashFlowRecord[];
   shifts: CashierShift[];
-}): Promise<{ productsCount: number; transactionsCount: number; cashFlowCount: number }> {
+  kaosStocks?: KaosStockItem[];
+  customers?: Customer[];
+}): Promise<{ productsCount: number; transactionsCount: number; cashFlowCount: number; kaosCount: number }> {
   const batch = writeBatch(db);
 
   // Add products (up to batch limit)
@@ -294,6 +372,20 @@ export async function syncAllLocalDataToFirestore(data: {
     count++;
   }
 
+  if (data.kaosStocks) {
+    for (const k of data.kaosStocks.slice(0, 50)) {
+      batch.set(doc(db, 'kaosStocks', k.id), k);
+      count++;
+    }
+  }
+
+  if (data.customers) {
+    for (const cust of data.customers.slice(0, 50)) {
+      batch.set(doc(db, 'customers', cust.id), cust);
+      count++;
+    }
+  }
+
   if (count > 0) {
     try {
       await batch.commit();
@@ -305,6 +397,7 @@ export async function syncAllLocalDataToFirestore(data: {
   return {
     productsCount: data.products.length,
     transactionsCount: data.transactions.length,
-    cashFlowCount: data.cashFlowRecords.length
+    cashFlowCount: data.cashFlowRecords.length,
+    kaosCount: data.kaosStocks ? data.kaosStocks.length : 0
   };
 }

@@ -41,6 +41,9 @@ import { ParsedImportProduct } from './components/ImportProductsModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { GoogleDriveView } from './components/GoogleDriveView';
 import { KaosStockManagementView } from './components/KaosStockManagementView';
+import { FirebaseSyncModal } from './components/FirebaseSyncModal';
+import { subscribeToAuth, testConnection } from './services/firebase';
+import { User as FirebaseUser } from 'firebase/auth';
 
 export default function App() {
   // Persistence via localStorage
@@ -231,6 +234,58 @@ export default function App() {
   const [successTx, setSuccessTx] = useState<Transaction | null>(null);
   const [revisingTx, setRevisingTx] = useState<Transaction | null>(null);
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
+
+  // Firebase Cloud Sync State
+  const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    testConnection().then((connected) => {
+      setIsFirebaseConnected(connected);
+    });
+    const unsubscribe = subscribeToAuth((user) => {
+      setFirebaseUser(user);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  const handleApplyCloudData = (cloudData: {
+    products: Product[];
+    transactions: Transaction[];
+    cashFlowRecords: CashFlowRecord[];
+    shifts: CashierShift[];
+    kaosStocks?: KaosStockItem[];
+    customers?: Customer[];
+  }) => {
+    if (cloudData.products && cloudData.products.length > 0) {
+      setProducts(cloudData.products);
+      localStorage.setItem('athree_products', JSON.stringify(cloudData.products));
+    }
+    if (cloudData.transactions && cloudData.transactions.length > 0) {
+      setTransactions(cloudData.transactions);
+      localStorage.setItem('athree_transactions', JSON.stringify(cloudData.transactions));
+    }
+    if (cloudData.cashFlowRecords && cloudData.cashFlowRecords.length > 0) {
+      setCashFlowRecords(cloudData.cashFlowRecords);
+      localStorage.setItem('athree_cash_flow', JSON.stringify(cloudData.cashFlowRecords));
+    }
+    if (cloudData.shifts && cloudData.shifts.length > 0) {
+      setShiftHistory(cloudData.shifts);
+      localStorage.setItem('athree_shift_history', JSON.stringify(cloudData.shifts));
+    }
+    if (cloudData.kaosStocks && cloudData.kaosStocks.length > 0) {
+      setKaosStocks(cloudData.kaosStocks);
+      localStorage.setItem('athree_kaos_stocks', JSON.stringify(cloudData.kaosStocks));
+    }
+    if (cloudData.customers && cloudData.customers.length > 0) {
+      setCustomers(cloudData.customers);
+      localStorage.setItem('athree_customers', JSON.stringify(cloudData.customers));
+    }
+  };
 
   // User management handlers
   const handleUpdateUser = (updatedUser: User) => {
@@ -1129,6 +1184,9 @@ export default function App() {
           onScanBarcodePrompt={handleBarcodePrompt}
           onGoToAdminDashboard={() => setActiveTab('dashboard')}
           onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
+          onOpenFirebaseModal={() => setIsFirebaseModalOpen(true)}
+          isFirebaseConnected={isFirebaseConnected}
+          firebaseUser={firebaseUser}
         />
 
         {/* Dynamic Views */}
@@ -1323,6 +1381,22 @@ export default function App() {
         onUpdateUser={handleUpdateUser}
         onAddUser={handleAddUser}
         onDeleteUser={handleDeleteUser}
+      />
+
+      <FirebaseSyncModal
+        isOpen={isFirebaseModalOpen}
+        onClose={() => setIsFirebaseModalOpen(false)}
+        firebaseUser={firebaseUser}
+        isConnected={isFirebaseConnected}
+        isSyncing={isSyncing}
+        products={products}
+        transactions={transactions}
+        cashFlowRecords={cashFlowRecords}
+        shifts={shiftHistory}
+        kaosStocks={kaosStocks}
+        customers={customers}
+        onManualSyncSuccess={() => {}}
+        onApplyCloudData={handleApplyCloudData}
       />
     </div>
   );
