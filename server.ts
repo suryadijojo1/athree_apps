@@ -251,6 +251,23 @@ async function startServer() {
     }
   });
 
+  // Clear session endpoint: Invalidate cookies and clear browser cache
+  app.post('/api/clear-session', (req, res) => {
+    try {
+      res.clearCookie('connect.sid', { path: '/' });
+      res.clearCookie('token', { path: '/' });
+      res.clearCookie('session', { path: '/' });
+      res.clearCookie('auth', { path: '/' });
+      res.setHeader('Clear-Site-Data', '"cache", "cookies"');
+      res.json({
+        success: true,
+        message: 'Cache & cookies cleared successfully'
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Get active 14-day backup snapshots list
   app.get('/api/database/backups', (req, res) => {
     try {

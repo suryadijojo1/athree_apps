@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame } from 'lucide-react';
+import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame, RotateCcw } from 'lucide-react';
 import { User, CashierShift } from '../types';
 
 interface HeaderProps {
@@ -12,6 +12,7 @@ interface HeaderProps {
   onScanBarcodePrompt: () => void;
   onGoToAdminDashboard?: () => void;
   onLogout?: () => void;
+  onRefreshAndClearCache?: () => void;
   onOpenUserManagement?: () => void;
   onOpenFirebaseModal?: () => void;
   isFirebaseConnected?: boolean;
@@ -28,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   onScanBarcodePrompt,
   onGoToAdminDashboard,
   onLogout,
+  onRefreshAndClearCache,
   onOpenUserManagement,
   onOpenFirebaseModal,
   isFirebaseConnected,
@@ -284,6 +286,24 @@ export const Header: React.FC<HeaderProps> = ({
                         <span>Kelola &amp; Ubah Nama User</span>
                       </span>
                       <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-semibold">Admin</span>
+                    </button>
+                  )}
+
+                  {onRefreshAndClearCache && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onRefreshAndClearCache();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-100 flex items-center justify-between cursor-pointer border-t border-slate-100"
+                      title="Refresh aplikasi, bersihkan cache &amp; cookies, dan logout otomatis"
+                    >
+                      <span className="flex items-center gap-2">
+                        <RotateCcw className="w-4 h-4 text-slate-500" />
+                        <span>Refresh &amp; Hapus Cache</span>
+                      </span>
+                      <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">F5</span>
                     </button>
                   )}
 

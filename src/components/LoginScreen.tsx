@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User as UserIcon, Lock, Layers, Check, AlertCircle, Clock, ShieldCheck } from 'lucide-react';
+import { User as UserIcon, Lock, Layers, Check, AlertCircle, Clock, ShieldCheck, RefreshCw } from 'lucide-react';
 import { User } from '../types';
 import welcomeBg from '../assets/images/kang_sablon_mascot_1789898387552.jpg';
 
@@ -105,21 +105,41 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
             </div>
 
-            {/* Inactivity / 1-Hour Timeout Notice */}
+            {/* Inactivity / 1-Hour Timeout / Refresh Auto-Logout Notice */}
             {sessionTimeoutNotice && (
-              <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-2xl text-xs text-amber-900 space-y-1 relative animate-in fade-in duration-150">
-                <div className="flex items-center gap-1.5 font-bold text-amber-950">
-                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Sesi Berakhir Otomatis (1 Jam)</span>
+              <div
+                className={`mb-4 p-3.5 rounded-2xl text-xs space-y-1 relative animate-in fade-in duration-150 border ${
+                  sessionTimeoutNotice.toLowerCase().includes('refresh')
+                    ? 'bg-blue-50 border-blue-300 text-blue-950'
+                    : 'bg-amber-50 border-amber-300 text-amber-900'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-bold">
+                  {sessionTimeoutNotice.toLowerCase().includes('refresh') ? (
+                    <RefreshCw className="w-4 h-4 text-blue-600 shrink-0" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  )}
+                  <span>
+                    {sessionTimeoutNotice.toLowerCase().includes('refresh')
+                      ? 'Auto-Logout: Halaman Di-Refresh'
+                      : 'Sesi Berakhir Otomatis (1 Jam)'}
+                  </span>
                 </div>
-                <p className="text-[11px] text-amber-800 leading-relaxed">
+                <p className="text-[11px] leading-relaxed opacity-90">
                   {sessionTimeoutNotice}
                 </p>
+                {sessionTimeoutNotice.toLowerCase().includes('refresh') && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-blue-700 font-semibold mt-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Cache &amp; cookies browser telah dibersihkan secara aman</span>
+                  </div>
+                )}
                 {onClearTimeoutNotice && (
                   <button
                     type="button"
                     onClick={onClearTimeoutNotice}
-                    className="text-[10px] text-amber-700 underline font-semibold mt-1 cursor-pointer block hover:text-amber-900"
+                    className="text-[10px] underline font-semibold mt-1.5 cursor-pointer block opacity-75 hover:opacity-100"
                   >
                     Tutup pemberitahuan ini
                   </button>

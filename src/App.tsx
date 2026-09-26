@@ -82,6 +82,12 @@ import {
   AppDatabasePayload
 } from './services/serverSync';
 import { User as FirebaseUser } from 'firebase/auth';
+import {
+  isPageRefreshed,
+  clearAllCachesAndCookies,
+  markPageForRefresh,
+  clearRefreshMark
+} from './utils/sessionCleaner';
 
 export default function App() {
   // Persistence via localStorage
@@ -106,7 +112,22 @@ export default function App() {
   // 1 Hour Inactivity / Unopened Timeout (1 Jam = 3.600.000 ms)
   const ONE_HOUR_TIMEOUT_MS = 60 * 60 * 1000;
 
+  // Cek apakah halaman baru saja di-refresh (F5 / tombol reload browser)
+  // Sesuai aturan: jika aplikasi di-refresh maka otomatis terlogout & bersihkan cache & cookies
+  const isRefreshed = isPageRefreshed();
+  if (isRefreshed) {
+    clearRefreshMark();
+    localStorage.setItem('athree_is_authenticated', 'false');
+    const refreshNotice =
+      'Aplikasi baru saja di-refresh. Anda telah otomatis terlogout demi keamanan kasir, serta seluruh cache dan cookies browser telah dibersihkan.';
+    localStorage.setItem('athree_timeout_notice', refreshNotice);
+    clearAllCachesAndCookies().catch(() => {});
+  }
+
   const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(() => {
+    if (isRefreshed) {
+      return 'Aplikasi baru saja di-refresh. Anda telah otomatis terlogout demi keamanan kasir, serta seluruh cache dan cookies browser telah dibersihkan.';
+    }
     return localStorage.getItem('athree_timeout_notice') || null;
   });
 
@@ -115,17 +136,22 @@ export default function App() {
     localStorage.removeItem('athree_timeout_notice');
   };
 
-  // Authentication state (Cek apakah aplikasi tidak terbuka atau tidak aktif selama 1 jam)
+  // Authentication state (Cek apakah aplikasi di-refresh atau tidak terbuka/tidak aktif selama 1 jam)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (isRefreshed) {
+      return false;
+    }
+
     const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
     if (!isAuth) return false;
 
     const lastActive = Number(localStorage.getItem('athree_last_active_time') || 0);
-    if (lastActive > 0 && Date.now() - lastActive >= 60 * 60 * 1000) {
+    if (lastActive > 0 && Date.now() - lastActive >= ONE_HOUR_TIMEOUT_MS) {
       // Lebih dari 1 jam tidak dibuka / tidak aktif -> otomatis logout
       localStorage.setItem('athree_is_authenticated', 'false');
       const notice = 'Sesi Anda telah keluar otomatis karena aplikasi tidak dibuka / tidak aktif selama lebih dari 1 jam. Seluruh database penjualan telah otomatis tersimpan aman di Cloud & Server.';
       localStorage.setItem('athree_timeout_notice', notice);
+      clearAllCachesAndCookies().catch(() => {});
       return false;
     }
     return true;
@@ -809,6 +835,45 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [products, categories, transactions, cashFlowRecords, shiftHistory, kaosStocks, stockMovements, customers, users, salesList]);
 
+  // Tangkap refresh & unload browser: tandai refresh dan simpan snapshot via sendBeacon agar tidak ada data hilang
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      try {
+        markPageForRefresh();
+        const currentState = latestStateRef.current;
+        if (currentState && currentState.transactions) {
+          const payload = {
+            products: currentState.products,
+            categories: currentState.categories,
+            transactions: currentState.transactions,
+            cashFlowRecords: currentState.cashFlowRecords,
+            shiftHistory: currentState.shiftHistory,
+            kaosStocks: currentState.kaosStocks,
+            stockMovements: currentState.stockMovements,
+            customers: currentState.customers,
+            users: currentState.users,
+            salesList: currentState.salesList,
+            lastUpdated: new Date().toISOString(),
+            isRealData: isRealUserData(currentState.transactions),
+            savedBy: 'Auto-Save (Page Refresh / Unload)',
+            source: 'page_refresh'
+          };
+          const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon('/api/database/save-all', blob);
+          }
+        }
+      } catch (err) {
+        console.warn('Beacon save error during unload:', err);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
+
   const handleApplyCloudData = (cloudData: {
     products: Product[];
     transactions: Transaction[];
@@ -1112,6 +1177,7 @@ export default function App() {
       console.warn('Logout cloud save warning:', err);
       localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(latestStateRef.current.transactions));
     } finally {
+      await clearAllCachesAndCookies().catch(() => {});
       setIsAuthenticated(false);
       localStorage.setItem('athree_is_authenticated', 'false');
       setIsLoginModalOpen(false);
@@ -1145,6 +1211,7 @@ export default function App() {
     } catch (err) {
       console.warn('Auto timeout save warning:', err);
     } finally {
+      await clearAllCachesAndCookies().catch(() => {});
       setIsAuthenticated(false);
       localStorage.setItem('athree_is_authenticated', 'false');
       const notice = 'Sesi Anda telah keluar otomatis karena aplikasi tidak dibuka / tidak ada aktivitas selama 1 jam. Seluruh database penjualan telah otomatis tersimpan aman di Cloud Firestore & Server Pusat.';
@@ -1156,6 +1223,35 @@ export default function App() {
       setIsLoggingOut(false);
       setLogoutSuccess(false);
       isAutoLoggingOutRef.current = false;
+    }
+  };
+
+  // Handler: Manual Refresh & Bersihkan Cache & Cookies (Auto-Logout)
+  const handleRefreshAndClearCache = async () => {
+    setIsLoggingOut(true);
+    setLogoutSuccess(false);
+    setLogoutStep('Menyimpan data penjualan sebelum refresh...');
+
+    try {
+      markPageForRefresh();
+      await executeFullCloudDatabaseSave(
+        `${currentUser?.name || 'Kasir'} (Refresh & Hapus Cache)`,
+        'manual_refresh_clear_cache',
+        (step) => setLogoutStep(step)
+      );
+      setLogoutSuccess(true);
+      setLogoutStep('Membersihkan cache & cookies browser...');
+      await new Promise((r) => setTimeout(r, 400));
+      await clearAllCachesAndCookies();
+      localStorage.setItem('athree_is_authenticated', 'false');
+      localStorage.setItem(
+        'athree_timeout_notice',
+        'Aplikasi baru saja di-refresh. Anda telah otomatis terlogout demi keamanan kasir, serta seluruh cache dan cookies browser telah dibersihkan.'
+      );
+    } catch (err) {
+      console.warn('Error during manual refresh and clear cache:', err);
+    } finally {
+      window.location.reload();
     }
   };
 
@@ -2094,6 +2190,7 @@ export default function App() {
           onOpenShiftModal={handleOpenShiftModal}
           onSwitchUser={() => setIsLoginModalOpen(true)}
           onLogout={handleLogout}
+          onRefreshAndClearCache={handleRefreshAndClearCache}
           shift={shift}
           onScanBarcodePrompt={handleBarcodePrompt}
           onGoToAdminDashboard={() => setActiveTab('dashboard')}
