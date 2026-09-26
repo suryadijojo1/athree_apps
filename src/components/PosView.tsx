@@ -461,7 +461,7 @@ export const PosView: React.FC<PosViewProps> = ({
                 <span className={`w-2 h-2 rounded-full shrink-0 ${shift.isOpen ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                 <div className="truncate">
                   <span className="font-bold">
-                    {shift.isOpen ? `Shift #${shift.shiftNumber || 2} Aktif` : 'Shift Tutup'}
+                    {shift.isOpen ? 'Shift Harian Aktif' : 'Shift Tutup'}
                   </span>
                   {shift.isOpen && shift.startTime && (
                     <span className="text-[11px] text-slate-500 ml-1.5 hidden sm:inline">

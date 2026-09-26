@@ -225,9 +225,36 @@ export default function App() {
 
   const [shift, setShift] = useState<CashierShift>(() => {
     const saved = localStorage.getItem('athree_shift');
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayFormatted = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+
     if (saved) {
       try {
         const parsed: CashierShift = JSON.parse(saved);
+        // Cek apakah shift ini dari hari ini (bukan sesi lama yang tertinggal dari hari/minggu kemarin)
+        const isFromToday = parsed.startTimestamp
+          ? new Date(parsed.startTimestamp).toISOString().slice(0, 10) === todayIso
+          : parsed.startTime?.includes(todayFormatted);
+
+        if (!isFromToday) {
+          // Hilangkan sesi lama: otomatis buat shift harian bersih khusus hari ini
+          return {
+            id: `shift-${todayIso}`,
+            shiftNumber: 1,
+            outletName: parsed.outletName || 'Athree Studio Jayapura',
+            cashierName: parsed.cashierName || 'DIMAS',
+            startTime: `${todayFormatted}, 08:00`,
+            startTimestamp: Date.now(),
+            startingCash: parsed.startingCash || 500000,
+            cashSales: 0,
+            nonCashSales: 0,
+            totalSales: 0,
+            expectedCash: parsed.startingCash || 500000,
+            isOpen: true,
+            notes: `Shift Harian Aktif - ${todayFormatted}`
+          };
+        }
+
         if (
           parsed.isOpen &&
           (parsed.cashSales === 490000 || (parsed.cashSales === 130000 && parsed.nonCashSales === 9125000))
@@ -243,10 +270,38 @@ export default function App() {
         }
         return parsed;
       } catch {
-        return INITIAL_SHIFT;
+        return {
+          id: `shift-${todayIso}`,
+          shiftNumber: 1,
+          outletName: 'Athree Studio Jayapura',
+          cashierName: 'DIMAS',
+          startTime: `${todayFormatted}, 08:00`,
+          startTimestamp: Date.now(),
+          startingCash: 500000,
+          cashSales: 0,
+          nonCashSales: 0,
+          totalSales: 0,
+          expectedCash: 500000,
+          isOpen: true,
+          notes: `Shift Harian Aktif - ${todayFormatted}`
+        };
       }
     }
-    return INITIAL_SHIFT;
+    return {
+      id: `shift-${todayIso}`,
+      shiftNumber: 1,
+      outletName: 'Athree Studio Jayapura',
+      cashierName: 'DIMAS',
+      startTime: `${todayFormatted}, 08:00`,
+      startTimestamp: Date.now(),
+      startingCash: 500000,
+      cashSales: 0,
+      nonCashSales: 0,
+      totalSales: 0,
+      expectedCash: 500000,
+      isOpen: true,
+      notes: `Shift Harian Aktif - ${todayFormatted}`
+    };
   });
 
   const [shiftHistory, setShiftHistory] = useState<CashierShift[]>(() => {
@@ -867,6 +922,46 @@ export default function App() {
     setShiftHistory((prev) => [closedShift, ...prev]);
     saveShiftToFirestore(closedShift).catch((err) => console.warn('Sync shift error:', err));
   };
+
+  // Auto-rollover shift jika berganti hari (hilangkan shift per sesi agar tidak menghitung dari waktu yang lama)
+  useEffect(() => {
+    const checkDailyShiftRollover = () => {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const todayFormatted = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+      if (shift && shift.isOpen) {
+        const shiftDateIso = shift.startTimestamp
+          ? new Date(shift.startTimestamp).toISOString().slice(0, 10)
+          : null;
+        if (shiftDateIso && shiftDateIso !== todayIso) {
+          // Shift dari hari kemarin/lama -> arsipkan jika ada omzet dan buka shift harian bersih hari ini
+          if (shift.totalSales > 0 || (shift.actualCash !== undefined && shift.actualCash > 0)) {
+            const archived = { ...shift, isOpen: false, endTime: `${shift.startTime} (Auto Rollover)` };
+            setShiftHistory((prev) => [archived, ...prev]);
+            saveShiftToFirestore(archived).catch(() => {});
+          }
+          setShift({
+            id: `shift-${todayIso}`,
+            shiftNumber: 1,
+            outletName: shift.outletName || 'Athree Studio Jayapura',
+            cashierName: currentUser?.name || shift.cashierName || 'DIMAS',
+            startTime: `${todayFormatted}, 08:00`,
+            startTimestamp: Date.now(),
+            startingCash: shift.startingCash || 500000,
+            cashSales: 0,
+            nonCashSales: 0,
+            totalSales: 0,
+            expectedCash: shift.startingCash || 500000,
+            isOpen: true,
+            notes: `Shift Harian Otomatis - ${todayFormatted}`
+          });
+        }
+      }
+    };
+
+    checkDailyShiftRollover();
+    const interval = setInterval(checkDailyShiftRollover, 60000); // Cek tiap 1 menit
+    return () => clearInterval(interval);
+  }, [shift, currentUser?.name]);
 
   useEffect(() => {
     localStorage.setItem('athree_cash_flow', JSON.stringify(cashFlowRecords));

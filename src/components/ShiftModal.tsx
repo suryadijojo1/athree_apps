@@ -173,49 +173,57 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
   // Calculate live shift statistics strictly isolated to THIS active shift
   const shiftStats = useMemo(() => {
-    // Determine shift timeframe boundaries
-    const shiftStart = shift.startTimestamp || parseDateString(shift.startTime);
-    const shiftEnd = shift.endTimestamp || (shift.endTime ? parseDateString(shift.endTime) : null);
+    // Tentukan tanggal hari ini (ISO: YYYY-MM-DD)
+    const todayIso = new Date().toISOString().slice(0, 10);
 
-    // Filter transactions belonging STRICTLY to this shift
+    // Filter transaksi: Hapus akumulasi sesi lama!
+    // Untuk shift aktif (isOpen), HANYA hitung transaksi hari ini (todayIso).
+    // Transaksi dari hari-hari sebelumnya TIDAK dihitung ke dalam shift hari ini.
     const shiftTransactions = transactions.filter((t) => {
-      // 1. Matched by shiftId
-      if (t.shiftId) {
-        return t.shiftId === shift.id;
-      }
-      // 2. If transaction does not have shiftId, check timestamp against shift start and end
-      const txTime = parseDateString(t.createdAt || t.date);
-      if (shiftStart && txTime) {
-        if (txTime < shiftStart - 60000) return false;
-        if (shiftEnd && txTime > shiftEnd + 60000) return false;
+      if (t.status === 'BATAL') return false;
+
+      const txDate = t.date || (t.createdAt ? t.createdAt.slice(0, 10) : '');
+
+      if (shift.isOpen) {
+        // Shift aktif: HANYA transaksi HARI INI
+        if (!txDate.startsWith(todayIso)) {
+          return false;
+        }
+        // Jika ada shiftId, cocokkan atau jika dibuat hari ini tetap dihitung
+        if (t.shiftId) {
+          return t.shiftId === shift.id || t.shiftId.includes(todayIso);
+        }
         return true;
       }
-      // 3. Fallback: if shift is open and created today, match same day string
-      if (shift.isOpen && t.date) {
-        const todayIso = new Date().toISOString().slice(0, 10);
-        return t.date.startsWith(todayIso);
+
+      // Untuk shift yang sudah ditutup (history/closed summary):
+      if (t.shiftId && t.shiftId === shift.id) {
+        return true;
+      }
+      const shiftStart = shift.startTimestamp || parseDateString(shift.startTime);
+      const shiftEnd = shift.endTimestamp || (shift.endTime ? parseDateString(shift.endTime) : null);
+      if (shiftStart && shiftEnd) {
+        const txTime = parseDateString(t.createdAt || t.date);
+        if (txTime && txTime >= shiftStart - 60000 && txTime <= shiftEnd + 60000) {
+          return true;
+        }
       }
       return false;
     });
 
-    // Filter cash flow records belonging STRICTLY to this shift
+    // Filter cash flow records: HANYA hari ini untuk shift aktif
     const shiftCashFlows = cashFlowRecords.filter((c) => {
-      // 1. Matched by shiftId
-      if (c.shiftId) {
-        return c.shiftId === shift.id;
-      }
-      // 2. If no shiftId, check timestamp
-      const flowTime = parseDateString(c.createdAt || c.date);
-      if (shiftStart && flowTime) {
-        if (flowTime < shiftStart - 60000) return false;
-        if (shiftEnd && flowTime > shiftEnd + 60000) return false;
+      const cDate = c.date || (c.createdAt ? c.createdAt.slice(0, 10) : '');
+      if (shift.isOpen) {
+        if (!cDate.startsWith(todayIso)) {
+          return false;
+        }
+        if (c.shiftId) {
+          return c.shiftId === shift.id || c.shiftId.includes(todayIso);
+        }
         return true;
       }
-      // 3. Fallback: if shift is open, match same day string
-      if (shift.isOpen && c.date) {
-        const todayIso = new Date().toISOString().slice(0, 10);
-        return c.date.startsWith(todayIso);
-      }
+      if (c.shiftId && c.shiftId === shift.id) return true;
       return false;
     });
 
@@ -1431,12 +1439,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 <div className="flex items-center gap-2.5">
                   <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
                   <div>
-                    <span className="text-xs font-bold text-emerald-900 block">Shift Sedang Aktif</span>
-                    <span className="text-[11px] text-emerald-700">Dimulai sejak {shift.startTime}</span>
+                    <span className="text-xs font-bold text-emerald-900 block">Shift Harian Aktif (Hari Ini)</span>
+                    <span className="text-[11px] text-emerald-700">Buka: {shift.startTime} &bull; Khusus Transaksi Hari Ini</span>
                   </div>
                 </div>
                 <span className="text-xs font-mono font-bold bg-emerald-100 text-[#00871f] px-2.5 py-1 rounded-lg">
-                  #{shift.shiftNumber || 2}
+                  Harian
                 </span>
               </div>
 
@@ -1597,7 +1605,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-800">Buka Shift Kasir Baru</h3>
-                  <p className="text-xs text-slate-500">Mulai sesi kerja kasir dan pencatatan transaksi hari ini</p>
+                  <p className="text-xs text-slate-500">Pencatatan transaksi kasir harian (khusus transaksi hari ini)</p>
                 </div>
               </div>
               <button

@@ -129,7 +129,7 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <span className="text-[10px] font-semibold text-emerald-200 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Shift #{shift.shiftNumber || 2} Aktif
+                Shift Harian Aktif
               </span>
               <span className="text-[11px] text-white group-hover:text-emerald-100 font-medium">
                 Buka: {shift.startTime}
