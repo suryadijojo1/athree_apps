@@ -115,6 +115,21 @@
         "phone": { "type": "string", "description": "Nomor WhatsApp atau telepon" }
       },
       "required": ["id", "name"]
+    },
+    "DatabaseBackup": {
+      "title": "DatabaseBackup",
+      "description": "Snapshot cadangan database lengkap dengan retensi 14 hari",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID unik snapshot backup" },
+        "createdAt": { "type": "string", "description": "Waktu pembuatan snapshot" },
+        "timestamp": { "type": "number", "description": "Timestamp pembuatan snapshot" },
+        "expiresAt": { "type": "string", "description": "Waktu kadaluarsa (14 hari setelah pembuatan)" },
+        "expiresTimestamp": { "type": "number", "description": "Timestamp kadaluarsa" },
+        "savedBy": { "type": "string", "description": "Nama pengguna atau kasir yang menyimpan" },
+        "source": { "type": "string", "description": "Sumber penyimpanan (logout, manual, auto)" }
+      },
+      "required": ["id", "createdAt", "timestamp", "expiresAt", "expiresTimestamp"]
     }
   },
   "firestore": {
@@ -145,6 +160,10 @@
     "/customers/{customerId}": {
       "schema": "Customer",
       "description": "Database pelanggan toko"
+    },
+    "/databaseBackups/{backupId}": {
+      "schema": "DatabaseBackup",
+      "description": "Snapshot cadangan database penjualan dan master dengan retensi 14 hari"
     }
   }
 }

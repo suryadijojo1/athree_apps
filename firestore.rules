@@ -59,6 +59,12 @@ service cloud.firestore {
       allow write: if isValidId(userId);
     }
 
+    // Database Backups Collection (14-day rolling snapshots)
+    match /databaseBackups/{backupId} {
+      allow read: if true;
+      allow write: if isValidId(backupId);
+    }
+
     // Meta collection (sync status, heartbeat)
     match /meta/{metaDoc} {
       allow read: if true;

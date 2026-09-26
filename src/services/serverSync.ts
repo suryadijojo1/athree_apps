@@ -14,6 +14,9 @@ export interface AppDatabasePayload {
   lastUpdated: string;
   sourceClient?: string;
   isRealData: boolean;
+  deletedTransactionIds?: string[];
+  savedBy?: string;
+  source?: string;
 }
 
 // Client ID for this browser tab/session
@@ -31,12 +34,11 @@ const LEGACY_DUMMY_INVOICES = new Set([
 ]);
 
 /**
- * Checks whether a transactions list contains real user-entered or production orders
- * (e.g. #ORD/41438, #INV/82687, #ORD/86871, #INV/43814, etc.)
- * rather than the old legacy dummy mock transactions.
+ * Checks whether a transactions list contains user-entered or valid orders
+ * rather than only the old legacy dummy mock transactions.
  */
 export function isRealUserData(transactions: Transaction[]): boolean {
-  if (!transactions || transactions.length === 0) return false;
+  if (!transactions || !Array.isArray(transactions) || transactions.length === 0) return true;
   
   // If there is any non-dummy invoice, it is genuine production data
   const hasNonDummy = transactions.some((tx) => !LEGACY_DUMMY_INVOICES.has(tx.invoiceNo));
@@ -52,13 +54,14 @@ export function isRealUserData(transactions: Transaction[]): boolean {
       custName.includes('emedlugun') ||
       custName.includes('melanesia') ||
       tx.invoiceNo.startsWith('#ORD/') ||
+      tx.invoiceNo.startsWith('#INV/') ||
       (tx.notes && tx.notes.includes('Revisi oleh'))
     ) {
       return true;
     }
   }
 
-  return false;
+  return true;
 }
 
 /**
@@ -93,21 +96,27 @@ export async function fetchServerDatabase(): Promise<{
  * Save full database payload to the central Express server
  */
 export async function saveServerDatabase(
-  payload: Omit<AppDatabasePayload, 'lastUpdated' | 'sourceClient'>
+  payload: Omit<AppDatabasePayload, 'lastUpdated' | 'sourceClient'>,
+  options?: { savedBy?: string; source?: string; deletedTransactionIds?: string[] }
 ): Promise<boolean> {
   try {
     const fullPayload: AppDatabasePayload = {
       ...payload,
       lastUpdated: new Date().toISOString(),
       sourceClient: CLIENT_ID,
-      isRealData: isRealUserData(payload.transactions) || payload.isRealData
+      isRealData: true,
+      savedBy: options?.savedBy || payload.savedBy || 'Kasir',
+      source: options?.source || payload.source || 'sync',
+      deletedTransactionIds: options?.deletedTransactionIds || payload.deletedTransactionIds || []
     };
 
     const res = await fetch('/api/database/save-all', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Client-Id': CLIENT_ID
+        'X-Client-Id': CLIENT_ID,
+        'X-Saved-By': fullPayload.savedBy || 'Kasir',
+        'X-Save-Source': fullPayload.source || 'sync'
       },
       body: JSON.stringify(fullPayload)
     });
@@ -118,6 +127,59 @@ export async function saveServerDatabase(
     return true;
   } catch (err) {
     console.warn('Failed to save to central server database:', err);
+    return false;
+  }
+}
+
+/**
+ * Save dedicated backup snapshot to the server with 14-day retention
+ */
+export async function saveServerBackupSnapshot(
+  data: any,
+  savedBy: string = 'Kasir Logout',
+  source: string = 'logout'
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/database/backup-snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, savedBy, source })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Failed to save server backup snapshot:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetch 14-day server backup snapshots
+ */
+export async function fetchServerBackups(): Promise<any[]> {
+  try {
+    const res = await fetch('/api/database/backups');
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.backups || [];
+  } catch (err) {
+    console.warn('Failed to fetch server backups:', err);
+    return [];
+  }
+}
+
+/**
+ * Restore server database from a specific snapshot
+ */
+export async function restoreServerBackup(backupId: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/database/restore-backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backupId })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Failed to restore server backup:', err);
     return false;
   }
 }

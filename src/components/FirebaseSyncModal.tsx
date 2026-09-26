@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Flame,
   CheckCircle2,
@@ -8,18 +8,29 @@ import {
   LogOut,
   LogIn,
   X,
-  Server
+  Server,
+  ShieldCheck,
+  History,
+  RotateCcw,
+  Clock,
+  Sparkles
 } from 'lucide-react';
 import { User as FirebaseUser } from 'firebase/auth';
 import {
   signInWithGoogleFirebase,
   signOutFirebase,
   syncAllLocalDataToFirestore,
-  fetchAllDataFromFirestore
+  fetchAllDataFromFirestore,
+  saveCloudBackupSnapshot,
+  fetchCloudBackupSnapshots,
+  CloudBackupSnapshotMeta
 } from '../services/firebase';
 import {
   saveServerDatabase,
   fetchServerDatabase,
+  saveServerBackupSnapshot,
+  fetchServerBackups,
+  restoreServerBackup,
   isRealUserData
 } from '../services/serverSync';
 import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, Customer, User, StockMovement } from '../types';
@@ -72,10 +83,94 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [backupsList, setBackupsList] = useState<any[]>([]);
+
+  // Load backups list on open
+  useEffect(() => {
+    if (isOpen) {
+      fetchServerBackups()
+        .then((b) => {
+          if (b && b.length > 0) setBackupsList(b);
+          else {
+            fetchCloudBackupSnapshots().then((cb) => setBackupsList(cb));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const isCurrentBrowserMaster = isRealUserData(transactions);
+
+  // Create explicit 14-day snapshot
+  const handleCreate14DaySnapshot = async () => {
+    setIsProcessing(true);
+    setStatusMessage(null);
+    try {
+      const fullState = {
+        products,
+        transactions,
+        cashFlowRecords,
+        shiftHistory: shifts,
+        kaosStocks: kaosStocks || [],
+        stockMovements: stockMovements || [],
+        customers: customers || [],
+        users: users || [],
+        salesList: salesList || [],
+        isRealData: true
+      };
+
+      await saveCloudBackupSnapshot(fullState, 'Manual Sync', 'manual');
+      await saveServerBackupSnapshot(fullState, 'Manual Sync', 'manual');
+      const updated = await fetchServerBackups();
+      setBackupsList(updated);
+
+      setStatusMessage({
+        text: `Snapshot cadangan database berhasil disimpan! Tersimpan selama 14 hari penuh di Cloud & Server.`
+      });
+    } catch (err: any) {
+      setStatusMessage({ text: err.message || 'Gagal membuat snapshot', isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Restore snapshot
+  const handleRestoreSnapshot = async (backupId: string) => {
+    if (!confirm('Apakah Anda yakin ingin memulihkan database dari snapshot cadangan ini? Data saat ini akan digantikan oleh isi snapshot tersebut.')) {
+      return;
+    }
+    setIsProcessing(true);
+    setStatusMessage(null);
+    try {
+      const ok = await restoreServerBackup(backupId);
+      if (ok) {
+        const res = await fetchServerDatabase();
+        if (res.success && res.data && onApplyCloudData) {
+          onApplyCloudData({
+            products: res.data.products || [],
+            transactions: res.data.transactions || [],
+            cashFlowRecords: res.data.cashFlowRecords || [],
+            shifts: res.data.shiftHistory || [],
+            kaosStocks: res.data.kaosStocks || [],
+            customers: res.data.customers || [],
+            users: res.data.users || [],
+            stockMovements: res.data.stockMovements || [],
+            salesList: res.data.salesList || []
+          });
+        }
+        setStatusMessage({ text: `Berhasil memulihkan database dari snapshot cadangan!` });
+        onManualSyncSuccess();
+      } else {
+        throw new Error('Gagal memulihkan snapshot');
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: err.message || 'Gagal memulihkan cadangan', isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // Sync to Central Express Server
   const handlePushToServerMaster = async () => {
@@ -343,6 +438,73 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
                 <span>Tarik Data Terbaru dari Server</span>
               </button>
             </div>
+          </div>
+
+          {/* 14-Day Rolling Backup Snapshots Card */}
+          <div className="p-4 rounded-xl border bg-emerald-50/60 border-emerald-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#00871f] flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">
+                    Cadangan Cloud Otomatis (Retensi 14 Hari)
+                  </h4>
+                  <p className="text-[10px] text-slate-500">
+                    Snapshot tersimpan 14 hari penuh & otomatis dibersihkan agar database tidak menumpuk.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCreate14DaySnapshot}
+                disabled={isProcessing}
+                className="px-3 py-1.5 rounded-lg bg-[#00871f] hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Simpan Snapshot Baru</span>
+              </button>
+            </div>
+
+            {/* List of active 14-day backups */}
+            {backupsList && backupsList.length > 0 ? (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                {backupsList.slice(0, 6).map((b) => (
+                  <div
+                    key={b.id || b.fileName}
+                    className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{new Date(b.timestamp || b.createdAt).toLocaleString('id-ID')}</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">
+                          Sisa {b.remainingDays || 14} hari
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Oleh: {b.savedBy || 'Kasir'} • {b.stats?.transactionsCount ?? 0} transaksi • {b.stats?.productsCount ?? 0} produk
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRestoreSnapshot(b.id)}
+                      disabled={isProcessing}
+                      className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Pulihkan data dari snapshot ini"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Pulihkan</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500 italic bg-white/70 p-2.5 rounded-lg border border-dashed border-slate-200 text-center">
+                Belum ada snapshot cadangan tersimpan. Snapshot otomatis dibuat setiap kali kasir klik Logout atau tombol &quot;Simpan Snapshot Baru&quot;.
+              </p>
+            )}
           </div>
 
           {/* Firestore Backup Section (Optional) */}

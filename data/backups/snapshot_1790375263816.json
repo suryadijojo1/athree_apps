@@ -1,0 +1,21 @@
+{
+  "id": "backup_1790375263816",
+  "createdAt": "2026-09-25T22:27:43.816Z",
+  "timestamp": 1790375263816,
+  "expiresAt": "2026-10-09T22:27:43.816Z",
+  "expiresTimestamp": 1791584863816,
+  "retentionDays": 14,
+  "savedBy": "Test Auto Save",
+  "source": "test",
+  "stats": {
+    "transactionsCount": 0,
+    "productsCount": 0,
+    "shiftsCount": 0,
+    "cashFlowCount": 0,
+    "customersCount": 0
+  },
+  "data": {
+    "savedBy": "Test Auto Save",
+    "source": "test"
+  }
+}

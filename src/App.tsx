@@ -42,6 +42,7 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { GoogleDriveView } from './components/GoogleDriveView';
 import { KaosStockManagementView } from './components/KaosStockManagementView';
 import { FirebaseSyncModal } from './components/FirebaseSyncModal';
+import { CloudUpload, CheckCircle2 } from 'lucide-react';
 import {
   subscribeToAuth,
   testConnection,
@@ -68,11 +69,14 @@ import {
   saveStockMovementToFirestore,
   saveMultipleStockMovementsToFirestore,
   fetchAllDataFromFirestore,
-  syncAllLocalDataToFirestore
+  syncAllLocalDataToFirestore,
+  saveCloudBackupSnapshot,
+  cleanExpiredBackupsFirestore
 } from './services/firebase';
 import {
   fetchServerDatabase,
   saveServerDatabase,
+  saveServerBackupSnapshot,
   subscribeToServerEvents,
   isRealUserData,
   AppDatabasePayload
@@ -99,9 +103,32 @@ export default function App() {
     localStorage.setItem('athree_users', JSON.stringify(users));
   }, [users]);
   
-  // Authentication state (Default to false so user sees login screen as requested)
+  // 1 Hour Inactivity / Unopened Timeout (1 Jam = 3.600.000 ms)
+  const ONE_HOUR_TIMEOUT_MS = 60 * 60 * 1000;
+
+  const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(() => {
+    return localStorage.getItem('athree_timeout_notice') || null;
+  });
+
+  const clearSessionTimeoutNotice = () => {
+    setSessionTimeoutNotice(null);
+    localStorage.removeItem('athree_timeout_notice');
+  };
+
+  // Authentication state (Cek apakah aplikasi tidak terbuka atau tidak aktif selama 1 jam)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('athree_is_authenticated') === 'true';
+    const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
+    if (!isAuth) return false;
+
+    const lastActive = Number(localStorage.getItem('athree_last_active_time') || 0);
+    if (lastActive > 0 && Date.now() - lastActive >= 60 * 60 * 1000) {
+      // Lebih dari 1 jam tidak dibuka / tidak aktif -> otomatis logout
+      localStorage.setItem('athree_is_authenticated', 'false');
+      const notice = 'Sesi Anda telah keluar otomatis karena aplikasi tidak dibuka / tidak aktif selama lebih dari 1 jam. Seluruh database penjualan telah otomatis tersimpan aman di Cloud & Server.';
+      localStorage.setItem('athree_timeout_notice', notice);
+      return false;
+    }
+    return true;
   });
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
@@ -137,17 +164,24 @@ export default function App() {
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('athree_transactions');
+    const saved = localStorage.getItem('athree_transactions') || localStorage.getItem('athree_transactions_persistent_backup');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (isRealUserData(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
       } catch {}
     }
     return INITIAL_TRANSACTIONS;
   });
+
+  useEffect(() => {
+    localStorage.setItem('athree_transactions', JSON.stringify(transactions));
+    if (transactions.length > 0) {
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(transactions));
+    }
+  }, [transactions]);
 
   const [kaosStocks, setKaosStocks] = useState<KaosStockItem[]>(() => {
     const saved = localStorage.getItem('athree_kaos_stocks');
@@ -359,8 +393,21 @@ export default function App() {
         localStorage.setItem('athree_categories', JSON.stringify(payload.categories));
       }
       if (payload.transactions && Array.isArray(payload.transactions) && payload.transactions.length > 0) {
-        setTransactions(payload.transactions);
-        localStorage.setItem('athree_transactions', JSON.stringify(payload.transactions));
+        setTransactions((prev) => {
+          const map = new Map<string, Transaction>();
+          for (const tx of prev) {
+            map.set(tx.id, tx);
+          }
+          for (const tx of payload.transactions) {
+            map.set(tx.id, tx);
+          }
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+          );
+          localStorage.setItem('athree_transactions', JSON.stringify(merged));
+          localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(merged));
+          return merged;
+        });
       }
       if (payload.cashFlowRecords && Array.isArray(payload.cashFlowRecords)) {
         const cleaned = payload.cashFlowRecords.filter(
@@ -572,8 +619,21 @@ export default function App() {
     const unsubTransactions = subscribeToTransactions((remoteTransactions) => {
       if (remoteTransactions && remoteTransactions.length > 0) {
         setIsFirebaseConnected(true);
-        setTransactions(remoteTransactions);
-        localStorage.setItem('athree_transactions', JSON.stringify(remoteTransactions));
+        setTransactions((prev) => {
+          const map = new Map<string, Transaction>();
+          for (const tx of prev) {
+            map.set(tx.id, tx);
+          }
+          for (const tx of remoteTransactions) {
+            map.set(tx.id, tx);
+          }
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+          );
+          localStorage.setItem('athree_transactions', JSON.stringify(merged));
+          localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(merged));
+          return merged;
+        });
       }
     });
 
@@ -830,6 +890,9 @@ export default function App() {
     setIsAuthenticated(true);
     localStorage.setItem('athree_is_authenticated', 'true');
     localStorage.setItem('athree_current_user', JSON.stringify(user));
+    localStorage.setItem('athree_last_active_time', String(Date.now()));
+    localStorage.removeItem('athree_timeout_notice');
+    setSessionTimeoutNotice(null);
     if (user.role === 'admin') {
       setActiveTab('dashboard');
     } else if (user.role === 'kasir') {
@@ -839,14 +902,228 @@ export default function App() {
     }
   };
 
-  // Handler: Logout (return to LoginScreen)
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.setItem('athree_is_authenticated', 'false');
-    setIsLoginModalOpen(false);
-    setIsShiftModalOpen(false);
-    setIsCustomProductModalOpen(false);
+  // Logout & Cloud Auto-Save state
+  const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
+  const [logoutStep, setLogoutStep] = useState<string>('Menyimpan Data ke Cloud...');
+  const [logoutSuccess, setLogoutSuccess] = useState<boolean>(false);
+
+  // Helper: Simpan seluruh database ke Cloud Firestore & Server (Snapshot retensi 14 hari)
+  const executeFullCloudDatabaseSave = async (
+    savedBy: string,
+    source: string,
+    onStep?: (step: string) => void
+  ) => {
+    const currentState = latestStateRef.current;
+
+    // 1. Simpan snapshot master ke Server Pusat (dengan retensi 14 hari)
+    if (onStep) onStep('Menyimpan data penjualan ke Server Pusat...');
+    await saveServerDatabase(
+      {
+        products: currentState.products,
+        categories: currentState.categories,
+        transactions: currentState.transactions,
+        cashFlowRecords: currentState.cashFlowRecords,
+        shiftHistory: currentState.shiftHistory,
+        kaosStocks: currentState.kaosStocks,
+        stockMovements: currentState.stockMovements,
+        customers: currentState.customers,
+        users: currentState.users,
+        salesList: currentState.salesList,
+        isRealData: true
+      },
+      {
+        savedBy,
+        source
+      }
+    );
+
+    // 2. Sinkronkan seluruh data ke Cloud Firestore
+    if (onStep) onStep('Menyinkronkan data transaksi ke Cloud Firestore...');
+    await syncAllLocalDataToFirestore({
+      products: currentState.products,
+      transactions: currentState.transactions,
+      cashFlowRecords: currentState.cashFlowRecords,
+      shifts: currentState.shiftHistory,
+      kaosStocks: currentState.kaosStocks,
+      customers: currentState.customers,
+      users: currentState.users,
+      stockMovements: currentState.stockMovements
+    });
+
+    // 3. Buat dedicated Cloud Backup Snapshot (retensi 14 hari)
+    if (onStep) onStep('Membuat snapshot cadangan Cloud (Retensi 14 Hari)...');
+    await saveCloudBackupSnapshot(
+      {
+        products: currentState.products,
+        transactions: currentState.transactions,
+        cashFlowRecords: currentState.cashFlowRecords,
+        shiftHistory: currentState.shiftHistory,
+        kaosStocks: currentState.kaosStocks,
+        stockMovements: currentState.stockMovements,
+        customers: currentState.customers,
+        users: currentState.users,
+        salesList: currentState.salesList,
+        savedAt: new Date().toISOString()
+      },
+      savedBy,
+      source
+    );
+
+    // 4. Buat snapshot backup server
+    await saveServerBackupSnapshot(
+      {
+        products: currentState.products,
+        transactions: currentState.transactions,
+        cashFlowRecords: currentState.cashFlowRecords,
+        shiftHistory: currentState.shiftHistory,
+        kaosStocks: currentState.kaosStocks,
+        stockMovements: currentState.stockMovements,
+        customers: currentState.customers,
+        users: currentState.users,
+        salesList: currentState.salesList
+      },
+      savedBy,
+      source
+    );
+
+    // 5. Bersihkan cadangan kadaluarsa (> 14 hari) agar database tidak menumpuk
+    await cleanExpiredBackupsFirestore().catch(() => {});
+
+    // Pastikan cadangan lokal tetap sinkron
+    localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(currentState.transactions));
   };
+
+  // Handler: Logout Manual oleh Kasir / Admin
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    setLogoutSuccess(false);
+    setLogoutStep('Menyiapkan seluruh data transaksi dan inventaris...');
+
+    const currentOperator = currentUser?.name || 'Kasir';
+
+    try {
+      await executeFullCloudDatabaseSave(
+        `${currentOperator} (Logout)`,
+        'logout',
+        (step) => setLogoutStep(step)
+      );
+
+      setLogoutSuccess(true);
+      setLogoutStep('Database Penjualan Berhasil Disimpan Aman di Cloud!');
+
+      // Jeda sejenak agar kasir melihat konfirmasi data tersimpan
+      await new Promise((r) => setTimeout(r, 650));
+    } catch (err) {
+      console.warn('Logout cloud save warning:', err);
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(latestStateRef.current.transactions));
+    } finally {
+      setIsAuthenticated(false);
+      localStorage.setItem('athree_is_authenticated', 'false');
+      setIsLoginModalOpen(false);
+      setIsShiftModalOpen(false);
+      setIsCustomProductModalOpen(false);
+      setIsLoggingOut(false);
+      setLogoutSuccess(false);
+    }
+  };
+
+  // Handler: Auto-Save & Auto-Logout jika aplikasi tidak dibuka atau tidak ada aktivitas selama 1 Jam
+  const isAutoLoggingOutRef = useRef(false);
+  const handleAutoInactivityLogout = async () => {
+    if (isAutoLoggingOutRef.current) return;
+    isAutoLoggingOutRef.current = true;
+
+    setIsLoggingOut(true);
+    setLogoutSuccess(false);
+    setLogoutStep('Aplikasi tidak aktif 1 jam: Menyimpan otomatis ke Cloud...');
+
+    const currentOperator = currentUser?.name || 'Kasir';
+    try {
+      await executeFullCloudDatabaseSave(
+        `${currentOperator} (Auto-Save 1 Jam)`,
+        'auto_timeout_1_hour',
+        (step) => setLogoutStep(step)
+      );
+      setLogoutSuccess(true);
+      setLogoutStep('Database Otomatis Disimpan Aman di Cloud (14 Hari)!');
+      await new Promise((r) => setTimeout(r, 650));
+    } catch (err) {
+      console.warn('Auto timeout save warning:', err);
+    } finally {
+      setIsAuthenticated(false);
+      localStorage.setItem('athree_is_authenticated', 'false');
+      const notice = 'Sesi Anda telah keluar otomatis karena aplikasi tidak dibuka / tidak ada aktivitas selama 1 jam. Seluruh database penjualan telah otomatis tersimpan aman di Cloud Firestore & Server Pusat.';
+      localStorage.setItem('athree_timeout_notice', notice);
+      setSessionTimeoutNotice(notice);
+      setIsLoginModalOpen(false);
+      setIsShiftModalOpen(false);
+      setIsCustomProductModalOpen(false);
+      setIsLoggingOut(false);
+      setLogoutSuccess(false);
+      isAutoLoggingOutRef.current = false;
+    }
+  };
+
+  // Effect: Pantau aktivitas pengguna & deteksi jika aplikasi tidak terbuka / tidak aktif selama 1 Jam
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const ONE_HOUR_MS = 60 * 60 * 1000; // 1 Jam
+
+    const checkInactivityTimeout = () => {
+      const lastActiveStr = localStorage.getItem('athree_last_active_time');
+      const now = Date.now();
+      if (!lastActiveStr) {
+        localStorage.setItem('athree_last_active_time', String(now));
+        return;
+      }
+
+      const lastActive = Number(lastActiveStr);
+      if (now - lastActive >= ONE_HOUR_MS) {
+        console.log('Aplikasi tidak terbuka / tidak aktif >= 1 jam. Menjalankan auto-save dan auto-logout...');
+        handleAutoInactivityLogout();
+      }
+    };
+
+    // Cek langsung saat komponen aktif
+    checkInactivityTimeout();
+
+    // Rekam aktivitas pengguna (mouse, klik, ketik, sentuh, scroll) secara throttled per 10 detik
+    let lastRecordedActivity = Date.now();
+    const handleUserInteraction = () => {
+      const now = Date.now();
+      if (now - lastRecordedActivity > 10000) {
+        lastRecordedActivity = now;
+        localStorage.setItem('athree_last_active_time', String(now));
+      }
+    };
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, handleUserInteraction, { passive: true });
+    });
+
+    // Cek secara berkala tiap 15 detik
+    const timer = setInterval(checkInactivityTimeout, 15000);
+
+    // Cek saat pengguna membuka kembali tab yang sebelumnya terminimalkan atau tidak terbuka
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkInactivityTimeout();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', checkInactivityTimeout);
+
+    return () => {
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleUserInteraction);
+      });
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', checkInactivityTimeout);
+    };
+  }, [isAuthenticated]);
 
   // Handler: User selection
   const handleSelectUser = (user: User) => {
@@ -1185,8 +1462,33 @@ export default function App() {
     }
 
     // Remove from transactions state and delete from Firestore
-    setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    const updatedTransactions = transactions.filter((t) => t.id !== transactionId);
+    setTransactions(updatedTransactions);
+    localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
+    localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
     deleteTransactionFromFirestore(transactionId).catch((err) => console.warn('Sync delete invoice error:', err));
+
+    // Save to central server with explicit deletedTransactionIds so it's not restored by merge
+    saveServerDatabase(
+      {
+        products,
+        categories,
+        transactions: updatedTransactions,
+        cashFlowRecords,
+        shiftHistory,
+        kaosStocks,
+        stockMovements,
+        customers,
+        users,
+        salesList,
+        isRealData: true
+      },
+      {
+        deletedTransactionIds: [transactionId],
+        savedBy: `${currentUser.name} (Hapus Faktur)`,
+        source: 'delete-invoice'
+      }
+    ).catch(() => {});
 
     // Reset modals if they were viewing this transaction
     if (successTx && successTx.id === transactionId) {
@@ -1560,7 +1862,14 @@ export default function App() {
 
   // 0. INITIAL SCREEN: LOGIN SCREEN (Matches uploaded fluid wave image)
   if (!isAuthenticated) {
-    return <LoginScreen users={users} onLogin={handleLogin} />;
+    return (
+      <LoginScreen
+        users={users}
+        onLogin={handleLogin}
+        sessionTimeoutNotice={sessionTimeoutNotice}
+        onClearTimeoutNotice={clearSessionTimeoutNotice}
+      />
+    );
   }
 
   // 1. ADMIN PORTAL VIEW (Matches screenshot when logged in as Admin/Pemilik)
@@ -1910,6 +2219,44 @@ export default function App() {
         onManualSyncSuccess={() => {}}
         onApplyCloudData={handleApplyCloudData}
       />
+
+      {/* Logout Cloud Database Saving Overlay */}
+      {isLoggingOut && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-emerald-100 text-center space-y-4 animate-in zoom-in-95 duration-150">
+            <div className={`w-16 h-16 rounded-2xl mx-auto flex items-center justify-center shadow-lg transition-all duration-300 ${
+              logoutSuccess ? 'bg-emerald-600 text-white shadow-emerald-200 scale-105' : 'bg-emerald-50 text-[#00871f] shadow-slate-100'
+            }`}>
+              {logoutSuccess ? (
+                <CheckCircle2 className="w-9 h-9" />
+              ) : (
+                <CloudUpload className="w-9 h-9 animate-pulse text-[#00871f]" />
+              )}
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-800">
+                {logoutSuccess ? 'Database Berhasil Disimpan Aman!' : 'Menyimpan Database ke Cloud'}
+              </h3>
+              <p className="text-xs text-slate-500">
+                Menyimpan seluruh data penjualan, produk, kas, dan shift ke Cloud Firestore & Server sebelum keluar aplikasi.
+              </p>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center justify-center gap-2.5">
+              {!logoutSuccess && (
+                <div className="w-4 h-4 border-2 border-[#00871f] border-t-transparent rounded-full animate-spin shrink-0" />
+              )}
+              <span className="text-xs font-semibold text-emerald-900">{logoutStep}</span>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-2.5 text-[11px] text-slate-500 border border-slate-100 flex items-center justify-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-ping" />
+              <span>Snapshot database tersimpan selama <strong>14 Hari</strong> agar database tidak menumpuk.</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

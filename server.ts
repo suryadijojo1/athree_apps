@@ -8,6 +8,88 @@ import { db } from './src/db/index.ts';
 import { products, transactions, cashFlowRecords } from './src/db/schema.ts';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'app-database.json');
+const BACKUPS_DIR = path.join(process.cwd(), 'data', 'backups');
+const BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 hari retensi sesuai permintaan
+
+// Helper: Prune backups older than 14 days so files do not pile up
+function pruneExpiredBackups(): number {
+  let prunedCount = 0;
+  try {
+    if (!fs.existsSync(BACKUPS_DIR)) return 0;
+    const files = fs.readdirSync(BACKUPS_DIR);
+    const now = Date.now();
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const filePath = path.join(BACKUPS_DIR, file);
+      try {
+        const stats = fs.statSync(filePath);
+        let isExpired = now - stats.mtimeMs > BACKUP_RETENTION_MS;
+
+        // Also check inside json expiresTimestamp if available
+        if (!isExpired) {
+          try {
+            const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            if (content.expiresTimestamp && now > content.expiresTimestamp) {
+              isExpired = true;
+            }
+          } catch {}
+        }
+
+        if (isExpired) {
+          fs.unlinkSync(filePath);
+          prunedCount++;
+          console.log(`Pruned expired 14-day backup snapshot: ${file}`);
+        }
+      } catch (err) {
+        console.warn(`Error checking backup file ${file}:`, err);
+      }
+    }
+  } catch (err) {
+    console.warn('Error during backup pruning:', err);
+  }
+  return prunedCount;
+}
+
+// Helper: Create a snapshot backup with 14-day expiry
+function saveBackupSnapshot(payload: any, savedBy: string = 'System', source: string = 'sync'): string | null {
+  try {
+    if (!fs.existsSync(BACKUPS_DIR)) {
+      fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+    }
+
+    const now = Date.now();
+    const backupId = `backup_${now}`;
+    const snapshotFilePath = path.join(BACKUPS_DIR, `snapshot_${now}.json`);
+
+    const snapshotData = {
+      id: backupId,
+      createdAt: new Date(now).toISOString(),
+      timestamp: now,
+      expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
+      expiresTimestamp: now + BACKUP_RETENTION_MS,
+      retentionDays: 14,
+      savedBy,
+      source,
+      stats: {
+        transactionsCount: payload.transactions?.length || 0,
+        productsCount: payload.products?.length || 0,
+        shiftsCount: payload.shiftHistory?.length || 0,
+        cashFlowCount: payload.cashFlowRecords?.length || 0,
+        customersCount: payload.customers?.length || 0
+      },
+      data: payload
+    };
+
+    fs.writeFileSync(snapshotFilePath, JSON.stringify(snapshotData, null, 2), 'utf-8');
+    // Run pruning whenever a new snapshot is created
+    pruneExpiredBackups();
+    return backupId;
+  } catch (err) {
+    console.warn('Failed to create backup snapshot:', err);
+    return null;
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -73,17 +155,34 @@ async function startServer() {
         return res.status(400).json({ error: 'Invalid payload' });
       }
 
-      // Safeguard: Never allow an empty transactions array to wipe existing database transactions
-      if (currentDbState?.transactions?.length > 0 && payload.transactions.length === 0) {
-        console.warn('Blocked database wipe: incoming payload has 0 transactions while server has', currentDbState.transactions.length);
-        payload.transactions = currentDbState.transactions;
-        payload.isRealData = true;
-      }
+      // Explicitly deleted transaction IDs (if any)
+      const deletedIds = new Set<string>(Array.isArray(payload.deletedTransactionIds) ? payload.deletedTransactionIds : []);
 
-      // Safeguard: Preserve real production database if incoming client payload has fewer transactions or claims isRealData=false
-      if (currentDbState?.isRealData && !payload.isRealData && currentDbState.transactions.length > payload.transactions.length) {
-        console.warn('Preserved real master database: rejected downgrade from client without real data');
-        return res.json({ success: true, preserved: true, timestamp: currentDbState.lastUpdated });
+      // Smart transaction preservation: Never lose sales transactions
+      if (currentDbState?.transactions?.length > 0) {
+        if (payload.transactions.length === 0 && deletedIds.size === 0) {
+          console.warn('Blocked database wipe: incoming payload has 0 transactions while server has', currentDbState.transactions.length);
+          payload.transactions = currentDbState.transactions;
+          payload.isRealData = true;
+        } else {
+          // Merge transactions by ID: Incoming replaces older record with same ID,
+          // but existing server records are NOT dropped unless listed in deletedIds
+          const txMap = new Map<string, any>();
+          for (const tx of currentDbState.transactions) {
+            if (!deletedIds.has(tx.id)) {
+              txMap.set(tx.id, tx);
+            }
+          }
+          for (const tx of payload.transactions) {
+            if (!deletedIds.has(tx.id)) {
+              txMap.set(tx.id, tx);
+            }
+          }
+          payload.transactions = Array.from(txMap.values()).sort(
+            (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+          );
+          payload.isRealData = true;
+        }
       }
 
       // Safeguard: Retain existing users if incoming payload has no users
@@ -102,18 +201,128 @@ async function startServer() {
 
       currentDbState = payload;
 
-      // Atomically persist to disk
+      // Atomically persist master database to disk
       const dir = path.dirname(DB_FILE_PATH);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(DB_FILE_PATH, JSON.stringify(payload, null, 2), 'utf-8');
 
+      // Create a rolling backup snapshot with 14-day retention
+      const savedBy = payload.savedBy || req.headers['x-saved-by'] || 'Kasir / Sistem';
+      const source = payload.source || req.headers['x-save-source'] || 'save-all';
+      const snapshotId = saveBackupSnapshot(payload, String(savedBy), String(source));
+
       broadcastDatabaseUpdate(payload);
-      res.json({ success: true, timestamp: payload.lastUpdated });
+      res.json({
+        success: true,
+        timestamp: payload.lastUpdated,
+        snapshotId,
+        transactionsCount: payload.transactions.length,
+        retentionDays: 14
+      });
     } catch (err: any) {
       console.error('Failed to save central database:', err);
       res.status(500).json({ error: err.message || 'Server error' });
+    }
+  });
+
+  // Explicit endpoint to save a dedicated backup snapshot with 14-day retention (e.g., upon logout)
+  app.post('/api/database/backup-snapshot', (req, res) => {
+    try {
+      const payload = req.body?.data || req.body || currentDbState;
+      if (!payload) {
+        return res.status(400).json({ error: 'No database state available for snapshot' });
+      }
+      const savedBy = req.body?.savedBy || 'Kasir Logout';
+      const source = req.body?.source || 'logout';
+      const snapshotId = saveBackupSnapshot(payload, savedBy, source);
+
+      res.json({
+        success: true,
+        snapshotId,
+        retentionDays: 14,
+        expiresIn: '14 hari',
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error('Failed to create logout backup snapshot:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get active 14-day backup snapshots list
+  app.get('/api/database/backups', (req, res) => {
+    try {
+      pruneExpiredBackups();
+      if (!fs.existsSync(BACKUPS_DIR)) {
+        return res.json({ success: true, backups: [] });
+      }
+
+      const files = fs.readdirSync(BACKUPS_DIR);
+      const backups: any[] = [];
+      const now = Date.now();
+
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(BACKUPS_DIR, file), 'utf-8'));
+          const remainingMs = Math.max(0, (content.expiresTimestamp || 0) - now);
+          const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+
+          backups.push({
+            id: content.id || file.replace('.json', ''),
+            fileName: file,
+            createdAt: content.createdAt,
+            timestamp: content.timestamp,
+            expiresAt: content.expiresAt,
+            remainingDays,
+            savedBy: content.savedBy,
+            source: content.source,
+            stats: content.stats
+          });
+        } catch {}
+      }
+
+      backups.sort((a, b) => b.timestamp - a.timestamp);
+      res.json({ success: true, backups, retentionDays: 14 });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Restore database from a specific 14-day backup snapshot
+  app.post('/api/database/restore-backup', (req, res) => {
+    try {
+      const { backupId } = req.body;
+      if (!backupId) {
+        return res.status(400).json({ error: 'backupId is required' });
+      }
+
+      const files = fs.readdirSync(BACKUPS_DIR);
+      const targetFile = files.find(f => f.includes(backupId) || f === `${backupId}.json`);
+      if (!targetFile) {
+        return res.status(404).json({ error: 'Backup snapshot tidak ditemukan' });
+      }
+
+      const filePath = path.join(BACKUPS_DIR, targetFile);
+      const snapshot = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      if (!snapshot.data) {
+        return res.status(400).json({ error: 'Snapshot data corrupt' });
+      }
+
+      currentDbState = snapshot.data;
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(currentDbState, null, 2), 'utf-8');
+      broadcastDatabaseUpdate(currentDbState);
+
+      res.json({
+        success: true,
+        restoredFrom: backupId,
+        transactionsCount: currentDbState?.transactions?.length || 0,
+        productsCount: currentDbState?.products?.length || 0
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

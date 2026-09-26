@@ -6,6 +6,7 @@ import {
   Plus,
   Save,
   AlertCircle,
+  AlertTriangle,
   Calendar,
   Clock,
   User,
@@ -14,7 +15,8 @@ import {
   CheckCircle2,
   UserCheck,
   Shirt,
-  Palette
+  Palette,
+  ShieldAlert
 } from 'lucide-react';
 import { Transaction, OrderItem, PaymentMethod, OrderStatus, OrderType, Product } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -72,6 +74,8 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   );
   const [revisionNote, setRevisionNote] = useState<string>('');
   const [selectedAddProductId, setSelectedAddProductId] = useState<string>('');
+  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
+  const [preparedTx, setPreparedTx] = useState<Transaction | null>(null);
 
   // Calculations
   const subtotal = items.reduce((acc, it) => acc + it.price * it.quantity, 0);
@@ -222,8 +226,16 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       notes: combinedNotes
     };
 
-    onSaveRevision(updatedTx, transaction);
-    onClose();
+    setPreparedTx(updatedTx);
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmRevision = () => {
+    if (preparedTx) {
+      onSaveRevision(preparedTx, transaction);
+      setShowConfirmModal(false);
+      onClose();
+    }
   };
 
   return (
@@ -249,7 +261,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -257,6 +269,17 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+          {/* Peringatan Utama Revisi Invoice */}
+          <div className="bg-amber-50 border-l-4 border-amber-500 rounded-r-xl p-3 flex items-start gap-2.5 shadow-xs">
+            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-900 leading-relaxed">
+              <span className="font-bold text-amber-950 block">PERINGATAN REVISI FAKTUR / INVOICE:</span>
+              <span className="text-[11px] text-amber-800">
+                Mengubah faktur ini akan memperbarui status transaksi di sistem kasir, menghitung ulang arus kas, dan otomatis menyesuaikan mutasi stok gudang & kaos polos. Pastikan data perubahan telah diverifikasi sebelum disimpan.
+              </span>
+            </div>
+          </div>
+
           {/* Top Row: Invoice Number, Order Type & Status */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
@@ -675,6 +698,112 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
           onDeleteSales={onDeleteSales}
           onSelectSales={(name) => setOrderType(name)}
         />
+      )}
+
+      {/* Confirmation & Warning Dialog Before Committing Invoice Revision */}
+      {showConfirmModal && preparedTx && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-60 p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-amber-200 overflow-hidden flex flex-col animate-in zoom-in-95 duration-150 text-slate-800">
+            {/* Modal Header */}
+            <div className="bg-amber-500 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <ShieldAlert className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm">Konfirmasi Perubahan Faktur</h4>
+                  <p className="text-xs text-amber-100 font-mono">Invoice: {preparedTx.invoiceNo}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="p-1 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 text-xs">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-start gap-2 text-amber-900">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="font-semibold text-xs leading-relaxed">
+                    Peringatan: Anda akan memperbarui data transaksi ini ke database Cloud. Tindakan ini akan:
+                  </p>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-amber-800 pl-2 text-[11px]">
+                  <li>Menyesuaikan stok master dan stok kaos polos secara otomatis.</li>
+                  <li>Memperbarui catatan buku kas & rekonsiliasi kasir.</li>
+                  <li>Mencatat riwayat audit perubahan oleh akun <span className="font-bold">{currentUserName}</span>.</li>
+                </ul>
+              </div>
+
+              {/* Difference Summary */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Nilai Sebelumnya</span>
+                  <p className="text-slate-700 font-semibold">{formatCurrency(transaction.total)}</p>
+                  <p className="text-[11px] text-slate-500">{transaction.items.length} item • {transaction.status}</p>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-1">
+                  <span className="text-[10px] text-emerald-700 font-bold uppercase block">Nilai Setelah Revisi</span>
+                  <p className="text-[#00871f] font-bold text-sm">{formatCurrency(preparedTx.total)}</p>
+                  <p className="text-[11px] text-emerald-800">{preparedTx.items.length} item • {preparedTx.status}</p>
+                </div>
+              </div>
+
+              {/* Revision Audit Note Preview */}
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                  Catatan / Alasan Revisi:
+                </label>
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-700 font-mono">
+                  {revisionNote ? revisionNote : 'Koreksi rincian transaksi oleh kasir/admin'}
+                </div>
+              </div>
+
+              {/* Quick Tag Recommendations */}
+              {!revisionNote && (
+                <div className="space-y-1">
+                  <span className="text-[10px] text-slate-400">Pilih alasan cepat:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Koreksi kuantitas', 'Perubahan kaos/warna', 'Pelunasan/DP', 'Diskon khusus', 'Permintaan pembeli'].map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setRevisionNote(tag)}
+                        className="px-2 py-0.5 text-[10px] rounded-md bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200 transition-colors cursor-pointer"
+                      >
+                        +{tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl cursor-pointer transition-colors"
+              >
+                Batal / Periksa Lagi
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRevision}
+                className="px-5 py-2 text-xs font-bold text-white bg-[#00871f] hover:bg-[#007019] rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-200 cursor-pointer transition-colors"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Ya, Simpan Revisi Sekarang</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

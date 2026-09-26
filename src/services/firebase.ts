@@ -513,7 +513,7 @@ export async function fetchAllDataFromFirestore(): Promise<{
   return results;
 }
 
-// Batch Sync Local Data to Firestore
+// Batch Sync Local Data to Firestore (Chunked in max 250 operations per batch to prevent limits)
 export async function syncAllLocalDataToFirestore(data: {
   products: Product[];
   transactions: Transaction[];
@@ -524,63 +524,61 @@ export async function syncAllLocalDataToFirestore(data: {
   users?: User[];
   stockMovements?: StockMovement[];
 }): Promise<{ productsCount: number; transactionsCount: number; cashFlowCount: number; kaosCount: number }> {
-  const batch = writeBatch(db);
+  // Collect all writes as array of [collectionName, docId, data]
+  const writes: Array<{ col: string; id: string; val: any }> = [];
 
-  // Add products (up to batch limit)
-  let count = 0;
-  for (const p of data.products.slice(0, 100)) {
-    batch.set(doc(db, 'products', p.id), p);
-    count++;
+  for (const p of data.products) {
+    if (p && p.id) writes.push({ col: 'products', id: p.id, val: p });
   }
 
-  for (const t of data.transactions.slice(0, 100)) {
-    batch.set(doc(db, 'transactions', t.id), t);
-    count++;
+  for (const t of data.transactions) {
+    if (t && t.id) writes.push({ col: 'transactions', id: t.id, val: t });
   }
 
-  for (const c of data.cashFlowRecords.slice(0, 100)) {
-    batch.set(doc(db, 'cashFlowRecords', c.id), c);
-    count++;
+  for (const c of data.cashFlowRecords) {
+    if (c && c.id) writes.push({ col: 'cashFlowRecords', id: c.id, val: c });
   }
 
-  for (const s of data.shifts.slice(0, 50)) {
-    batch.set(doc(db, 'shifts', s.id), s);
-    count++;
+  for (const s of data.shifts) {
+    if (s && s.id) writes.push({ col: 'shifts', id: s.id, val: s });
   }
 
   if (data.kaosStocks) {
-    for (const k of data.kaosStocks.slice(0, 50)) {
-      batch.set(doc(db, 'kaosStocks', k.id), k);
-      count++;
+    for (const k of data.kaosStocks) {
+      if (k && k.id) writes.push({ col: 'kaosStocks', id: k.id, val: k });
     }
   }
 
   if (data.customers) {
-    for (const cust of data.customers.slice(0, 50)) {
-      batch.set(doc(db, 'customers', cust.id), cust);
-      count++;
+    for (const cust of data.customers) {
+      if (cust && cust.id) writes.push({ col: 'customers', id: cust.id, val: cust });
     }
   }
 
   if (data.users) {
-    for (const u of data.users.slice(0, 20)) {
-      batch.set(doc(db, 'users', u.id), u);
-      count++;
+    for (const u of data.users) {
+      if (u && u.id) writes.push({ col: 'users', id: u.id, val: u });
     }
   }
 
   if (data.stockMovements) {
-    for (const m of data.stockMovements.slice(0, 50)) {
-      batch.set(doc(db, 'stockMovements', m.id), m);
-      count++;
+    for (const m of data.stockMovements) {
+      if (m && m.id) writes.push({ col: 'stockMovements', id: m.id, val: m });
     }
   }
 
-  if (count > 0) {
+  // Commit in chunks of 200 items (Firestore limit is 500 per batch)
+  const CHUNK_SIZE = 200;
+  for (let i = 0; i < writes.length; i += CHUNK_SIZE) {
+    const chunk = writes.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+    for (const w of chunk) {
+      batch.set(doc(db, w.col, w.id), w.val);
+    }
     try {
       await batch.commit();
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'batch-sync');
+      handleFirestoreError(error, OperationType.WRITE, `batch-sync-chunk-${i}`);
     }
   }
 
@@ -590,4 +588,151 @@ export async function syncAllLocalDataToFirestore(data: {
     cashFlowCount: data.cashFlowRecords.length,
     kaosCount: data.kaosStocks ? data.kaosStocks.length : 0
   };
+}
+
+// 14-Day Cloud Backup Snapshots for Firestore
+export interface CloudBackupSnapshotMeta {
+  id: string;
+  createdAt: string;
+  timestamp: number;
+  expiresAt: string;
+  expiresTimestamp: number;
+  retentionDays: number;
+  savedBy: string;
+  source: string;
+  stats: {
+    transactionsCount: number;
+    productsCount: number;
+    shiftsCount: number;
+    cashFlowCount: number;
+    customersCount: number;
+  };
+}
+
+export const CLOUD_BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 Hari
+
+// Helper: Prune snapshots in Firestore that are older than 14 days
+export async function cleanExpiredBackupsFirestore(): Promise<number> {
+  let cleaned = 0;
+  try {
+    const snap = await getDocs(collection(db, 'databaseBackups'));
+    const now = Date.now();
+    const batch = writeBatch(db);
+    let count = 0;
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const isExpired =
+        (data.expiresTimestamp && now > data.expiresTimestamp) ||
+        (data.timestamp && now - data.timestamp > CLOUD_BACKUP_RETENTION_MS);
+
+      if (isExpired) {
+        batch.delete(docSnap.ref);
+        count++;
+        cleaned++;
+      }
+    });
+
+    if (count > 0) {
+      await batch.commit();
+      console.log(`Cleaned ${cleaned} expired 14-day snapshots from Firestore databaseBackups`);
+    }
+  } catch (err) {
+    console.warn('Error cleaning expired Firestore backups:', err);
+  }
+  return cleaned;
+}
+
+// Save complete cloud backup snapshot in Firestore with 14-day retention
+export async function saveCloudBackupSnapshot(
+  data: any,
+  savedBy: string = 'Kasir Logout',
+  source: string = 'logout'
+): Promise<string> {
+  const now = Date.now();
+  const backupId = `backup_${now}`;
+  const path = `databaseBackups/${backupId}`;
+
+  const snapshotDoc = {
+    id: backupId,
+    createdAt: new Date(now).toISOString(),
+    timestamp: now,
+    expiresAt: new Date(now + CLOUD_BACKUP_RETENTION_MS).toISOString(),
+    expiresTimestamp: now + CLOUD_BACKUP_RETENTION_MS,
+    retentionDays: 14,
+    savedBy,
+    source,
+    stats: {
+      transactionsCount: data.transactions?.length || 0,
+      productsCount: data.products?.length || 0,
+      shiftsCount: data.shiftHistory?.length || data.shifts?.length || 0,
+      cashFlowCount: data.cashFlowRecords?.length || 0,
+      customersCount: data.customers?.length || 0
+    },
+    data
+  };
+
+  try {
+    await setDoc(doc(db, 'databaseBackups', backupId), snapshotDoc);
+    // Background cleanup of expired snapshots
+    cleanExpiredBackupsFirestore().catch(() => {});
+    return backupId;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    return backupId;
+  }
+}
+
+// Fetch list of cloud backup snapshots currently active in Firestore (within 14-day window)
+export async function fetchCloudBackupSnapshots(): Promise<CloudBackupSnapshotMeta[]> {
+  const results: CloudBackupSnapshotMeta[] = [];
+  try {
+    const snap = await getDocs(collection(db, 'databaseBackups'));
+    const now = Date.now();
+
+    snap.forEach((docSnap) => {
+      const d = docSnap.data();
+      if (!d.expiresTimestamp || d.expiresTimestamp > now) {
+        results.push({
+          id: d.id || docSnap.id,
+          createdAt: d.createdAt,
+          timestamp: d.timestamp,
+          expiresAt: d.expiresAt,
+          expiresTimestamp: d.expiresTimestamp,
+          retentionDays: d.retentionDays || 14,
+          savedBy: d.savedBy || 'Kasir',
+          source: d.source || 'sync',
+          stats: d.stats || {
+            transactionsCount: 0,
+            productsCount: 0,
+            shiftsCount: 0,
+            cashFlowCount: 0,
+            customersCount: 0
+          }
+        });
+      }
+    });
+
+    results.sort((a, b) => b.timestamp - a.timestamp);
+  } catch (error) {
+    console.warn('Failed to fetch cloud backup snapshots from Firestore:', error);
+  }
+  return results;
+}
+
+// Fetch a specific snapshot by ID
+export async function getCloudBackupSnapshotById(backupId: string): Promise<any | null> {
+  try {
+    const snap = await getDocs(collection(db, 'databaseBackups'));
+    let found: any = null;
+    snap.forEach((docSnap) => {
+      if (docSnap.id === backupId || docSnap.data().id === backupId) {
+        found = docSnap.data().data;
+      }
+    });
+    return found;
+  } catch (err) {
+    console.warn('Error fetching cloud backup by id:', err);
+    return null;
+  }
 }

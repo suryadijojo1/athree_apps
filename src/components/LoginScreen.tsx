@@ -1,14 +1,21 @@
 import React, { useState } from 'react';
-import { User as UserIcon, Lock, Layers, Check, AlertCircle } from 'lucide-react';
+import { User as UserIcon, Lock, Layers, Check, AlertCircle, Clock, ShieldCheck } from 'lucide-react';
 import { User } from '../types';
 import welcomeBg from '../assets/images/kang_sablon_mascot_1789898387552.jpg';
 
 interface LoginScreenProps {
   users: User[];
   onLogin: (user: User) => void;
+  sessionTimeoutNotice?: string | null;
+  onClearTimeoutNotice?: () => void;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({
+  users,
+  onLogin,
+  sessionTimeoutNotice,
+  onClearTimeoutNotice
+}) => {
   const [usernameInput, setUsernameInput] = useState<string>('admin_athree');
   const [passwordInput, setPasswordInput] = useState<string>('1234');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
@@ -97,6 +104,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
                 <UserIcon className="w-8 h-8 stroke-[1.8]" />
               </div>
             </div>
+
+            {/* Inactivity / 1-Hour Timeout Notice */}
+            {sessionTimeoutNotice && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-2xl text-xs text-amber-900 space-y-1 relative animate-in fade-in duration-150">
+                <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Sesi Berakhir Otomatis (1 Jam)</span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  {sessionTimeoutNotice}
+                </p>
+                {onClearTimeoutNotice && (
+                  <button
+                    type="button"
+                    onClick={onClearTimeoutNotice}
+                    className="text-[10px] text-amber-700 underline font-semibold mt-1 cursor-pointer block hover:text-amber-900"
+                  >
+                    Tutup pemberitahuan ini
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Form */}
             <form onSubmit={handleLoginSubmit} className="space-y-3.5">
