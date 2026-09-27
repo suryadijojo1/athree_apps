@@ -729,6 +729,6 @@ export const INITIAL_SHIFT: CashierShift = {
   nonCashSales: 0,
   totalSales: 0,
   expectedCash: 500000,
-  isOpen: true,
-  notes: 'Shift Pagi - Siang aktif Kasir Dimas'
+  isOpen: false,
+  notes: 'Kasir Belum Dibuka'
 };

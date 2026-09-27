@@ -48,7 +48,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
     ],
     kasir: [
       'Operasional Mesin Kasir (POS)',
-      'Buka / Tutup Shift Kasir',
+      'Buka / Tutup Kasir & Rekonsiliasi',
       'Cetak Struk & Simpan Pesanan',
       'Melihat Ketersediaan Stok'
     ],

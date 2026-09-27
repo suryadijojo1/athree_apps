@@ -95,6 +95,9 @@ export const PosView: React.FC<PosViewProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
 
+  // Cashier status guard: Kasir disable/tidak bisa digunakan jika status kasir belum terbuka (shift.isOpen !== true)
+  const isCashierOpen = Boolean(shift?.isOpen);
+
   // Active Cart / Order
   const [cartItems, setCartItems] = useState<OrderItem[]>([]);
   const [selectedSales, setSelectedSales] = useState<string>(() => {
@@ -202,6 +205,12 @@ export const PosView: React.FC<PosViewProps> = ({
 
   // Add product to cart
   const handleAddToCart = (product: Product) => {
+    if (!isCashierOpen) {
+      alert('Kasir belum dibuka! Silakan Buka Kasir terlebih dahulu untuk memulai transaksi penjualan.');
+      onOpenShiftModal?.('open_shift');
+      return;
+    }
+
     const isKaos = isSablonKaosProduct(product.name);
     const defaultColor = 'Hitam';
     const defaultSize = 'L';
@@ -361,6 +370,12 @@ export const PosView: React.FC<PosViewProps> = ({
 
   // Handle Pay
   const handlePay = () => {
+    if (!isCashierOpen) {
+      alert('Kasir belum dibuka! Silakan Buka Kasir terlebih dahulu untuk memproses pembayaran.');
+      onOpenShiftModal?.('open_shift');
+      return;
+    }
+
     if (cartItems.length === 0) {
       alert('Rincian pesanan masih kosong. Silakan pilih produk terlebih dahulu.');
       return;
@@ -428,6 +443,12 @@ export const PosView: React.FC<PosViewProps> = ({
 
   // Handle Save as In-Progress / Pending Production Order
   const handleSaveAsPending = () => {
+    if (!isCashierOpen) {
+      alert('Kasir belum dibuka! Silakan Buka Kasir terlebih dahulu untuk menyimpan pesanan.');
+      onOpenShiftModal?.('open_shift');
+      return;
+    }
+
     if (cartItems.length === 0) {
       alert('Rincian pesanan masih kosong.');
       return;
@@ -499,45 +520,56 @@ export const PosView: React.FC<PosViewProps> = ({
         {/* Top bar: Shift Status, View toggle & Categories */}
         <div className="p-3 border-b border-slate-200 flex flex-col gap-2">
           {shift && (
-            <div className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
-              shift.isOpen 
+            <div className={`px-2.5 py-2 rounded-xl border flex items-center justify-between text-xs transition-all ${
+              isCashierOpen 
                 ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950' 
-                : 'bg-amber-50 border-amber-200 text-amber-950'
+                : 'bg-rose-50 border-rose-300 text-rose-950 shadow-2xs'
             }`}>
               <div className="flex items-center gap-2 overflow-hidden">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${shift.isOpen ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCashierOpen ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500 ring-2 ring-rose-200'}`} />
                 <div className="truncate">
-                  <span className="font-bold">
-                    {shift.isOpen ? 'Shift Harian Aktif' : 'Shift Tutup'}
-                  </span>
-                  {shift.isOpen && shift.startTime && (
-                    <span className="text-[11px] text-slate-500 ml-1.5 hidden sm:inline">
-                      &bull; Buka: {shift.startTime}
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold">
+                      {isCashierOpen ? 'Kasir Terbuka' : 'Status: Kasir Belum Dibuka / Tutup'}
+                    </span>
+                    {!isCashierOpen && (
+                      <span className="px-1.5 py-0.2 rounded bg-rose-200 text-rose-800 font-extrabold text-[10px] uppercase">
+                        Terdisable
+                      </span>
+                    )}
+                  </div>
+                  {isCashierOpen && shift.startTime ? (
+                    <span className="text-[11px] text-slate-500 block truncate">
+                      Kasir: <strong className="text-slate-700">{shift.cashierName}</strong> &bull; Buka: {shift.startTime}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-rose-700 font-medium block truncate">
+                      Buka kasir untuk mengaktifkan menu penjualan & transaksi.
                     </span>
                   )}
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
-                {shift.isOpen ? (
+                {isCashierOpen ? (
                   <button
                     type="button"
                     onClick={() => onOpenShiftModal?.('reconcile')}
-                    className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold shadow-2xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                    title="Menu Akhiri Shift Kasir & Logout Sistem"
+                    className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold shadow-2xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                    title="Menu Tutup Kasir & Rekonsiliasi Kas"
                   >
                     <Lock className="w-3 h-3" />
-                    <span>Akhiri Shift</span>
+                    <span>Tutup Kasir</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={() => onOpenShiftModal?.('open_shift')}
-                    className="px-2.5 py-1 bg-[#00871f] hover:bg-[#007019] text-white rounded-lg text-[11px] font-bold shadow-2xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                    title="Buka Shift Kasir Baru (Tanggal & Jam Otomatis)"
+                    className="px-3 py-1.5 bg-[#00871f] hover:bg-[#007019] text-white rounded-lg text-[11px] font-bold shadow-2xs flex items-center gap-1 transition-all cursor-pointer active:scale-95 animate-pulse"
+                    title="Buka Kasir Baru (Tanggal & Jam Otomatis)"
                   >
                     <Unlock className="w-3 h-3" />
-                    <span>Buka Shift</span>
+                    <span>Buka Kasir</span>
                   </button>
                 )}
               </div>
@@ -595,13 +627,38 @@ export const PosView: React.FC<PosViewProps> = ({
 
         {/* Product Cards Container */}
         <div className="flex-1 overflow-y-auto p-3">
+          {!isCashierOpen && (
+            <div className="mb-3.5 p-3.5 rounded-xl bg-rose-50/90 border border-rose-300 text-rose-950 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700 shrink-0">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
+                    <span>Kasir Belum Dibuka &bull; Menu Penjualan Terdisable</span>
+                  </h4>
+                  <p className="text-[11px] text-rose-800 mt-0.5 leading-snug">
+                    Status kasir belum dibuka atau sudah ditutup. Transaksi dinonaktifkan sampai Buka Kasir dilakukan.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenShiftModal?.('open_shift')}
+                className="px-3.5 py-1.5 bg-[#00871f] hover:bg-[#007019] text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer transition-all shrink-0 active:scale-95"
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                <span>Buka Kasir Sekarang</span>
+              </button>
+            </div>
+          )}
           {filteredProducts.length === 0 ? (
             <div className="h-48 flex flex-col items-center justify-center text-slate-400 text-sm">
               <ShoppingBag className="w-10 h-10 mb-2 stroke-1" />
               <p>Tidak ada produk yang cocok</p>
             </div>
           ) : viewMode === 'grid' ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2.5 ${!isCashierOpen ? 'opacity-40 pointer-events-none select-none grayscale-[40%]' : ''}`}>
               {filteredProducts.map((p) => (
                 <button
                   key={p.id}
@@ -644,7 +701,7 @@ export const PosView: React.FC<PosViewProps> = ({
             </div>
           ) : (
             /* List Mode */
-            <div className="flex flex-col divide-y divide-slate-100">
+            <div className={`flex flex-col divide-y divide-slate-100 ${!isCashierOpen ? 'opacity-40 pointer-events-none select-none grayscale-[40%]' : ''}`}>
               {filteredProducts.map((p) => (
                 <div
                   key={p.id}
@@ -785,8 +842,20 @@ export const PosView: React.FC<PosViewProps> = ({
             )}
             <button
               type="button"
-              onClick={onOpenCustomProductModal}
-              className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-xs"
+              onClick={() => {
+                if (!isCashierOpen) {
+                  alert('Kasir belum dibuka! Silakan Buka Kasir terlebih dahulu.');
+                  onOpenShiftModal?.('open_shift');
+                  return;
+                }
+                onOpenCustomProductModal();
+              }}
+              disabled={!isCashierOpen}
+              className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors shadow-xs ${
+                !isCashierOpen
+                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                  : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 cursor-pointer'
+              }`}
             >
               Custom Produk
             </button>
@@ -1053,6 +1122,23 @@ export const PosView: React.FC<PosViewProps> = ({
             {totalQuantity} Pesanan
           </span>
         </div>
+
+        {/* Kasir Closed Alert Banner in Cart */}
+        {!isCashierOpen && (
+          <div className="p-2.5 bg-rose-50 border-b border-rose-200 text-rose-900 text-xs font-semibold flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <Lock className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span>Kasir Belum Dibuka (Terdisable)</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onOpenShiftModal?.('open_shift')}
+              className="px-2 py-1 bg-[#00871f] hover:bg-[#007019] text-white text-[10px] font-bold rounded cursor-pointer transition-colors shadow-2xs"
+            >
+              Buka Kasir
+            </button>
+          </div>
+        )}
 
         {/* TANGGAL JATUH TEMPO PENYELESAIAN (Due Date Section - Explicit User Request) */}
         <div className="p-3 bg-amber-50/60 border-b border-amber-200/70">
@@ -1371,27 +1457,40 @@ export const PosView: React.FC<PosViewProps> = ({
             <button
               type="button"
               onClick={handlePay}
-              disabled={cartItems.length === 0}
-              className={`py-2.5 px-2 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.98] cursor-pointer ${
-                remainingBill > 0
-                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200'
-                  : 'bg-[#00871f] hover:bg-[#007019] shadow-emerald-200'
+              disabled={!isCashierOpen || cartItems.length === 0}
+              className={`py-2.5 px-2 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.98] ${
+                !isCashierOpen
+                  ? 'bg-slate-400 cursor-not-allowed'
+                  : remainingBill > 0
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200 cursor-pointer'
+                  : 'bg-[#00871f] hover:bg-[#007019] shadow-emerald-200 cursor-pointer'
               }`}
+              title={!isCashierOpen ? 'Buka Kasir terlebih dahulu untuk memproses pembayaran' : ''}
             >
-              <FileCheck className="w-4 h-4" />
-              <span>
-                {remainingBill > 0
-                  ? effectiveCash > 0
-                    ? `Bayar DP & Piutang`
-                    : 'Catat Piutang'
-                  : 'Bayar'}
-              </span>
+              {!isCashierOpen ? (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span>Kasir Belum Dibuka</span>
+                </>
+              ) : (
+                <>
+                  <FileCheck className="w-4 h-4" />
+                  <span>
+                    {remainingBill > 0
+                      ? effectiveCash > 0
+                        ? `Bayar DP & Piutang`
+                        : 'Catat Piutang'
+                      : 'Bayar'}
+                  </span>
+                </>
+              )}
             </button>
             <button
               type="button"
               onClick={handleSaveAsPending}
-              disabled={cartItems.length === 0}
-              className="py-2.5 px-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all border border-slate-200 cursor-pointer"
+              disabled={!isCashierOpen || cartItems.length === 0}
+              className="py-2.5 px-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all border border-slate-200"
+              title={!isCashierOpen ? 'Buka Kasir terlebih dahulu untuk menyimpan pesanan' : ''}
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Simpan ke Pesanan</span>

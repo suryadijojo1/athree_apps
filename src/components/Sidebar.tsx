@@ -9,7 +9,8 @@ import {
   ShieldCheck,
   Home,
   HardDrive,
-  Shirt
+  Shirt,
+  Lock
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -25,6 +26,7 @@ interface SidebarProps {
   lowStockCount: number;
   lowKaosStockCount?: number;
   allowCashierDrive?: boolean;
+  isCashierOpen?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -36,7 +38,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   pendingOrdersCount,
   lowStockCount,
   lowKaosStockCount = 0,
-  allowCashierDrive = false
+  allowCashierDrive = false,
+  isCashierOpen = true
 }) => {
   const isAdmin = currentUser.role === 'admin';
   const isKasir = currentUser.role === 'kasir';
@@ -76,17 +79,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
-          {/* 1. KASIR */}
+          {/* 1. KASIR (Menu Penjualan) */}
           <button
             onClick={() => setActiveTab('pos')}
-            title="KASIR"
+            title={isCashierOpen ? 'KASIR (Menu Penjualan Aktif)' : 'KASIR (Kasir Belum Dibuka / Terdisable)'}
             className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
               activeTab === 'pos'
-                ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
+                ? isCashierOpen
+                  ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
+                  : 'bg-amber-600 text-white shadow-md shadow-amber-950'
+                : !isCashierOpen
+                ? 'text-slate-400 hover:bg-slate-800 hover:text-amber-300'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
           >
             <Monitor className="w-5 h-5 md:w-6 md:h-6" />
+            {!isCashierOpen && (
+              <span
+                className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 border-2 border-slate-900 rounded-full flex items-center justify-center text-white shadow-xs"
+                title="Status: Kasir Belum Dibuka (Menu Penjualan Terdisable)"
+              >
+                <Lock className="w-2.5 h-2.5" />
+              </span>
+            )}
           </button>
 
           {/* 2. Daftar Pesanan & Jatuh Tempo */}

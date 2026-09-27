@@ -266,7 +266,7 @@ export default function App() {
           : parsed.startTime?.includes(todayFormatted);
 
         if (!isFromToday) {
-          // Hilangkan sesi lama: otomatis buat shift harian bersih khusus hari ini
+          // Hari baru: status kasir belum dibuka (isOpen: false) sampai Kasir/Admin membuka kasir
           return {
             id: `shift-${todayIso}`,
             shiftNumber: 1,
@@ -279,8 +279,8 @@ export default function App() {
             nonCashSales: 0,
             totalSales: 0,
             expectedCash: parsed.startingCash || 500000,
-            isOpen: true,
-            notes: `Shift Harian Aktif - ${todayFormatted}`
+            isOpen: false,
+            notes: `Kasir Harian - ${todayFormatted}`
           };
         }
 
@@ -311,8 +311,8 @@ export default function App() {
           nonCashSales: 0,
           totalSales: 0,
           expectedCash: 500000,
-          isOpen: true,
-          notes: `Shift Harian Aktif - ${todayFormatted}`
+          isOpen: false,
+          notes: `Kasir Harian - ${todayFormatted}`
         };
       }
     }
@@ -328,8 +328,8 @@ export default function App() {
       nonCashSales: 0,
       totalSales: 0,
       expectedCash: 500000,
-      isOpen: true,
-      notes: `Shift Harian Aktif - ${todayFormatted}`
+      isOpen: false,
+      notes: `Kasir Harian - ${todayFormatted}`
     };
   });
 
@@ -1040,6 +1040,7 @@ export default function App() {
   const handleUpdateShift = (updatedShift: CashierShift) => {
     setShift(updatedShift);
     localStorage.setItem('athree_shift', JSON.stringify(updatedShift));
+    latestStateRef.current.shift = updatedShift;
 
     // 1. Instantly push to Firestore realtime collection so all internet browsers get onSnapshot
     saveActiveShiftToFirestore(updatedShift).catch((err) =>
@@ -1049,7 +1050,7 @@ export default function App() {
     // 2. Instantly fast-sync to server which notifies all connected browsers via SSE
     syncShiftToServer(
       updatedShift,
-      `${currentUser.name} (${updatedShift.isOpen ? 'Buka Shift' : 'Tutup Shift'})`
+      `${currentUser.name} (${updatedShift.isOpen ? 'Buka Kasir' : 'Tutup Kasir'})`
     ).catch((err) => console.warn('Server shift update error:', err));
 
     // 3. Update master server database
@@ -1070,7 +1071,7 @@ export default function App() {
         isRealData: isRealUserData(currentState.transactions)
       },
       {
-        savedBy: `${currentUser.name} (${updatedShift.isOpen ? 'Buka Shift' : 'Tutup Shift'})`,
+        savedBy: `${currentUser.name} (${updatedShift.isOpen ? 'Buka Kasir' : 'Tutup Kasir'})`,
         source: 'shift-update'
       }
     ).catch(() => {});
@@ -1126,8 +1127,8 @@ export default function App() {
             nonCashSales: 0,
             totalSales: 0,
             expectedCash: shift.startingCash || 500000,
-            isOpen: true,
-            notes: `Shift Harian Otomatis - ${todayFormatted}`
+            isOpen: false,
+            notes: `Kasir Harian - ${todayFormatted}`
           });
         }
       }
@@ -1181,9 +1182,11 @@ export default function App() {
   const executeFullCloudDatabaseSave = async (
     savedBy: string,
     source: string,
-    onStep?: (step: string) => void
+    onStep?: (step: string) => void,
+    overrideShift?: CashierShift
   ) => {
     const currentState = latestStateRef.current;
+    const shiftToSave = overrideShift || currentState.shift;
 
     // 1. Simpan snapshot master ke Server Pusat (dengan retensi 14 hari)
     if (onStep) onStep('Menyimpan data penjualan ke Server Pusat...');
@@ -1194,7 +1197,7 @@ export default function App() {
         transactions: currentState.transactions,
         cashFlowRecords: currentState.cashFlowRecords,
         shiftHistory: currentState.shiftHistory,
-        currentShift: currentState.shift,
+        currentShift: shiftToSave,
         kaosStocks: currentState.kaosStocks,
         stockMovements: currentState.stockMovements,
         customers: currentState.customers,
@@ -1215,7 +1218,7 @@ export default function App() {
       transactions: currentState.transactions,
       cashFlowRecords: currentState.cashFlowRecords,
       shifts: currentState.shiftHistory,
-      activeShift: currentState.shift,
+      activeShift: shiftToSave,
       kaosStocks: currentState.kaosStocks,
       customers: currentState.customers,
       users: currentState.users,
@@ -1277,7 +1280,8 @@ export default function App() {
       await executeFullCloudDatabaseSave(
         `${currentOperator} (Logout)`,
         'logout',
-        (step) => setLogoutStep(step)
+        (step) => setLogoutStep(step),
+        latestStateRef.current.shift
       );
 
       setLogoutSuccess(true);
@@ -2361,6 +2365,7 @@ export default function App() {
         lowStockCount={lowStockCount}
         lowKaosStockCount={lowKaosStockCount}
         allowCashierDrive={allowCashierDrive}
+        isCashierOpen={shift?.isOpen ?? false}
       />
 
       {/* 2. Main Work Area */}

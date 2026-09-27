@@ -33,7 +33,9 @@ import {
   HardDrive,
   Flame,
   ShieldCheck,
-  Shirt
+  Shirt,
+  Bell,
+  AlertTriangle
 } from 'lucide-react';
 import { Transaction, CashFlowRecord, CashierShift, User } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -100,6 +102,83 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [showAddSalesModal, setShowAddSalesModal] = useState(false);
   const [showUserManagementModal, setShowUserManagementModal] = useState(false);
   const [newSaldoInput, setNewSaldoInput] = useState<number>(shift.startingCash);
+
+  // States: Notifikasi Otomatis Jatuh Tempo Produksi (< 2 Hari)
+  const [showUrgentOrdersNotification, setShowUrgentOrdersNotification] = useState<boolean>(true);
+  const [showUrgentOrdersModal, setShowUrgentOrdersModal] = useState<boolean>(false);
+  const [urgentSearchQuery, setUrgentSearchQuery] = useState<string>('');
+
+  // Notifikasi Otomatis: Pesanan produksi (status Menunggu / Sedang Dikerjakan) yang jatuh temponya kurang dari 2 hari lagi
+  const urgentProductionOrders = useMemo(() => {
+    const now = new Date();
+    const todayTimestamp = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    return transactions
+      .filter((t) => {
+        // Status produksi harus 'Menunggu' atau 'Sedang Dikerjakan'
+        if (t.status !== 'Menunggu' && t.status !== 'Sedang Dikerjakan') {
+          return false;
+        }
+        if (!t.dueDate) return false;
+
+        const dueParts = t.dueDate.split(' ')[0].split('-');
+        if (dueParts.length < 3) return false;
+        const dueYear = parseInt(dueParts[0], 10);
+        const dueMonth = parseInt(dueParts[1], 10) - 1;
+        const dueDay = parseInt(dueParts[2], 10);
+        const dueTimestamp = new Date(dueYear, dueMonth, dueDay).getTime();
+        if (isNaN(dueTimestamp)) return false;
+
+        const diffDays = Math.ceil((dueTimestamp - todayTimestamp) / (1000 * 60 * 60 * 24));
+        // Kurang dari 2 hari lagi (termasuk <= 2 hari: hari ini, besok, atau sudah terlewat)
+        return diffDays <= 2;
+      })
+      .map((t) => {
+        const now = new Date();
+        const todayTimestamp = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const dueParts = t.dueDate.split(' ')[0].split('-');
+        const dueYear = parseInt(dueParts[0], 10);
+        const dueMonth = parseInt(dueParts[1], 10) - 1;
+        const dueDay = parseInt(dueParts[2], 10);
+        const dueTimestamp = new Date(dueYear, dueMonth, dueDay).getTime();
+        const diffDays = Math.ceil((dueTimestamp - todayTimestamp) / (1000 * 60 * 60 * 24));
+
+        let urgencyLabel = '';
+        let urgencyBadgeClass = '';
+        if (diffDays < 0) {
+          urgencyLabel = `Terlambat ${Math.abs(diffDays)} Hari!`;
+          urgencyBadgeClass = 'bg-rose-600 text-white font-extrabold animate-pulse';
+        } else if (diffDays === 0) {
+          urgencyLabel = 'Jatuh Tempo HARI INI!';
+          urgencyBadgeClass = 'bg-red-500 text-white font-black animate-bounce';
+        } else if (diffDays === 1) {
+          urgencyLabel = 'Besok (1 Hari Lagi)';
+          urgencyBadgeClass = 'bg-amber-500 text-white font-bold';
+        } else {
+          urgencyLabel = '2 Hari Lagi';
+          urgencyBadgeClass = 'bg-yellow-400 text-slate-900 font-semibold';
+        }
+
+        return {
+          ...t,
+          diffDays,
+          urgencyLabel,
+          urgencyBadgeClass
+        };
+      })
+      .sort((a, b) => a.diffDays - b.diffDays);
+  }, [transactions]);
+
+  const filteredUrgentOrders = useMemo(() => {
+    if (!urgentSearchQuery.trim()) return urgentProductionOrders;
+    const q = urgentSearchQuery.toLowerCase().trim();
+    return urgentProductionOrders.filter(
+      (t) =>
+        t.invoiceNo.toLowerCase().includes(q) ||
+        t.customer?.name.toLowerCase().includes(q) ||
+        t.items.some((i) => i.name.toLowerCase().includes(q))
+    );
+  }, [urgentProductionOrders, urgentSearchQuery]);
 
   // Form states
   const [cashFlowAmount, setCashFlowAmount] = useState<number>(50000);
@@ -262,6 +341,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <Store className="w-5 h-5 stroke-[2]" />
           </button>
 
+          {/* Notifikasi Otomatis Jatuh Tempo Produksi (< 2 Hari) */}
+          <button
+            type="button"
+            onClick={() => setShowUrgentOrdersModal(true)}
+            title={`Notifikasi: ${urgentProductionOrders.length} Pesanan Produksi Jatuh Tempo (< 2 Hari)`}
+            className="relative hover:scale-110 active:scale-95 transition-transform p-1.5 rounded-lg bg-black/20 hover:bg-black/30 cursor-pointer text-white"
+          >
+            <Bell className={`w-5 h-5 ${urgentProductionOrders.length > 0 ? 'text-amber-300 animate-bounce' : 'text-white'}`} />
+            {urgentProductionOrders.length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center animate-pulse shadow-md">
+                {urgentProductionOrders.length}
+              </span>
+            )}
+          </button>
+
           {/* Direct Ganti Akun & Logout Buttons (Replaced the popup menu) */}
           <button
             type="button"
@@ -295,21 +389,130 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </header>
 
       {/* 2. MAIN CENTER BODY (Matches screenshot layout) */}
-      <div className="relative z-10 flex-1 p-6 md:p-8 flex flex-col justify-between">
-        {/* Top Left: Branding Texts */}
-        <div className="flex flex-col items-start gap-8 max-w-sm">
-          {/* Branding Texts (Matches screenshot) */}
-          <div className="text-white drop-shadow-md">
-            <span className="text-sm md:text-base font-normal text-slate-100 block tracking-wide">
-              Pemilik
-            </span>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white mt-0.5">
-              Athree_Studio_Jayapura
-            </h1>
-            <p className="text-xs md:text-sm font-semibold tracking-wider text-slate-200 uppercase mt-1">
-              PUSAT KAOS, SABLON & STIKER
-            </p>
+      <div className="relative z-10 flex-1 p-4 md:p-6 lg:p-8 flex flex-col justify-between overflow-y-auto">
+        {/* Top Area: Branding & Automated Urgent Orders Notification Widget */}
+        <div className="flex flex-col lg:flex-row items-start justify-between gap-4 w-full">
+          {/* Top Left: Branding Texts */}
+          <div className="flex flex-col items-start gap-2 max-w-sm shrink-0">
+            <div className="text-white drop-shadow-md">
+              <span className="text-sm md:text-base font-normal text-slate-100 block tracking-wide">
+                Pemilik
+              </span>
+              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white mt-0.5">
+                Athree_Studio_Jayapura
+              </h1>
+              <p className="text-xs md:text-sm font-semibold tracking-wider text-slate-200 uppercase mt-1">
+                PUSAT KAOS, SABLON & STIKER
+              </p>
+            </div>
           </div>
+
+          {/* Automatic Urgent Production Orders Notification Card (< 2 Hari) */}
+          {urgentProductionOrders.length > 0 && showUrgentOrdersNotification && (
+            <div className="w-full lg:max-w-xl bg-slate-900/90 backdrop-blur-md border border-rose-500/70 rounded-2xl p-3.5 shadow-2xl text-white animate-in fade-in slide-in-from-top-3 duration-300">
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-rose-500/30">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center shrink-0">
+                    <Bell className="w-4 h-4 animate-bounce" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs md:text-sm font-extrabold text-rose-300 flex items-center gap-1.5">
+                      <span>Notifikasi Jatuh Tempo Produksi (&lt; 2 Hari)</span>
+                      <span className="px-2 py-0.5 bg-rose-600 text-white rounded-full text-[10px] font-black">
+                        {urgentProductionOrders.length} Pesanan
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-300 mt-0.5">
+                      Status Menunggu / Dikerjakan yang mendekati atau telah lewat batas waktu
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowUrgentOrdersModal(true)}
+                    className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                  >
+                    Buka Semua
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowUrgentOrdersNotification(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    title="Sembunyikan panel (dapat dibuka kembali lewat lonceng notifikasi)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Order List Cards */}
+              <div className="mt-2.5 space-y-2 max-h-44 overflow-y-auto pr-1">
+                {urgentProductionOrders.slice(0, 3).map((order) => (
+                  <div
+                    key={order.id}
+                    className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60 hover:border-rose-400/50 transition-all flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-white text-[12px]">
+                          {order.invoiceNo}
+                        </span>
+                        <span className="text-slate-300 font-semibold truncate">
+                          {order.customer?.name}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          {order.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                        {order.items.map((i) => `${i.name} (${i.quantity})`).join(', ')}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`px-2 py-1 rounded-lg text-[10px] whitespace-nowrap shadow-xs ${order.urgencyBadgeClass}`}>
+                        {order.urgencyLabel}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('orders')}
+                        className="px-2 py-1 bg-[#00871f] hover:bg-[#007019] text-white rounded-lg text-[11px] font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                        title="Buka detail di menu Antrean Pesanan"
+                      >
+                        Buka
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {urgentProductionOrders.length > 3 && (
+                <div className="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center text-[11px] text-slate-400">
+                  <span>+ {urgentProductionOrders.length - 3} pesanan mendesak lainnya</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowUrgentOrdersModal(true)}
+                    className="text-rose-400 hover:text-rose-300 font-bold underline cursor-pointer"
+                  >
+                    Lihat Selengkapnya &rarr;
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {urgentProductionOrders.length > 0 && !showUrgentOrdersNotification && (
+            <button
+              type="button"
+              onClick={() => setShowUrgentOrdersNotification(true)}
+              className="bg-rose-600/95 hover:bg-rose-700 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-lg border border-rose-400 flex items-center gap-1.5 animate-pulse cursor-pointer self-start"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>{urgentProductionOrders.length} Pesanan Jatuh Tempo (&lt; 2 Hari)</span>
+            </button>
+          )}
         </div>
 
         {/* Bottom Right Floating Action Grid (Matches screenshot) */}
@@ -407,20 +610,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 type="button"
                 onClick={() => onOpenShiftModal?.('reconcile')}
                 className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm shadow-lg hover:shadow-xl transition-all active:scale-95 border border-rose-500 flex items-center gap-1.5 cursor-pointer"
-                title="Menu Akhiri Shift Kasir & Logout Sistem"
+                title="Menu Tutup Kasir & Rekonsiliasi Kas"
               >
                 <Lock className="w-4 h-4" />
-                <span>Akhiri Shift</span>
+                <span>Tutup Kasir</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => onOpenShiftModal?.('open_shift')}
                 className="bg-[#00871f] hover:bg-[#007019] text-white px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm shadow-lg hover:shadow-xl transition-all active:scale-95 border border-emerald-600 flex items-center gap-1.5 cursor-pointer"
-                title="Buka Shift Kasir Baru (Tanggal & Jam Otomatis)"
+                title="Buka Kasir Baru (Tanggal & Jam Otomatis)"
               >
                 <Unlock className="w-4 h-4" />
-                <span>Buka Shift</span>
+                <span>Buka Kasir</span>
               </button>
             )}
           </div>
@@ -1074,6 +1277,154 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           onAddSales={onAddSales}
           onDeleteSales={onDeleteSales}
         />
+      )}
+
+      {/* Modal: Daftar Lengkap Notifikasi Pesanan Jatuh Tempo Produksi (< 2 Hari) */}
+      {showUrgentOrdersModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-rose-50 via-white to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span>Notifikasi Otomatis Jatuh Tempo Produksi (&lt; 2 Hari)</span>
+                    <span className="px-2 py-0.5 bg-rose-600 text-white rounded-full text-xs font-extrabold">
+                      {urgentProductionOrders.length} Pesanan
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Daftar pesanan dengan status <strong>Menunggu</strong> atau <strong>Sedang Dikerjakan</strong> yang mendekati atau telah lewat jatuh tempo.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUrgentOrdersModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filter Search */}
+            <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="relative flex-1 w-full sm:max-w-md">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={urgentSearchQuery}
+                  onChange={(e) => setUrgentSearchQuery(e.target.value)}
+                  placeholder="Cari invoice, pelanggan, atau nama produk..."
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-800"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUrgentOrdersModal(false);
+                  onNavigate('orders');
+                }}
+                className="w-full sm:w-auto px-4 py-2 bg-[#00871f] hover:bg-[#007019] text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Buka Menu Antrean Pesanan</span>
+              </button>
+            </div>
+
+            {/* Table Content */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {filteredUrgentOrders.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  Tidak ada pesanan produksi mendesak yang cocok dengan pencarian.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                  {filteredUrgentOrders.map((order) => (
+                    <div
+                      key={order.id}
+                      className="p-3.5 hover:bg-slate-50/80 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-bold text-slate-900 text-sm">
+                            {order.invoiceNo}
+                          </span>
+                          <span className="font-bold text-slate-700 text-xs">
+                            {order.customer?.name}
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">
+                            {order.customer?.phone}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            {order.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 line-clamp-1">
+                          {order.items.map((i) => `${i.name} (${i.quantity} ${i.kaosSize ? `- ${i.kaosSize}` : ''})`).join(', ')}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                          <span>Total: <strong>{formatCurrency(order.total)}</strong></span>
+                          {order.remainingAmount ? (
+                            <span className="text-rose-600 font-semibold">
+                              Sisa Piutang: {formatCurrency(order.remainingAmount)}
+                            </span>
+                          ) : null}
+                          <span>Jatuh Tempo: <strong className="text-slate-700">{order.dueDate}</strong></span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                        <span className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap shadow-xs ${order.urgencyBadgeClass}`}>
+                          {order.urgencyLabel}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowUrgentOrdersModal(false);
+                            onViewReceipt(order);
+                          }}
+                          className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Nota</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowUrgentOrdersModal(false);
+                            onNavigate('orders');
+                          }}
+                          className="px-3 py-1.5 bg-[#00871f] hover:bg-[#007019] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                          <span>Proses</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">
+                Total {filteredUrgentOrders.length} pesanan mendesak ditemukan
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowUrgentOrdersModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Tutup Jendela
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

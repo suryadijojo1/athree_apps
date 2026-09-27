@@ -121,32 +121,32 @@ export const Header: React.FC<HeaderProps> = ({
           <Calendar className="w-3.5 h-3.5 text-emerald-200" />
         </div>
 
-        {/* Shift Button & Direct Action */}
+        {/* Status Kasir & Tombol Buka / Tutup Kasir */}
         {shift.isOpen ? (
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => onOpenShiftModal('overview')}
               className="hidden sm:flex flex-col text-left px-2.5 py-1 rounded-lg bg-black/20 border border-white/20 hover:bg-black/30 transition-colors cursor-pointer group text-white"
-              title="Klik untuk melihat detail shift aktif"
+              title="Klik untuk melihat detail kasir terbuka"
             >
               <span className="text-[10px] font-semibold text-emerald-200 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Shift Harian Aktif
+                Kasir Terbuka
               </span>
               <span className="text-[11px] text-white group-hover:text-emerald-100 font-medium">
                 Buka: {shift.startTime}
               </span>
             </button>
 
-            {/* Dedicated Akhiri Shift Button */}
+            {/* Dedicated Tutup Kasir Button */}
             <button
               type="button"
               onClick={() => onOpenShiftModal('reconcile')}
               className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-              title="Menu Akhiri Shift Kasir & Logout Sistem"
+              title="Menu Tutup Kasir & Rekonsiliasi Kas"
             >
               <Lock className="w-3.5 h-3.5" />
-              <span>Akhiri Shift</span>
+              <span>Tutup Kasir</span>
             </button>
           </div>
         ) : (
@@ -154,10 +154,10 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={() => onOpenShiftModal('open_shift')}
             className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-[#00871f] font-bold text-xs shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-            title="Buka Shift Kasir Baru (Tanggal & Jam Otomatis)"
+            title="Buka Kasir Baru (Tanggal & Jam Otomatis)"
           >
             <Unlock className="w-3.5 h-3.5 text-[#00871f]" />
-            <span>Buka Shift</span>
+            <span>Buka Kasir</span>
           </button>
         )}
 
@@ -208,9 +208,9 @@ export const Header: React.FC<HeaderProps> = ({
                     >
                       <span className="flex items-center gap-2">
                         <Lock className="w-4 h-4 text-rose-600" />
-                        <span>Akhiri Shift &amp; Logout Sistem</span>
+                        <span>Tutup Kasir &amp; Logout Sistem</span>
                       </span>
-                      <span className="text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-mono">Aktif</span>
+                      <span className="text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-mono">Buka</span>
                     </button>
                   ) : (
                     <button
@@ -223,7 +223,7 @@ export const Header: React.FC<HeaderProps> = ({
                     >
                       <span className="flex items-center gap-2">
                         <Unlock className="w-4 h-4 text-[#00871f]" />
-                        <span>Buka Shift Kasir Baru</span>
+                        <span>Buka Kasir Baru</span>
                       </span>
                       <span className="text-[10px] bg-emerald-100 text-[#00871f] px-1.5 py-0.5 rounded font-mono">Tutup</span>
                     </button>
@@ -237,7 +237,7 @@ export const Header: React.FC<HeaderProps> = ({
                     }}
                     className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center justify-between cursor-pointer border-t border-slate-100"
                   >
-                    <span>Riwayat Tutup Shift</span>
+                    <span>Riwayat Buka / Tutup Kasir</span>
                     <Calculator className="w-4 h-4 text-slate-500" />
                   </button>
 

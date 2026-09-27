@@ -19,7 +19,8 @@ import {
   Check,
   ChevronRight,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  LogOut
 } from 'lucide-react';
 import { CashierShift, User, Transaction, CashFlowRecord, CashDenomination } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -129,12 +130,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     coins: 0
   });
 
-  const [inputMode, setInputMode] = useState<'denominations' | 'direct'>('denominations');
+  const [inputMode, setInputMode] = useState<'denominations' | 'direct'>('direct');
   const [directCashInput, setDirectCashInput] = useState<number>(shift.expectedCash);
 
   // Notes and Verification checkbox
   const [notesInput, setNotesInput] = useState<string>(shift.notes || '');
-  const [isVerifiedCheck, setIsVerifiedCheck] = useState<boolean>(false);
+  const [isVerifiedCheck, setIsVerifiedCheck] = useState<boolean>(true);
   const [validationError, setValidationError] = useState<string>('');
 
   // Admin starting cash revision
@@ -332,23 +333,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
   const handleConfirmCloseShift = () => {
     setValidationError('');
 
-    // Validation: Kasir must enter physical cash
-    if (physicalCashTotal <= 0 && shiftStats.systemCash > 0) {
-      if (!confirm('Uang fisik terdeteksi Rp 0. Apakah Anda yakin tidak ada uang fisik sama sekali di laci?')) {
-        return;
-      }
-    }
-
-    // Validation: If there is difference, note is mandatory
-    if (cashDifference !== 0 && !notesInput.trim()) {
-      setValidationError('Terdapat selisih kas fisik dan sistem. Kasir WAJIB menuliskan catatan/keterangan alasan selisih kas.');
-      return;
-    }
-
     const now = new Date();
     const fullEndDateTime = formatShortDateTime(now);
-
     const shiftNumber = (shift.shiftNumber || (shiftHistory.length > 0 ? shiftHistory.length + 1 : 2));
+
+    const finalActualCash = physicalCashTotal > 0 ? physicalCashTotal : shiftStats.systemCash;
+    const finalDiff = finalActualCash - shiftStats.systemCash;
 
     const closedShiftData: CashierShift = {
       ...shift,
@@ -357,8 +347,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       outletName: shift.outletName || 'athree studio jayapura',
       endTime: fullEndDateTime,
       endTimestamp: now.getTime(),
-      actualCash: physicalCashTotal,
-      difference: cashDifference,
+      actualCash: finalActualCash,
+      difference: finalDiff,
       expectedCash: shiftStats.systemCash,
       cashSales: shiftStats.cashSales,
       nonCashSales: shiftStats.nonCashSales,
@@ -367,7 +357,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       totalTransactions: shiftStats.completedCount,
       unpaidCount: shiftStats.unpaidCount,
       unpaidAmount: shiftStats.unpaidAmount,
-      notes: notesInput || (cashDifference === 0 ? 'Kroscek fisik dan sistem sesuai (balance)' : `Selisih kas ${formatCurrency(cashDifference)}`),
+      notes: notesInput || (finalDiff === 0 ? 'Kroscek fisik dan sistem sesuai (balance 100%)' : `Selisih kas ${formatCurrency(finalDiff)}`),
       paymentMethodBreakdown: {
         cash: shiftStats.cashSales,
         transfer: shiftStats.transferSales,
@@ -387,6 +377,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // Immediately show the success summary screen matching image.png!
     setViewMode('closed_summary');
+  };
+
+  // Handler: Langsung Tutup Kasir Sekarang & Nonaktifkan Penjualan
+  const handleCloseCashierNow = () => {
+    handleConfirmCloseShift();
+    alert('✅ Kasir Berhasil Ditutup!\n\nStatus kasir sekarang Tutup. Menu penjualan di kasir otomatis dinonaktifkan (terdisable).');
   };
 
   // Handler: Akhiri Shift & Logout dari sistem (User Request: "menu ini adalah menu akhiri shift, ketika di tekan maka shift berakhir dan system terlogout")
@@ -415,7 +411,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       totalTransactions: shiftStats.completedCount,
       unpaidCount: shiftStats.unpaidCount,
       unpaidAmount: shiftStats.unpaidAmount,
-      notes: notesInput || (diff === 0 ? 'Shift berakhir & balance 100%' : `Shift diakhiri selisih kas ${formatCurrency(diff)}`),
+      notes: notesInput || (diff === 0 ? 'Kasir ditutup & balance 100%' : `Kasir ditutup selisih kas ${formatCurrency(diff)}`),
       paymentMethodBreakdown: {
         cash: shiftStats.cashSales,
         transfer: shiftStats.transferSales,
@@ -471,7 +467,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       actualCash: undefined,
       difference: undefined,
       isOpen: true,
-      notes: notesInput || 'Shift baru dibuka'
+      notes: notesInput || 'Kasir baru dibuka'
     };
 
     onUpdateShift(newShift);
@@ -490,7 +486,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Laporan Tutup Shift #${targetShift.shiftNumber || 2} - ${targetShift.cashierName}</title>
+          <title>Laporan Tutup Kasir #{targetShift.shiftNumber || 2} - ${targetShift.cashierName}</title>
           <style>
             body { font-family: monospace, Courier, sans-serif; font-size: 12px; padding: 20px; line-height: 1.4; color: #111; max-width: 320px; margin: 0 auto; }
             .text-center { text-align: center; }
@@ -507,7 +503,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             <div>Pusat Kaos, Sablon & Stiker</div>
             <div>Jl. Percetakan Negara, Jayapura</div>
             <div class="divider"></div>
-            <div class="bold">LAPORAN TUTUP SHIFT #${targetShift.shiftNumber || 2}</div>
+            <div class="bold">LAPORAN TUTUP KASIR #{targetShift.shiftNumber || 2}</div>
             <div>${targetShift.endTime || new Date().toLocaleString('id-ID')}</div>
           </div>
 
@@ -568,14 +564,14 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-100 my-auto text-slate-800 overflow-hidden flex flex-col max-h-[92vh]">
         
         {/* ======================================================== */}
-        {/* VIEW 1: TUTUP SHIFT BERHASIL (EXACT MATCH WITH IMAGE.PNG) */}
+        {/* VIEW 1: TUTUP KASIR BERHASIL (EXACT MATCH WITH IMAGE.PNG) */}
         {/* ======================================================== */}
         {viewMode === 'closed_summary' && (
           <div className="flex flex-col h-full overflow-y-auto">
             {/* Top Bar Header */}
             <div className="flex items-center justify-between px-6 pt-5 pb-3">
               <h2 className="text-base font-bold text-slate-800">
-                {selectedHistoryShift ? 'Detil Histori Tutup Shift' : 'Tutup Shift Berhasil'}
+                {selectedHistoryShift ? 'Detil Histori Tutup Kasir' : 'Tutup Kasir Berhasil'}
               </h2>
               <button
                 type="button"
@@ -607,7 +603,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 </div>
 
                 <div className="text-right">
-                  <span className="text-xs font-medium text-slate-600 block">Detil Shift</span>
+                  <span className="text-xs font-medium text-slate-600 block">Detil Kasir</span>
                   <span className="text-xl font-bold text-slate-700">#{summaryShift.shiftNumber || 2}</span>
                 </div>
               </div>
@@ -803,7 +799,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     className="px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     <History className="w-3.5 h-3.5" />
-                    <span>Riwayat Shift</span>
+                    <span>Riwayat Kasir</span>
                   </button>
                 )}
 
@@ -822,7 +818,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Menu Akhiri Shift & Logout: Ketika ditekan maka shift berakhir dan system terlogout */}
+                {/* Menu Tutup Kasir & Logout */}
                 <button
                   type="button"
                   onClick={() => {
@@ -836,10 +832,10 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     }
                   }}
                   className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                  title="Menu Akhiri Shift Kasir & Logout Sistem"
+                  title="Menu Tutup Kasir & Logout Sistem"
                 >
                   <Lock className="w-3.5 h-3.5" />
-                  <span>Akhiri Shift &amp; Logout</span>
+                  <span>Tutup Kasir &amp; Logout</span>
                 </button>
 
                 {!shift.isOpen && !selectedHistoryShift && (
@@ -849,7 +845,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     className="px-4 py-2 text-xs font-bold bg-[#00871f] hover:bg-[#007019] text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     <Unlock className="w-3.5 h-3.5" />
-                    <span>Buka Shift Baru</span>
+                    <span>Buka Kasir Baru</span>
                   </button>
                 )}
 
@@ -868,7 +864,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         )}
 
         {/* ======================================================== */}
-        {/* VIEW 2: KROSCEK UANG FISIK VS SISTEM (WAJIB TUTUP SHIFT) */}
+        {/* VIEW 2: KROSCEK UANG FISIK VS SISTEM (WAJIB TUTUP KASIR) */}
         {/* ======================================================== */}
         {viewMode === 'reconcile' && (
           <div className="flex flex-col h-full overflow-y-auto">
@@ -880,7 +876,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-800">
-                    Kroscek Uang Fisik vs Sistem (Tutup Shift)
+                    Kroscek Uang Fisik vs Sistem (Tutup Kasir)
                   </h3>
                   <p className="text-xs text-slate-500">
                     Kasir: <strong className="text-slate-700">{activeCashierName}</strong> &bull; Waktu Buka: {shift.startTime}
@@ -898,7 +894,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             </div>
 
             <div className="p-6 space-y-4 flex-1 overflow-y-auto">
-              {/* Tanggal dan Jam Otomatis Buka & Tutup Shift */}
+              {/* Tanggal dan Jam Otomatis Buka & Tutup Kasir */}
               <div className="bg-gradient-to-r from-emerald-50 via-slate-50 to-rose-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-2xs">
                 <div className="flex items-center gap-2.5 w-full sm:w-auto">
                   <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#00871f] flex items-center justify-center shrink-0">
@@ -906,7 +902,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-500 block tracking-wider">
-                      Waktu Buka Shift
+                      Waktu Buka Kasir
                     </span>
                     <span className="font-bold text-slate-900 text-xs sm:text-sm">
                       {shift.startTime || 'Otomatis'}
@@ -925,7 +921,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] uppercase font-bold text-rose-700 block tracking-wider">
-                        Waktu Tutup Shift (Otomatis)
+                        Waktu Tutup Kasir (Otomatis)
                       </span>
                       <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                     </div>
@@ -1299,19 +1295,25 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 Kembali
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleConfirmCloseShift}
-                  disabled={!isVerifiedCheck}
-                  className={`px-4 py-2.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
-                    isVerifiedCheck
-                      ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                      : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                  }`}
-                  title="Simpan kroscek dan lihat ringkasan laporan shift"
+                  className="px-3.5 py-2.5 text-xs font-semibold rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 transition-all cursor-pointer shadow-xs"
+                  title="Simpan kroscek dan lihat ringkasan laporan tutup kasir"
                 >
-                  Lihat Ringkasan Shift
+                  Lihat Ringkasan Kasir
+                </button>
+
+                {/* Primary Dedicated Close Cashier Button */}
+                <button
+                  type="button"
+                  onClick={handleCloseCashierNow}
+                  className="px-5 py-2.5 text-xs font-bold rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer bg-rose-600 hover:bg-rose-700 text-white active:scale-95 border border-rose-700"
+                  title="Tutup kasir sekarang dan nonaktifkan menu penjualan kasir"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Tutup Kasir Sekarang</span>
                 </button>
 
                 <button
@@ -1324,16 +1326,11 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                       cashDenominations: denominations
                     });
                   }}
-                  disabled={!isVerifiedCheck}
-                  className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-sm flex items-center gap-2 transition-all cursor-pointer ${
-                    isVerifiedCheck
-                      ? 'bg-rose-600 hover:bg-rose-700 text-white active:scale-95'
-                      : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  }`}
-                  title="Menu Akhiri Shift: Shift berakhir dan sistem langsung otomatis logout"
+                  className="px-4 py-2.5 text-xs font-semibold rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer bg-slate-800 hover:bg-slate-900 text-white active:scale-95"
+                  title="Menu Tutup Kasir: Kasir ditutup dan sistem langsung otomatis logout"
                 >
-                  <Lock className="w-4 h-4" />
-                  <span>Akhiri Shift &amp; Logout Sistem</span>
+                  <LogOut className="w-4 h-4" />
+                  <span>Tutup Kasir &amp; Logout</span>
                 </button>
               </div>
             </div>
@@ -1352,7 +1349,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">Manajemen Shift Kasir</h3>
+                  <h3 className="text-base font-bold text-slate-800">Informasi Kasir Terbuka</h3>
                   <div className="flex items-center gap-2 mt-0.5">
                     <p className="text-xs text-slate-500">
                       Kasir Aktif: <strong className="text-slate-700">{shift.cashierName}</strong> &bull; Outlet: {shift.outletName || 'Default Outlet'}
@@ -1439,7 +1436,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 <div className="flex items-center gap-2.5">
                   <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
                   <div>
-                    <span className="text-xs font-bold text-emerald-900 block">Shift Harian Aktif (Hari Ini)</span>
+                    <span className="text-xs font-bold text-emerald-900 block">Kasir Terbuka (Hari Ini)</span>
                     <span className="text-[11px] text-emerald-700">Buka: {shift.startTime} &bull; Khusus Transaksi Hari Ini</span>
                   </div>
                 </div>
@@ -1594,7 +1591,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         )}
 
         {/* ======================================================== */}
-        {/* VIEW 4: OPEN NEW SHIFT FORM                              */}
+        {/* VIEW 4: OPEN NEW CASHIER FORM (BUKA KASIR)               */}
         {/* ======================================================== */}
         {viewMode === 'open_shift' && (
           <div className="flex flex-col h-full">
@@ -1604,8 +1601,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                   <Unlock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">Buka Shift Kasir Baru</h3>
-                  <p className="text-xs text-slate-500">Pencatatan transaksi kasir harian (khusus transaksi hari ini)</p>
+                  <h3 className="text-base font-bold text-slate-800">Buka Kasir Baru</h3>
+                  <p className="text-xs text-slate-500">Pencatatan transaksi kasir harian & modal awal</p>
                 </div>
               </div>
               <button
@@ -1618,12 +1615,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             </div>
 
             <div className="p-6 space-y-4 overflow-y-auto flex-1">
-              {/* Tanggal & Jam Buka Shift Otomatis */}
+              {/* Tanggal & Jam Buka Kasir Otomatis */}
               <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 shadow-2xs">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-[#00871f] shrink-0 animate-pulse" />
-                    Tanggal &amp; Jam Buka Shift (Otomatis):
+                    Tanggal &amp; Jam Buka Kasir (Otomatis):
                   </span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#00871f] text-white">
                     Real-Time Sistem
@@ -1638,7 +1635,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-emerald-800/80 mt-1.5 leading-relaxed">
-                  Tanggal dan jam saat shift dibuka akan otomatis direkam secara presisi saat Anda menekan tombol <strong>"Buka Shift Sekarang"</strong>.
+                  Tanggal dan jam saat kasir dibuka akan otomatis direkam secara presisi saat Anda menekan tombol <strong>"Buka Kasir Sekarang"</strong>.
                 </p>
               </div>
 
@@ -1768,13 +1765,13 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Catatan Pembukaan Shift:
+                  Catatan Pembukaan Kasir:
                 </label>
                 <input
                   type="text"
                   value={notesInput}
                   onChange={(e) => setNotesInput(e.target.value)}
-                  placeholder="Misal: Shift Pagi / Siang, uang modal pecahan 50k & 20k"
+                  placeholder="Misal: Kasir pagi, uang modal pecahan 50k & 20k"
                   className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00871f] focus:outline-none"
                 />
               </div>
@@ -1794,7 +1791,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 className="px-5 py-2.5 text-xs font-bold bg-[#00871f] hover:bg-[#007019] text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Unlock className="w-3.5 h-3.5" />
-                <span>Buka Shift Sekarang</span>
+                <span>Buka Kasir Sekarang</span>
               </button>
             </div>
           </div>
@@ -1811,8 +1808,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                   <History className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">Riwayat Tutup Shift Kasir</h3>
-                  <p className="text-xs text-slate-500">Daftar shift yang telah ditutup dan rekonsiliasi kas</p>
+                  <h3 className="text-base font-bold text-slate-800">Riwayat Buka / Tutup Kasir</h3>
+                  <p className="text-xs text-slate-500">Daftar sesi kasir yang telah ditutup dan rekonsiliasi kas</p>
                 </div>
               </div>
               <button
@@ -1828,7 +1825,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
               {shiftHistory.length === 0 ? (
                 <div className="text-center py-10 text-slate-400 text-xs">
                   <History className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  <p>Belum ada riwayat shift yang tersimpan.</p>
+                  <p>Belum ada riwayat kasir yang tersimpan.</p>
                 </div>
               ) : (
                 shiftHistory.map((h, idx) => (
@@ -1843,7 +1840,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-slate-900">
-                          Shift #{h.shiftNumber || idx + 1} &bull; {h.cashierName}
+                          Kasir Sesi #{h.shiftNumber || idx + 1} &bull; {h.cashierName}
                         </span>
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
