@@ -201,6 +201,11 @@ async function startServer() {
         }
       }
 
+      // Safeguard: Preserve existing active shift state if not explicitly specified
+      if (!payload.currentShift && currentDbState?.currentShift) {
+        payload.currentShift = currentDbState.currentShift;
+      }
+
       currentDbState = payload;
 
       // Atomically persist master database to disk
@@ -385,6 +390,73 @@ async function startServer() {
       clearInterval(pingInterval);
       sseClients.delete(res);
     });
+  });
+
+  // Live Active Shift Endpoints for Instant Real-Time Cross-Browser Integration
+  app.get('/api/shift/current', (req, res) => {
+    try {
+      res.json({
+        success: true,
+        shift: currentDbState?.currentShift || null
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/shift/update', (req, res) => {
+    try {
+      const { shift, sourceClient, savedBy } = req.body || {};
+      if (!shift) {
+        return res.status(400).json({ error: 'Shift data required' });
+      }
+
+      if (!currentDbState) {
+        currentDbState = {
+          products: [],
+          transactions: [],
+          cashFlowRecords: [],
+          shiftHistory: [],
+          currentShift: shift,
+          kaosStocks: [],
+          stockMovements: [],
+          customers: [],
+          lastUpdated: new Date().toISOString(),
+          isRealData: true
+        };
+      } else {
+        currentDbState.currentShift = shift;
+        // If shift is closed (isOpen: false), ensure it is also recorded in shiftHistory if not already there
+        if (shift.isOpen === false && Array.isArray(currentDbState.shiftHistory)) {
+          const exists = currentDbState.shiftHistory.some((s: any) => s.id === shift.id && s.endTime);
+          if (!exists) {
+            currentDbState.shiftHistory = [shift, ...currentDbState.shiftHistory];
+          }
+        }
+        currentDbState.lastUpdated = new Date().toISOString();
+        if (sourceClient) {
+          currentDbState.sourceClient = sourceClient;
+        }
+      }
+
+      const dir = path.dirname(DB_FILE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(currentDbState, null, 2), 'utf-8');
+
+      // Immediately broadcast database update containing updated shift to all SSE clients
+      broadcastDatabaseUpdate(currentDbState);
+
+      res.json({
+        success: true,
+        shift: currentDbState.currentShift,
+        timestamp: currentDbState.lastUpdated
+      });
+    } catch (err: any) {
+      console.error('Failed to update shift:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Google Drive Connected Account Management (Auto-Reconnect & Persistence)

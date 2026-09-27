@@ -60,6 +60,8 @@ import {
   deleteTransactionFromFirestore,
   saveCashFlowToFirestore,
   saveShiftToFirestore,
+  subscribeToActiveShift,
+  saveActiveShiftToFirestore,
   saveKaosStockToFirestore,
   saveMultipleKaosStocksToFirestore,
   saveCustomerToFirestore,
@@ -78,6 +80,7 @@ import {
   saveServerDatabase,
   saveServerBackupSnapshot,
   subscribeToServerEvents,
+  syncShiftToServer,
   isRealUserData,
   AppDatabasePayload
 } from './services/serverSync';
@@ -437,6 +440,7 @@ export default function App() {
     transactions,
     cashFlowRecords,
     shiftHistory,
+    shift,
     kaosStocks,
     stockMovements,
     customers,
@@ -451,13 +455,14 @@ export default function App() {
       transactions,
       cashFlowRecords,
       shiftHistory,
+      shift,
       kaosStocks,
       stockMovements,
       customers,
       users,
       salesList
     };
-  }, [products, categories, transactions, cashFlowRecords, shiftHistory, kaosStocks, stockMovements, customers, users, salesList]);
+  }, [products, categories, transactions, cashFlowRecords, shiftHistory, shift, kaosStocks, stockMovements, customers, users, salesList]);
 
   // Set up Central Server & Cloud Synchronization
   const isApplyingRemoteRef = useRef(false);
@@ -500,6 +505,27 @@ export default function App() {
       if (payload.shiftHistory && Array.isArray(payload.shiftHistory)) {
         setShiftHistory(payload.shiftHistory);
         localStorage.setItem('athree_shift_history', JSON.stringify(payload.shiftHistory));
+      }
+      // Apply active shift state from server / remote browser in real-time
+      if (payload.currentShift) {
+        const remoteShift = payload.currentShift;
+        setShift((prevShift) => {
+          if (
+            remoteShift.isOpen !== prevShift.isOpen ||
+            remoteShift.id !== prevShift.id ||
+            remoteShift.endTime !== prevShift.endTime ||
+            remoteShift.actualCash !== prevShift.actualCash ||
+            remoteShift.startingCash !== prevShift.startingCash
+          ) {
+            console.log('Real-Time Sync: Updating active shift from central database:', {
+              isOpen: remoteShift.isOpen,
+              endTime: remoteShift.endTime
+            });
+            localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
+            return remoteShift;
+          }
+          return prevShift;
+        });
       }
       if (payload.kaosStocks && Array.isArray(payload.kaosStocks) && payload.kaosStocks.length > 0) {
         setKaosStocks(payload.kaosStocks);
@@ -548,6 +574,7 @@ export default function App() {
       transactions: currentState.transactions,
       cashFlowRecords: currentState.cashFlowRecords,
       shiftHistory: currentState.shiftHistory,
+      currentShift: currentState.shift,
       kaosStocks: currentState.kaosStocks,
       stockMovements: currentState.stockMovements,
       customers: currentState.customers,
@@ -750,6 +777,30 @@ export default function App() {
       }
     });
 
+    const unsubActiveShift = subscribeToActiveShift((remoteActiveShift) => {
+      if (remoteActiveShift) {
+        setIsFirebaseConnected(true);
+        setShift((prevShift) => {
+          if (
+            remoteActiveShift.isOpen !== prevShift.isOpen ||
+            remoteActiveShift.id !== prevShift.id ||
+            remoteActiveShift.endTime !== prevShift.endTime ||
+            remoteActiveShift.actualCash !== prevShift.actualCash ||
+            remoteActiveShift.startingCash !== prevShift.startingCash
+          ) {
+            console.log('Real-Time Cloud: Live active shift updated from another browser:', {
+              isOpen: remoteActiveShift.isOpen,
+              cashierName: remoteActiveShift.cashierName,
+              endTime: remoteActiveShift.endTime
+            });
+            localStorage.setItem('athree_shift', JSON.stringify(remoteActiveShift));
+            return remoteActiveShift;
+          }
+          return prevShift;
+        });
+      }
+    });
+
     const unsubStockMovements = subscribeToStockMovements((remoteMovements) => {
       if (remoteMovements && remoteMovements.length > 0) {
         setIsFirebaseConnected(true);
@@ -792,6 +843,7 @@ export default function App() {
       unsubCashFlow();
       unsubCustomers();
       unsubShifts();
+      unsubActiveShift();
       unsubStockMovements();
       unsubUsers();
       unsubAuth();
@@ -820,6 +872,7 @@ export default function App() {
             transactions,
             cashFlowRecords,
             shiftHistory,
+            currentShift: shift,
             kaosStocks,
             stockMovements,
             customers,
@@ -833,7 +886,7 @@ export default function App() {
       } catch {}
     }, 400);
     return () => clearTimeout(timer);
-  }, [products, categories, transactions, cashFlowRecords, shiftHistory, kaosStocks, stockMovements, customers, users, salesList]);
+  }, [products, categories, transactions, cashFlowRecords, shiftHistory, shift, kaosStocks, stockMovements, customers, users, salesList]);
 
   // Tangkap refresh & unload browser: tandai refresh dan simpan snapshot via sendBeacon agar tidak ada data hilang
   useEffect(() => {
@@ -848,6 +901,7 @@ export default function App() {
             transactions: currentState.transactions,
             cashFlowRecords: currentState.cashFlowRecords,
             shiftHistory: currentState.shiftHistory,
+            currentShift: currentState.shift,
             kaosStocks: currentState.kaosStocks,
             stockMovements: currentState.stockMovements,
             customers: currentState.customers,
@@ -983,8 +1037,64 @@ export default function App() {
     localStorage.setItem('athree_shift_history', JSON.stringify(shiftHistory));
   }, [shiftHistory]);
 
+  const handleUpdateShift = (updatedShift: CashierShift) => {
+    setShift(updatedShift);
+    localStorage.setItem('athree_shift', JSON.stringify(updatedShift));
+
+    // 1. Instantly push to Firestore realtime collection so all internet browsers get onSnapshot
+    saveActiveShiftToFirestore(updatedShift).catch((err) =>
+      console.warn('Realtime Firestore active shift error:', err)
+    );
+
+    // 2. Instantly fast-sync to server which notifies all connected browsers via SSE
+    syncShiftToServer(
+      updatedShift,
+      `${currentUser.name} (${updatedShift.isOpen ? 'Buka Shift' : 'Tutup Shift'})`
+    ).catch((err) => console.warn('Server shift update error:', err));
+
+    // 3. Update master server database
+    const currentState = latestStateRef.current;
+    saveServerDatabase(
+      {
+        products: currentState.products,
+        categories: currentState.categories,
+        transactions: currentState.transactions,
+        cashFlowRecords: currentState.cashFlowRecords,
+        shiftHistory: currentState.shiftHistory,
+        currentShift: updatedShift,
+        kaosStocks: currentState.kaosStocks,
+        stockMovements: currentState.stockMovements,
+        customers: currentState.customers,
+        users: currentState.users,
+        salesList: currentState.salesList,
+        isRealData: isRealUserData(currentState.transactions)
+      },
+      {
+        savedBy: `${currentUser.name} (${updatedShift.isOpen ? 'Buka Shift' : 'Tutup Shift'})`,
+        source: 'shift-update'
+      }
+    ).catch(() => {});
+
+    // 4. Instantly broadcast to other tabs on the same device
+    try {
+      const bc = new BroadcastChannel('athree_cross_tab_sync');
+      bc.postMessage({
+        type: 'SHIFT_UPDATE',
+        currentShift: updatedShift,
+        sender: 'shift-handler'
+      });
+      bc.close();
+    } catch {}
+  };
+
   const handleSaveShiftToHistory = (closedShift: CashierShift) => {
-    setShiftHistory((prev) => [closedShift, ...prev]);
+    setShiftHistory((prev) => {
+      const exists = prev.some((s) => s.id === closedShift.id && s.endTime);
+      if (exists) return prev;
+      return [closedShift, ...prev];
+    });
+    // Immediately synchronize closed shift state across all browsers
+    handleUpdateShift(closedShift);
     saveShiftToFirestore(closedShift).catch((err) => console.warn('Sync shift error:', err));
   };
 
@@ -1084,6 +1194,7 @@ export default function App() {
         transactions: currentState.transactions,
         cashFlowRecords: currentState.cashFlowRecords,
         shiftHistory: currentState.shiftHistory,
+        currentShift: currentState.shift,
         kaosStocks: currentState.kaosStocks,
         stockMovements: currentState.stockMovements,
         customers: currentState.customers,
@@ -1104,6 +1215,7 @@ export default function App() {
       transactions: currentState.transactions,
       cashFlowRecords: currentState.cashFlowRecords,
       shifts: currentState.shiftHistory,
+      activeShift: currentState.shift,
       kaosStocks: currentState.kaosStocks,
       customers: currentState.customers,
       users: currentState.users,
@@ -2152,7 +2264,7 @@ export default function App() {
           cashFlowRecords={cashFlowRecords}
           onAddCashFlow={handleAddCashFlow}
           onViewReceipt={(tx) => setSuccessTx(tx)}
-          onUpdateShift={(s) => setShift(s)}
+          onUpdateShift={handleUpdateShift}
           onOpenShiftModal={handleOpenShiftModal}
           onReviseInvoice={(tx) => setRevisingTx(tx)}
           onDeleteInvoice={(tx) => setDeletingTx(tx)}
@@ -2178,7 +2290,7 @@ export default function App() {
           shift={shift}
           isOpen={isShiftModalOpen}
           onClose={() => setIsShiftModalOpen(false)}
-          onUpdateShift={(s) => setShift(s)}
+          onUpdateShift={handleUpdateShift}
           activeCashierName={currentUser.name}
           currentUser={currentUser}
           transactions={transactions}
@@ -2316,7 +2428,7 @@ export default function App() {
               onReviseInvoice={(tx) => setRevisingTx(tx)}
               onDeleteInvoice={(tx) => setDeletingTx(tx)}
               shift={shift}
-              onUpdateShift={(s) => setShift(s)}
+              onUpdateShift={handleUpdateShift}
               cashFlowRecords={cashFlowRecords}
               onAddCashFlow={handleAddCashFlow}
             />
@@ -2395,7 +2507,7 @@ export default function App() {
         shift={shift}
         isOpen={isShiftModalOpen}
         onClose={() => setIsShiftModalOpen(false)}
-        onUpdateShift={(s) => setShift(s)}
+        onUpdateShift={handleUpdateShift}
         activeCashierName={currentUser.name}
         currentUser={currentUser}
         transactions={transactions}

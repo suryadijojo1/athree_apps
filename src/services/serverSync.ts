@@ -6,6 +6,7 @@ export interface AppDatabasePayload {
   transactions: Transaction[];
   cashFlowRecords: CashFlowRecord[];
   shiftHistory: CashierShift[];
+  currentShift?: CashierShift;
   kaosStocks: KaosStockItem[];
   stockMovements: StockMovement[];
   customers: Customer[];
@@ -248,3 +249,43 @@ export function subscribeToServerEvents(
     if (pollInterval) clearInterval(pollInterval);
   };
 }
+
+/**
+ * Fast-sync active cashier shift to the server to immediately notify all other browsers
+ */
+export async function syncShiftToServer(
+  shift: CashierShift,
+  savedBy: string = 'Kasir'
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/shift/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': CLIENT_ID,
+        'X-Saved-By': savedBy
+      },
+      body: JSON.stringify({ shift, sourceClient: CLIENT_ID, savedBy })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Failed to sync shift to server:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetch current live shift from the central server
+ */
+export async function fetchCurrentShiftFromServer(): Promise<CashierShift | null> {
+  try {
+    const res = await fetch('/api/shift/current', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.shift || null;
+  } catch (err) {
+    console.warn('Failed to fetch current shift from server:', err);
+    return null;
+  }
+}
+

@@ -199,10 +199,39 @@ export function subscribeToShifts(
     (snapshot) => {
       const items: CashierShift[] = [];
       snapshot.forEach((docSnap) => {
-        items.push(docSnap.data() as CashierShift);
+        if (docSnap.id !== 'active_shift') {
+          items.push(docSnap.data() as CashierShift);
+        }
       });
       items.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
       onData(items);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.GET, path);
+      } catch (e) {
+        if (onError) onError(e);
+      }
+    }
+  );
+}
+
+/**
+ * Real-time listener for the live active cashier shift across all browsers and devices
+ */
+export function subscribeToActiveShift(
+  onData: (shift: CashierShift | null) => void,
+  onError?: (err: any) => void
+) {
+  const path = 'shifts/active_shift';
+  return onSnapshot(
+    doc(db, 'shifts', 'active_shift'),
+    (docSnap) => {
+      if (docSnap.exists()) {
+        onData(docSnap.data() as CashierShift);
+      } else {
+        onData(null);
+      }
     },
     (error) => {
       try {
@@ -264,6 +293,15 @@ export async function saveShiftToFirestore(shift: CashierShift): Promise<void> {
   const path = `shifts/${shift.id}`;
   try {
     await setDoc(doc(db, 'shifts', shift.id), shift);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function saveActiveShiftToFirestore(shift: CashierShift): Promise<void> {
+  const path = 'shifts/active_shift';
+  try {
+    await setDoc(doc(db, 'shifts', 'active_shift'), shift);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -463,6 +501,7 @@ export async function fetchAllDataFromFirestore(): Promise<{
   transactions: Transaction[];
   cashFlowRecords: CashFlowRecord[];
   shifts: CashierShift[];
+  activeShift?: CashierShift | null;
   kaosStocks: KaosStockItem[];
   customers: Customer[];
   users: User[];
@@ -473,6 +512,7 @@ export async function fetchAllDataFromFirestore(): Promise<{
     transactions: [] as Transaction[],
     cashFlowRecords: [] as CashFlowRecord[],
     shifts: [] as CashierShift[],
+    activeShift: null as CashierShift | null,
     kaosStocks: [] as KaosStockItem[],
     customers: [] as Customer[],
     users: [] as User[],
@@ -492,7 +532,13 @@ export async function fetchAllDataFromFirestore(): Promise<{
     results.cashFlowRecords.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
 
     const shiftSnap = await getDocs(collection(db, 'shifts'));
-    shiftSnap.forEach((d) => results.shifts.push(d.data() as CashierShift));
+    shiftSnap.forEach((d) => {
+      if (d.id === 'active_shift') {
+        results.activeShift = d.data() as CashierShift;
+      } else {
+        results.shifts.push(d.data() as CashierShift);
+      }
+    });
 
     const kaosSnap = await getDocs(collection(db, 'kaosStocks'));
     kaosSnap.forEach((d) => results.kaosStocks.push(d.data() as KaosStockItem));
@@ -519,6 +565,7 @@ export async function syncAllLocalDataToFirestore(data: {
   transactions: Transaction[];
   cashFlowRecords: CashFlowRecord[];
   shifts: CashierShift[];
+  activeShift?: CashierShift;
   kaosStocks?: KaosStockItem[];
   customers?: Customer[];
   users?: User[];
@@ -540,7 +587,11 @@ export async function syncAllLocalDataToFirestore(data: {
   }
 
   for (const s of data.shifts) {
-    if (s && s.id) writes.push({ col: 'shifts', id: s.id, val: s });
+    if (s && s.id && s.id !== 'active_shift') writes.push({ col: 'shifts', id: s.id, val: s });
+  }
+
+  if (data.activeShift) {
+    writes.push({ col: 'shifts', id: 'active_shift', val: data.activeShift });
   }
 
   if (data.kaosStocks) {

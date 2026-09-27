@@ -1,256 +1,298 @@
 {
   "products": [
     {
-      "sku": "SKU/00016",
-      "initials": "JH",
-      "minStock": 5,
+      "sku": "CUSTOM/ADHOC",
+      "price": 10000,
+      "name": "EMBOS THOPO",
       "isFavorite": false,
-      "id": "p-1790038147864",
-      "stock": 75,
       "unit": "Pcs",
-      "costPrice": 100000,
-      "price": 165000,
+      "stock": 985,
+      "colorBadge": "bg-emerald-100 text-emerald-800 border-emerald-200",
+      "initials": "EM",
+      "id": "custom-1790247892864",
+      "costPrice": 6000,
+      "minStock": 1,
+      "category": "CUSTOM MERCHANDISE"
+    },
+    {
+      "minStock": 1,
+      "category": "CUSTOM MERCHANDISE",
+      "isFavorite": false,
+      "unit": "Pcs",
+      "initials": "KE",
+      "stock": 997,
+      "price": 25000,
+      "name": "KERAH TALI",
+      "sku": "CUSTOM/ADHOC",
+      "colorBadge": "bg-emerald-100 text-emerald-800 border-emerald-200",
+      "costPrice": 15000,
+      "id": "custom-1790374168045"
+    },
+    {
+      "minStock": 5,
       "category": "JERSEY",
       "colorBadge": "bg-emerald-100 text-emerald-800 border-emerald-200",
-      "name": "JERSEY HALF PRINTING + CELANA"
+      "name": "JERSEY HALF PRINTING + CELANA",
+      "stock": 75,
+      "id": "p-1790038147864",
+      "costPrice": 100000,
+      "initials": "JH",
+      "sku": "SKU/00016",
+      "price": 165000,
+      "unit": "Pcs",
+      "isFavorite": false
     },
     {
-      "id": "p-1790038208860",
-      "initials": "MA",
-      "colorBadge": "bg-cyan-100 text-cyan-800 border-cyan-200",
-      "costPrice": 25000,
+      "category": "SABLON & PRINTING",
       "minStock": 5,
-      "stock": 472,
-      "name": "MAKLOON",
-      "isFavorite": false,
+      "costPrice": 25000,
+      "initials": "MA",
       "unit": "M",
-      "price": 35000,
+      "id": "p-1790038208860",
+      "stock": 466,
+      "isFavorite": false,
+      "name": "MAKLOON",
       "sku": "SKU/00017",
-      "category": "SABLON & PRINTING"
+      "price": 35000,
+      "colorBadge": "bg-cyan-100 text-cyan-800 border-cyan-200"
     },
     {
-      "initials": "SA",
+      "price": 30000,
+      "costPrice": 20000,
+      "unit": "Pcs",
       "colorBadge": "bg-teal-100 text-teal-800 border-teal-200",
+      "isFavorite": false,
+      "minStock": 5,
+      "category": "SABLON & PRINTING",
+      "name": "SABLON A4",
+      "initials": "SA",
       "id": "p-1790038260380",
       "sku": "SKU/00018",
-      "costPrice": 20000,
-      "minStock": 5,
-      "isFavorite": false,
-      "unit": "Pcs",
-      "stock": 98,
-      "price": 30000,
-      "name": "SABLON A4",
-      "category": "SABLON & PRINTING"
+      "stock": 98
     },
     {
-      "colorBadge": "bg-rose-100 text-rose-700 border-rose-200",
-      "sku": "SKU/00006",
-      "initials": "J(",
-      "unit": "Pcs",
-      "minStock": 10,
-      "name": "JERSEY ATASAN (STANDARD)",
-      "isFavorite": true,
-      "id": "p1",
-      "price": 160000,
-      "costPrice": 105000,
-      "category": "JERSEY",
-      "stock": 53
-    },
-    {
-      "initials": "TL",
-      "isFavorite": false,
-      "sku": "SKU/00011",
-      "costPrice": 4000,
-      "minStock": 10,
-      "unit": "Pcs",
-      "stock": 45,
-      "colorBadge": "bg-slate-200 text-slate-800 border-slate-300",
       "price": 10000,
+      "costPrice": 10000,
+      "unit": "Pcs",
+      "colorBadge": "bg-purple-100 text-purple-800 border-purple-200",
+      "isFavorite": false,
+      "category": "JERSEY",
+      "minStock": 5,
+      "name": "+ EMBOS",
+      "initials": "+E",
+      "id": "p-1790248004688",
+      "sku": "SKU/00020",
+      "stock": 86
+    },
+    {
+      "price": 165000,
+      "unit": "Pcs",
+      "isFavorite": true,
+      "costPrice": 105000,
+      "minStock": 10,
+      "category": "JERSEY",
+      "id": "p1",
+      "colorBadge": "bg-rose-100 text-rose-700 border-rose-200",
+      "name": "JERSEY ATASAN (SATUAN)",
+      "initials": "JA",
+      "sku": "SKU/00006",
+      "stock": 93
+    },
+    {
+      "price": 10000,
+      "isFavorite": false,
+      "unit": "Pcs",
+      "costPrice": 4000,
+      "category": "JERSEY",
+      "minStock": 10,
       "id": "p10",
       "name": "TAMBAHAN LENGAN PANJANG",
+      "colorBadge": "bg-slate-200 text-slate-800 border-slate-300",
+      "initials": "TL",
+      "sku": "SKU/00011",
+      "stock": 25
+    },
+    {
+      "isFavorite": false,
+      "sku": "SKU/00003",
+      "price": 20000,
+      "unit": "Pcs",
+      "id": "p11",
+      "initials": "TS",
+      "costPrice": 10000,
+      "stock": 39,
+      "name": "TAMBAHAN SIZE 2XL-3XL",
+      "colorBadge": "bg-amber-100 text-amber-800 border-amber-200",
+      "minStock": 10,
       "category": "JERSEY"
     },
     {
-      "minStock": 10,
-      "costPrice": 10000,
-      "price": 20000,
-      "name": "TAMBAHAN SIZE 2XL-3XL",
-      "initials": "TS",
-      "stock": 48,
       "isFavorite": false,
-      "unit": "Pcs",
-      "category": "JERSEY",
-      "sku": "SKU/00003",
-      "id": "p11",
-      "colorBadge": "bg-amber-100 text-amber-800 border-amber-200"
-    },
-    {
-      "isFavorite": false,
-      "category": "JERSEY",
       "sku": "SKU/00004",
-      "costPrice": 15000,
       "id": "p12",
       "unit": "Pcs",
-      "minStock": 5,
-      "stock": 25,
-      "colorBadge": "bg-emerald-100 text-emerald-800 border-emerald-200",
-      "name": "TAMBAHAN SIZE 4XL",
       "price": 25000,
-      "initials": "TS"
+      "costPrice": 15000,
+      "initials": "TS",
+      "stock": 22,
+      "name": "TAMBAHAN SIZE 4XL",
+      "colorBadge": "bg-emerald-100 text-emerald-800 border-emerald-200",
+      "category": "JERSEY",
+      "minStock": 5
     },
     {
-      "category": "KAOS POLOS",
-      "name": "KAOS POLOS COTTON COMBED 30S",
-      "isFavorite": true,
-      "costPrice": 35000,
-      "unit": "Pcs",
-      "minStock": 25,
-      "id": "p13",
-      "sku": "SKU/00014",
-      "price": 55000,
       "stock": 120,
+      "sku": "SKU/00014",
+      "isFavorite": true,
+      "name": "KAOS POLOS COTTON COMBED 30S",
+      "id": "p13",
+      "costPrice": 35000,
+      "minStock": 25,
+      "category": "KAOS POLOS",
+      "unit": "Pcs",
       "colorBadge": "bg-indigo-100 text-indigo-800 border-indigo-200",
-      "initials": "KP"
+      "initials": "KP",
+      "price": 55000
     },
     {
+      "stock": 24,
+      "sku": "SKU/00015",
+      "isFavorite": false,
       "name": "HOODIE CUSTOM PRINT FLEECE",
+      "id": "p14",
       "costPrice": 110000,
       "category": "SABLON & PRINTING",
-      "isFavorite": false,
-      "unit": "Pcs",
-      "sku": "SKU/00015",
       "minStock": 5,
-      "price": 175000,
-      "id": "p14",
+      "unit": "Pcs",
       "colorBadge": "bg-violet-100 text-violet-800 border-violet-200",
-      "stock": 24,
+      "price": 175000,
       "initials": "HC"
     },
     {
-      "minStock": 10,
       "name": "TOTE BAG CANVAS CUSTOM",
       "price": 35000,
-      "costPrice": 18000,
-      "isFavorite": false,
-      "stock": 34,
-      "unit": "Pcs",
-      "id": "p15",
-      "initials": "TB",
-      "category": "CUSTOM MERCHANDISE",
       "colorBadge": "bg-yellow-100 text-yellow-800 border-yellow-200",
-      "sku": "SKU/00016"
+      "isFavorite": false,
+      "costPrice": 18000,
+      "stock": 34,
+      "id": "p15",
+      "minStock": 10,
+      "category": "CUSTOM MERCHANDISE",
+      "unit": "Pcs",
+      "sku": "SKU/00016",
+      "initials": "TB"
     },
     {
       "sku": "SKU/00007",
-      "stock": 109,
-      "category": "JERSEY",
+      "name": "JERSEY ATASAN (>7PCS)",
       "price": 135000,
-      "colorBadge": "bg-orange-100 text-orange-700 border-orange-200",
+      "isFavorite": true,
       "initials": "J(",
       "unit": "Pcs",
-      "minStock": 15,
+      "stock": 39,
+      "colorBadge": "bg-orange-100 text-orange-700 border-orange-200",
       "costPrice": 90000,
       "id": "p2",
-      "isFavorite": true,
-      "name": "JERSEY ATASAN (>7PCS)"
+      "minStock": 15,
+      "category": "JERSEY"
     },
     {
-      "stock": 46,
-      "colorBadge": "bg-cyan-100 text-cyan-800 border-cyan-200",
-      "initials": "JP",
-      "minStock": 8,
-      "price": 185000,
-      "isFavorite": true,
-      "sku": "SKU/00008",
-      "name": "JERSEY FULL PRINTING (ATASAN + CELANA)",
-      "costPrice": 120000,
-      "category": "JERSEY",
+      "stock": 48,
       "id": "p3",
-      "unit": "Set"
+      "initials": "JP",
+      "sku": "SKU/00008",
+      "minStock": 8,
+      "category": "JERSEY",
+      "name": "JERSEY FULL PRINTING (ATASAN + CELANA)",
+      "isFavorite": true,
+      "costPrice": 120000,
+      "colorBadge": "bg-cyan-100 text-cyan-800 border-cyan-200",
+      "unit": "Set",
+      "price": 185000
     },
     {
-      "category": "CUSTOM MERCHANDISE",
       "name": "MUG CUSTOM",
+      "category": "CUSTOM MERCHANDISE",
+      "minStock": 10,
+      "stock": 85,
       "costPrice": 22000,
+      "isFavorite": false,
+      "initials": "MC",
       "colorBadge": "bg-teal-100 text-teal-800 border-teal-200",
-      "unit": "Pcs",
-      "minStock": 20,
-      "sku": "SKU/00012",
       "id": "p4",
       "price": 45000,
-      "isFavorite": false,
-      "stock": 85,
-      "initials": "MC"
-    },
-    {
-      "id": "p5",
       "unit": "Pcs",
-      "costPrice": 52000,
-      "isFavorite": true,
-      "name": "SABLON + KAOS A3",
-      "category": "SABLON & PRINTING",
+      "sku": "SKU/00012"
+    },
+    {
       "sku": "SKU/00002",
+      "id": "p5",
       "price": 90000,
+      "unit": "Pcs",
+      "colorBadge": "bg-purple-100 text-purple-800 border-purple-200",
       "initials": "SK",
-      "stock": 94,
-      "minStock": 15,
-      "colorBadge": "bg-purple-100 text-purple-800 border-purple-200"
+      "isFavorite": true,
+      "stock": 93,
+      "name": "SABLON + KAOS A3",
+      "costPrice": 52000,
+      "category": "SABLON & PRINTING",
+      "minStock": 15
     },
     {
-      "stock": 200,
-      "category": "CUSTOM MERCHANDISE",
       "id": "p6",
-      "costPrice": 1000,
-      "price": 5000,
-      "isFavorite": false,
-      "name": "TAMBAHAN CARTOON MUG",
       "minStock": 50,
-      "initials": "TM",
-      "unit": "Desain",
+      "category": "CUSTOM MERCHANDISE",
+      "name": "TAMBAHAN CARTOON MUG",
+      "stock": 200,
+      "costPrice": 1000,
       "colorBadge": "bg-emerald-100 text-emerald-800 border-emerald-200",
-      "sku": "SKU/00013"
+      "initials": "TC",
+      "isFavorite": false,
+      "sku": "SKU/00013",
+      "price": 5000,
+      "unit": "pcs"
     },
     {
+      "stock": 0,
       "sku": "SKU/00010",
       "isFavorite": false,
-      "category": "JERSEY",
-      "unit": "Pcs",
-      "costPrice": 9000,
-      "name": "TAMBAHAN KERAH POLO",
-      "minStock": 10,
-      "price": 20000,
-      "colorBadge": "bg-pink-100 text-pink-800 border-pink-200",
       "id": "p7",
-      "initials": "TP",
-      "stock": 70
-    },
-    {
-      "colorBadge": "bg-teal-100 text-teal-700 border-teal-200",
-      "sku": "SKU/00009",
+      "name": "TAMBAHAN KERAH POLO",
+      "costPrice": 20000,
+      "unit": "Pcs",
+      "minStock": 10,
       "category": "JERSEY",
-      "costPrice": 6000,
-      "initials": "TV",
-      "id": "p8",
-      "unit": "Pcs",
-      "isFavorite": false,
-      "stock": 45,
-      "minStock": 10,
-      "price": 15000,
-      "name": "TAMBAHAN KERAH VNECK"
-    },
-    {
-      "name": "TAMBAHAN LENGAN PANJANG",
-      "costPrice": 10000,
-      "initials": "TL",
-      "colorBadge": "bg-blue-100 text-blue-800 border-blue-200",
-      "minStock": 10,
-      "unit": "Pcs",
-      "sku": "SKU/00005",
-      "isFavorite": false,
+      "colorBadge": "bg-pink-100 text-pink-800 border-pink-200",
       "price": 20000,
-      "stock": 34,
+      "initials": "TK"
+    },
+    {
+      "price": 15000,
+      "isFavorite": false,
+      "unit": "Pcs",
+      "id": "p8",
+      "name": "TAMBAHAN KERAH VNECK",
+      "sku": "SKU/00009",
+      "initials": "TV",
+      "colorBadge": "bg-teal-100 text-teal-700 border-teal-200",
+      "costPrice": 6000,
+      "minStock": 10,
       "category": "JERSEY",
-      "id": "p9"
+      "stock": 45
+    },
+    {
+      "id": "p9",
+      "name": "TAMBAHAN LENGAN PANJANG",
+      "price": 20000,
+      "isFavorite": false,
+      "colorBadge": "bg-blue-100 text-blue-800 border-blue-200",
+      "stock": 34,
+      "minStock": 10,
+      "category": "JERSEY",
+      "sku": "SKU/00005",
+      "initials": "TL",
+      "unit": "Pcs",
+      "costPrice": 20000
     }
   ],
   "categories": [
@@ -263,769 +305,1322 @@
   ],
   "transactions": [
     {
-      "date": "2026-09-22 06:54",
-      "change": 0,
-      "items": [
-        {
-          "costPrice": 25000,
-          "sku": "SKU/00017",
-          "productId": "p-1790038208860",
-          "notes": "",
-          "price": 35000,
-          "quantity": 12,
-          "subtotal": 420000,
-          "name": "MAKLOON"
-        }
-      ],
-      "invoiceNo": "#ORD/41438",
-      "notes": "[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 15.55.16]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 17.36.03]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.44.47: TRF BNI DEWI]",
-      "orderType": "Admin (DEAZBAR)",
-      "tax": 0,
-      "amountPaid": 420000,
-      "cashierId": "u2",
-      "total": 420000,
-      "cashierName": "ADMIN",
+      "invoiceNo": "#INV/66414",
+      "cashierName": "DIMAS",
+      "dueDate": "2026-09-29 08:00",
+      "discount": 0,
+      "orderType": "Kasir (Dimas)",
+      "cashierId": "u1",
+      "total": 175000,
+      "paymentStatus": "LUNAS",
+      "notes": "[Revisi oleh KASIR (DIMAS) pd 26/9/2026, 23.33.50]",
       "status": "Selesai",
-      "paymentMethod": "Transfer Bank",
+      "tax": 0,
+      "createdAt": "2026-09-26T14:33:34.716Z",
+      "date": "2026-09-26 14:33",
+      "amountPaid": 175000,
+      "shiftId": "shift-2026-09-26",
       "remainingAmount": 0,
-      "dueDate": "2026-09-22 17:00",
-      "id": "tx-1790060077632",
-      "customer": {
-        "address": "-",
-        "name": "TALSON",
-        "phone": "-",
-        "id": "c-1790038296403"
-      },
-      "subtotal": 420000,
-      "discount": 0,
-      "paymentStatus": "LUNAS"
-    },
-    {
-      "amountPaid": 90000,
-      "tax": 0,
       "paymentMethod": "Transfer Bank",
-      "notes": "",
-      "orderType": "Kasir (Dimas)",
-      "cashierId": "u1",
-      "items": [
-        {
-          "sku": "SKU/00002",
-          "name": "SABLON + KAOS A3",
-          "subtotal": 90000,
-          "quantity": 1,
-          "costPrice": 52000,
-          "notes": "HITAM XL",
-          "price": 90000,
-          "productId": "p5"
-        }
-      ],
-      "status": "Selesai",
-      "date": "2026-09-22 00:59",
-      "invoiceNo": "#INV/82687",
-      "cashierName": "DIMAS",
-      "dueDate": "2026-09-22 08:00",
-      "id": "tx-1790038792998",
       "change": 0,
-      "subtotal": 90000,
-      "discount": 0,
-      "total": 90000,
+      "subtotal": 175000,
       "customer": {
-        "id": "c-1790038296403",
-        "address": "-",
-        "name": "EMEDLUGUN",
-        "phone": "-"
-      }
-    },
-    {
-      "tax": 0,
-      "paymentMethod": "Transfer Bank",
-      "amountPaid": 2070000,
-      "invoiceNo": "#ORD/86871",
-      "paymentStatus": "DP",
-      "remainingAmount": 2075000,
-      "status": "Sedang Dikerjakan",
-      "total": 4145000,
-      "orderType": "Kasir (Dimas)",
-      "dueDate": "2026-10-07 14:00",
-      "cashierId": "u1",
-      "date": "2026-09-22 00:55",
-      "cashierName": "DIMAS",
-      "id": "tx-1790038522800",
-      "change": 0,
-      "items": [
-        {
-          "sku": "SKU/00016",
-          "name": "JERSEY HALF PRINTING + CELANA",
-          "productId": "p-1790038147864",
-          "costPrice": 100000,
-          "subtotal": 4125000,
-          "quantity": 25,
-          "notes": "",
-          "price": 165000
-        },
-        {
-          "sku": "SKU/00005",
-          "price": 20000,
-          "costPrice": 10000,
-          "productId": "p9",
-          "subtotal": 20000,
-          "quantity": 1,
-          "name": "TAMBAHAN LENGAN PANJANG"
-        },
-        {
-          "quantity": 2,
-          "subtotal": 40000,
-          "sku": "SKU/00003",
-          "costPrice": 10000,
-          "productId": "p11",
-          "price": 20000,
-          "name": "TAMBAHAN SIZE 2XL-3XL"
-        }
-      ],
-      "customer": {
-        "name": "MELANESIA SENTANI",
         "phone": "-",
-        "id": "c-1790038296403",
-        "address": "-"
+        "id": "c-1790247670148",
+        "address": "-",
+        "name": "TALSON"
       },
-      "notes": "[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 09.57.09]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 09.59.01: Baru DP 2.070.000]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 10.00.15]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 10.08.13]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.43.31]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.01.42]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.03.07]",
-      "discount": 40000,
-      "subtotal": 4185000
-    },
-    {
-      "dueDate": "2026-09-22 08:00",
-      "change": 0,
-      "notes": "",
-      "cashierName": "DIMAS",
+      "id": "tx-1790433214716",
       "items": [
         {
-          "name": "MAKLOON",
           "costPrice": 25000,
-          "productId": "p-1790038208860",
-          "sku": "SKU/00017",
-          "price": 35000,
-          "quantity": 6,
-          "subtotal": 210000,
-          "notes": ""
-        },
-        {
-          "price": 30000,
-          "notes": "",
-          "quantity": 1,
-          "subtotal": 30000,
-          "name": "SABLON A4",
-          "sku": "SKU/00018",
-          "costPrice": 20000,
-          "productId": "p-1790038260380"
-        }
-      ],
-      "date": "2026-09-22 00:54",
-      "id": "tx-1790038449729",
-      "cashierId": "u1",
-      "paymentMethod": "Transfer Bank",
-      "orderType": "Kasir (Dimas)",
-      "status": "Selesai",
-      "tax": 0,
-      "subtotal": 240000,
-      "discount": 5000,
-      "invoiceNo": "#INV/92817",
-      "customer": {
-        "name": "EMEDLUGUN",
-        "phone": "-",
-        "id": "c-1790038296403",
-        "address": "-"
-      },
-      "amountPaid": 235000,
-      "total": 235000
-    },
-    {
-      "paymentMethod": "Transfer Bank",
-      "date": "2026-09-22 00:52",
-      "cashierId": "u1",
-      "subtotal": 210000,
-      "discount": 0,
-      "tax": 0,
-      "orderType": "Kasir (Dimas)",
-      "customer": {
-        "name": "EMEDLUGUN",
-        "id": "c-1790038296403",
-        "address": "-",
-        "phone": "-"
-      },
-      "status": "Selesai",
-      "total": 210000,
-      "invoiceNo": "#INV/60356",
-      "dueDate": "2026-09-22 08:00",
-      "notes": "",
-      "amountPaid": 210000,
-      "cashierName": "DIMAS",
-      "id": "tx-1790038332681",
-      "change": 0,
-      "items": [
-        {
-          "subtotal": 210000,
-          "quantity": 6,
-          "costPrice": 25000,
-          "sku": "SKU/00017",
-          "price": 35000,
           "name": "MAKLOON",
+          "subtotal": 175000,
           "productId": "p-1790038208860",
-          "notes": ""
+          "quantity": 5,
+          "sku": "SKU/00017",
+          "notes": "",
+          "cartItemId": "cart_1790433176330_hd68",
+          "price": 35000
         }
       ]
     },
     {
-      "dueDate": "2026-09-22 08:00",
-      "status": "Selesai",
-      "notes": "",
+      "dueDate": "2026-10-13 08:00",
+      "createdAt": "2026-09-26T14:31:35.560Z",
+      "id": "tx-1790433095560",
       "items": [
         {
-          "sku": "SKU/00018",
+          "productId": "p2",
           "notes": "",
-          "name": "SABLON A4",
-          "productId": "p-1790038260380",
-          "price": 30000,
-          "costPrice": 20000,
-          "quantity": 1,
-          "subtotal": 30000
-        }
-      ],
-      "id": "tx-1790038368425",
-      "cashierName": "DIMAS",
-      "cashierId": "u1",
-      "orderType": "Kasir (Dimas)",
-      "change": 0,
-      "paymentMethod": "Transfer Bank",
-      "subtotal": 30000,
-      "discount": 0,
-      "date": "2026-09-22 00:52",
-      "customer": {
-        "phone": "-",
-        "name": "Pelanggan Umum (Walk-in)",
-        "id": "c0"
-      },
-      "invoiceNo": "#INV/91862",
-      "tax": 0,
-      "total": 30000,
-      "amountPaid": 30000
-    },
-    {
-      "total": 1755000,
-      "invoiceNo": "#ORD/55962",
-      "id": "tx-1790037953737",
-      "date": "2026-09-22 00:45",
-      "status": "Sedang Dikerjakan",
-      "amountPaid": 1228000,
-      "cashierId": "u1",
-      "tax": 0,
-      "remainingAmount": 527000,
-      "orderType": "Kasir (Dimas)",
-      "cashierName": "DIMAS",
-      "dueDate": "2026-09-29 08:00",
-      "change": 0,
-      "items": [
-        {
-          "sku": "SKU/00007",
-          "quantity": 13,
-          "subtotal": 1755000,
           "costPrice": 90000,
-          "notes": "Untuk nmr punggung dan ukuran baju 1. ‎No. 18/L 2. ‎No. 32/L 3. ‎No. 13/L 4. ‎No. 32/XL 5. ‎No. 1/L 6. ‎No. 40/XL 7. ‎No. 11/L 8. ‎No. 3/L 9. ‎No. 12/l 10. ‎No. 21/XL 11. ‎No. 9/L 12. ‎No. 6/L 13. ‎No. 14/L",
-          "productId": "p2",
-          "price": 135000,
-          "name": "JERSEY ATASAN (>7PCS)"
-        }
-      ],
-      "customer": {
-        "name": "MEI POL AIR",
-        "address": "SENTANI",
-        "id": "c-1790037852448",
-        "phone": "-"
-      },
-      "subtotal": 1755000,
-      "discount": 0,
-      "paymentStatus": "DP",
-      "notes": "[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.45.06]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.45.41]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.01.52]",
-      "paymentMethod": "Transfer Bank"
-    },
-    {
-      "cashierId": "u2",
-      "orderType": "Admin (DEAZBAR)",
-      "remainingAmount": 0,
-      "tax": 0,
-      "dueDate": "2026-09-21 16:00",
-      "invoiceNo": "#INV/39983",
-      "total": 1200000,
-      "change": 0,
-      "notes": "Selesai tepat waktu",
-      "cashierName": "ATHREE(Owner)",
-      "amountPaid": 1200000,
-      "subtotal": 1240000,
-      "discount": 40000,
-      "customer": {
-        "phone": "0812-4899-2311",
-        "name": "FC Garuda Jayapura (Bpk. Yohan)",
-        "address": "Abepura, Jayapura",
-        "id": "c4"
-      },
-      "date": "2026-09-20 04:50",
-      "status": "Selesai",
-      "id": "tx-39983",
-      "items": [
-        {
-          "notes": "Jersey Atasan Garuda Jayapura",
-          "price": 135000,
+          "quantity": 50,
           "sku": "SKU/00007",
-          "costPrice": 90000,
-          "productId": "p2",
-          "subtotal": 1080000,
-          "quantity": 8,
-          "name": "JERSEY ATASAN (>7PCS)"
+          "price": 135000,
+          "name": "JERSEY ATASAN (>7PCS)",
+          "subtotal": 6750000,
+          "cartItemId": "cart_1790432911461_a0sm"
+        },
+        {
+          "cartItemId": "cart_1790432939828_6e4e",
+          "name": "TAMBAHAN LENGAN PANJANG",
+          "sku": "SKU/00011",
+          "price": 10000,
+          "subtotal": 190000,
+          "quantity": 19,
+          "costPrice": 4000,
+          "notes": "",
+          "productId": "p10"
+        },
+        {
+          "quantity": 4,
+          "price": 20000,
+          "subtotal": 80000,
+          "sku": "SKU/00003",
+          "notes": "",
+          "productId": "p11",
+          "costPrice": 10000,
+          "cartItemId": "cart_1790432960933_p5zz",
+          "name": "TAMBAHAN SIZE 2XL-3XL"
+        },
+        {
+          "notes": "",
+          "name": "TAMBAHAN SIZE 4XL",
+          "price": 25000,
+          "cartItemId": "cart_1790432967531_83eg",
+          "productId": "p12",
+          "costPrice": 15000,
+          "sku": "SKU/00004",
+          "subtotal": 75000,
+          "quantity": 3
         },
         {
           "price": 20000,
-          "name": "TAMBAHAN KERAH POLO",
-          "notes": "Kerah Polo variasi",
-          "costPrice": 9000,
-          "subtotal": 160000,
-          "quantity": 8,
+          "subtotal": 1000000,
+          "cartItemId": "cart_1790432996921_qndh",
+          "quantity": 50,
+          "costPrice": 20000,
+          "notes": "",
           "productId": "p7",
-          "sku": "SKU/00010"
+          "sku": "SKU/00010",
+          "name": "TAMBAHAN KERAH POLO"
         }
       ],
+      "status": "Selesai",
+      "tax": 0,
+      "cashierId": "u1",
+      "paymentMethod": "Transfer Bank",
+      "subtotal": 8095000,
+      "orderType": "Kasir (Dimas)",
+      "customer": {
+        "name": "SMP 11",
+        "id": "c0",
+        "phone": "-"
+      },
+      "invoiceNo": "#INV/43136",
+      "discount": 460000,
+      "notes": "[Revisi oleh KASIR (DIMAS) pd 26/9/2026, 23.32.11]",
+      "total": 7635000,
+      "shiftId": "shift-2026-09-26",
+      "cashierName": "DIMAS",
+      "date": "2026-09-26 14:31",
+      "paymentStatus": "DP",
+      "change": 0,
+      "amountPaid": 4000000,
+      "remainingAmount": 3635000
+    },
+    {
+      "customer": {
+        "id": "c0",
+        "name": "ASA DIGITAL",
+        "phone": "-"
+      },
+      "subtotal": 370000,
+      "change": 0,
+      "items": [
+        {
+          "productId": "p3",
+          "sku": "SKU/00008",
+          "costPrice": 120000,
+          "name": "JERSEY FULL PRINTING (ATASAN + CELANA)",
+          "cartItemId": "cart_1790432839624_0iw4",
+          "notes": "",
+          "quantity": 2,
+          "subtotal": 370000,
+          "price": 185000
+        }
+      ],
+      "remainingAmount": 370000,
+      "createdAt": "2026-09-26T14:27:59.821Z",
+      "invoiceNo": "#INV/57858",
+      "paymentMethod": "Tunai",
+      "orderType": "Kasir (Dimas)",
+      "date": "2026-09-26 14:27",
+      "cashierId": "u1",
+      "dueDate": "2026-10-13 08:00",
+      "tax": 0,
+      "amountPaid": 0,
+      "status": "Sedang Dikerjakan",
+      "total": 370000,
+      "notes": "[PIUTANG PIUTANG] Bayar: Rp 0, Sisa Piutang: Rp 370.000 (Jatuh Tempo: 2026-10-13 08:00)\n[Revisi oleh KASIR (DIMAS) pd 26/9/2026, 23.32.39]",
+      "cashierName": "DIMAS",
+      "shiftId": "shift-2026-09-26",
+      "paymentStatus": "PIUTANG",
+      "discount": 0,
+      "id": "tx-1790432879821"
+    },
+    {
+      "createdAt": "2026-09-26T14:24:42.396Z",
+      "cashierName": "DIMAS",
+      "paymentMethod": "Tunai",
+      "date": "2026-09-26 14:24",
+      "cashierId": "u1",
+      "total": 555000,
+      "id": "tx-1790432682396",
+      "notes": "[Revisi oleh KASIR (DIMAS) pd 26/9/2026, 23.26.42]",
+      "change": 0,
+      "invoiceNo": "#INV/39467",
+      "tax": 0,
+      "shiftId": "shift-2026-09-26",
+      "orderType": "Kasir (Dimas)",
+      "remainingAmount": 0,
+      "discount": 10000,
+      "subtotal": 565000,
+      "customer": {
+        "name": "JORDY",
+        "phone": "-",
+        "id": "c0"
+      },
+      "amountPaid": 555000,
+      "paymentStatus": "LUNAS",
+      "dueDate": "2026-10-07 13:00",
+      "status": "Sedang Dikerjakan",
+      "items": [
+        {
+          "cartItemId": "cart_1790432595159_rzmw",
+          "subtotal": 495000,
+          "sku": "SKU/00006",
+          "name": "JERSEY ATASAN (SATUAN)",
+          "quantity": 3,
+          "costPrice": 105000,
+          "productId": "p1",
+          "notes": "JERSEY EDEN DAN AKPER",
+          "price": 165000
+        },
+        {
+          "name": "TAMBAHAN SIZE 2XL-3XL",
+          "costPrice": 10000,
+          "subtotal": 20000,
+          "productId": "p11",
+          "quantity": 1,
+          "notes": "",
+          "sku": "SKU/00003",
+          "cartItemId": "cart_1790432647352_vuxl",
+          "price": 20000
+        },
+        {
+          "subtotal": 50000,
+          "sku": "CUSTOM/ADHOC",
+          "quantity": 2,
+          "costPrice": 15000,
+          "productId": "custom-1790374168045",
+          "name": "KERAH TALI",
+          "price": 25000
+        }
+      ]
+    },
+    {
+      "orderType": "Kasir (Dimas)",
+      "status": "Sedang Dikerjakan",
+      "shiftId": "shift-2026-09-26",
+      "notes": "[PIUTANG DP] Bayar: Rp 1.000.000, Sisa Piutang: Rp 1.260.000 (Jatuh Tempo: 2026-10-07 08:00)",
+      "invoiceNo": "#INV/28542",
+      "paymentMethod": "Tunai",
+      "total": 2260000,
+      "amountPaid": 1000000,
+      "cashierId": "u1",
+      "discount": 90000,
+      "tax": 0,
+      "createdAt": "2026-09-26T14:22:53.214Z",
+      "cashierName": "DIMAS",
+      "paymentStatus": "DP",
+      "change": 0,
+      "id": "tx-1790432573214",
+      "customer": {
+        "name": "DRS SPEED",
+        "id": "c-1790247811946",
+        "address": "-",
+        "phone": "-"
+      },
+      "dueDate": "2026-10-07 08:00",
+      "subtotal": 2350000,
+      "items": [
+        {
+          "productId": "p2",
+          "costPrice": 90000,
+          "sku": "SKU/00007",
+          "quantity": 14,
+          "name": "JERSEY ATASAN (>7PCS)",
+          "subtotal": 1890000,
+          "notes": "",
+          "cartItemId": "cart_1790432465012_bp1b",
+          "price": 135000
+        },
+        {
+          "productId": "p7",
+          "costPrice": 20000,
+          "sku": "SKU/00010",
+          "name": "TAMBAHAN KERAH POLO",
+          "cartItemId": "cart_1790432484620_03cx",
+          "notes": "",
+          "quantity": 14,
+          "subtotal": 280000,
+          "price": 20000
+        },
+        {
+          "price": 10000,
+          "cartItemId": "cart_1790432507860_231c",
+          "subtotal": 140000,
+          "costPrice": 10000,
+          "quantity": 14,
+          "notes": "",
+          "productId": "p-1790248004688",
+          "sku": "SKU/00020",
+          "name": "+ EMBOS"
+        },
+        {
+          "notes": "",
+          "name": "TAMBAHAN SIZE 2XL-3XL",
+          "price": 20000,
+          "cartItemId": "cart_1790432521658_m80n",
+          "productId": "p11",
+          "costPrice": 10000,
+          "sku": "SKU/00003",
+          "subtotal": 40000,
+          "quantity": 2
+        }
+      ],
+      "date": "2026-09-26 14:22",
+      "remainingAmount": 1260000
+    },
+    {
+      "total": 180000,
+      "notes": "[PIUTANG DP] Bayar: Rp 100.000, Sisa Piutang: Rp 80.000 (Jatuh Tempo: 2026-09-29 08:00)",
+      "date": "2026-09-25 22:11",
+      "change": 0,
+      "shiftId": "shift-1790290494947",
+      "paymentMethod": "Tunai",
+      "discount": 0,
+      "id": "tx-1790374317989",
+      "tax": 0,
+      "subtotal": 180000,
+      "cashierId": "u1",
+      "cashierName": "DIMAS",
+      "customer": {
+        "name": "WOBS ROBERT",
+        "address": "-",
+        "phone": "-",
+        "id": "c-1790374315956"
+      },
+      "invoiceNo": "#INV/31136",
+      "orderType": "Kasir (Dimas)",
+      "items": [
+        {
+          "sku": "SKU/00002",
+          "quantity": 1,
+          "cartItemId": "cart_1790374254702_xgsu",
+          "subtotal": 90000,
+          "price": 90000,
+          "notes": "",
+          "kaosSize": "M",
+          "productId": "p5",
+          "kaosColor": "Hitam",
+          "name": "SABLON + KAOS A3",
+          "costPrice": 52000
+        },
+        {
+          "cartItemId": "cart_1790374282369_izux",
+          "costPrice": 52000,
+          "price": 90000,
+          "sku": "SKU/00002",
+          "kaosColor": "Hitam",
+          "productId": "p5",
+          "subtotal": 90000,
+          "notes": "",
+          "quantity": 1,
+          "kaosSize": "L",
+          "name": "SABLON + KAOS A3"
+        }
+      ],
+      "dueDate": "2026-09-29 08:00",
+      "status": "Selesai",
+      "createdAt": "2026-09-25T22:11:57.989Z",
+      "amountPaid": 100000,
+      "remainingAmount": 80000,
+      "paymentStatus": "DP"
+    },
+    {
+      "cashierName": "ADMIN",
+      "customer": {
+        "name": "TALSON",
+        "phone": "-",
+        "id": "c-1790038296403",
+        "address": "-"
+      },
+      "subtotal": 420000,
+      "tax": 0,
+      "status": "Selesai",
+      "date": "2026-09-22 06:54",
+      "items": [
+        {
+          "price": 35000,
+          "productId": "p-1790038208860",
+          "quantity": 12,
+          "costPrice": 25000,
+          "sku": "SKU/00017",
+          "subtotal": 420000,
+          "name": "MAKLOON",
+          "notes": ""
+        }
+      ],
+      "paymentStatus": "LUNAS",
+      "amountPaid": 420000,
+      "dueDate": "2026-09-22 17:00",
+      "invoiceNo": "#ORD/41438",
+      "orderType": "Admin (DEAZBAR)",
+      "cashierId": "u2",
+      "change": 0,
+      "id": "tx-1790060077632",
+      "remainingAmount": 0,
+      "paymentMethod": "Transfer Bank",
+      "total": 420000,
+      "notes": "[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 15.55.16]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 17.36.03]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.44.47: TRF BNI DEWI]",
+      "discount": 0
+    },
+    {
+      "cashierId": "u1",
+      "orderType": "Kasir (Dimas)",
+      "items": [
+        {
+          "notes": "HITAM XL",
+          "name": "SABLON + KAOS A3",
+          "sku": "SKU/00002",
+          "price": 90000,
+          "subtotal": 90000,
+          "quantity": 1,
+          "productId": "p5",
+          "costPrice": 52000
+        }
+      ],
+      "amountPaid": 90000,
+      "invoiceNo": "#INV/82687",
+      "status": "Selesai",
+      "discount": 0,
+      "paymentMethod": "Transfer Bank",
+      "dueDate": "2026-09-22 08:00",
+      "cashierName": "DIMAS",
+      "id": "tx-1790038792998",
+      "notes": "",
+      "total": 90000,
+      "subtotal": 90000,
+      "customer": {
+        "name": "EMEDLUGUN",
+        "address": "-",
+        "id": "c-1790038296403",
+        "phone": "-"
+      },
+      "date": "2026-09-22 00:59",
+      "tax": 0,
+      "change": 0
+    },
+    {
+      "amountPaid": 2070000,
+      "cashierName": "DIMAS",
+      "change": 0,
+      "customer": {
+        "name": "MELANESIA SENTANI",
+        "id": "c-1790038296403",
+        "phone": "-",
+        "address": "-"
+      },
+      "paymentStatus": "DP",
+      "items": [
+        {
+          "notes": "",
+          "name": "JERSEY HALF PRINTING + CELANA",
+          "productId": "p-1790038147864",
+          "costPrice": 100000,
+          "sku": "SKU/00016",
+          "price": 165000,
+          "quantity": 25,
+          "subtotal": 4125000
+        },
+        {
+          "name": "TAMBAHAN LENGAN PANJANG",
+          "costPrice": 10000,
+          "productId": "p9",
+          "subtotal": 20000,
+          "sku": "SKU/00005",
+          "price": 20000,
+          "quantity": 1
+        },
+        {
+          "name": "TAMBAHAN SIZE 2XL-3XL",
+          "sku": "SKU/00003",
+          "costPrice": 10000,
+          "productId": "p11",
+          "price": 20000,
+          "subtotal": 40000,
+          "quantity": 2
+        }
+      ],
+      "remainingAmount": 2075000,
+      "subtotal": 4185000,
+      "id": "tx-1790038522800",
+      "discount": 40000,
+      "status": "Sedang Dikerjakan",
+      "orderType": "Kasir (Dimas)",
+      "paymentMethod": "Transfer Bank",
+      "invoiceNo": "#ORD/86871",
+      "date": "2026-09-22 00:55",
+      "total": 4145000,
+      "cashierId": "u1",
+      "dueDate": "2026-10-07 14:00",
+      "notes": "[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 09.57.09]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 09.59.01: Baru DP 2.070.000]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 10.00.15]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 10.08.13]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.43.31]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.01.42]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.03.07]",
+      "tax": 0
+    },
+    {
+      "items": [
+        {
+          "notes": "",
+          "name": "MAKLOON",
+          "costPrice": 25000,
+          "sku": "SKU/00017",
+          "productId": "p-1790038208860",
+          "subtotal": 210000,
+          "price": 35000,
+          "quantity": 6
+        },
+        {
+          "costPrice": 20000,
+          "subtotal": 30000,
+          "price": 30000,
+          "productId": "p-1790038260380",
+          "name": "SABLON A4",
+          "quantity": 1,
+          "sku": "SKU/00018",
+          "notes": ""
+        }
+      ],
+      "tax": 0,
+      "paymentMethod": "Transfer Bank",
+      "invoiceNo": "#INV/92817",
+      "dueDate": "2026-09-22 08:00",
+      "cashierName": "DIMAS",
+      "orderType": "Kasir (Dimas)",
+      "status": "Selesai",
+      "cashierId": "u1",
+      "discount": 5000,
+      "subtotal": 240000,
+      "id": "tx-1790038449729",
+      "customer": {
+        "id": "c-1790038296403",
+        "name": "EMEDLUGUN",
+        "phone": "-",
+        "address": "-"
+      },
+      "amountPaid": 235000,
+      "notes": "",
+      "total": 235000,
+      "change": 0,
+      "date": "2026-09-22 00:54"
+    },
+    {
+      "change": 0,
+      "paymentMethod": "Transfer Bank",
+      "items": [
+        {
+          "subtotal": 210000,
+          "costPrice": 25000,
+          "notes": "",
+          "quantity": 6,
+          "productId": "p-1790038208860",
+          "sku": "SKU/00017",
+          "name": "MAKLOON",
+          "price": 35000
+        }
+      ],
+      "amountPaid": 210000,
+      "customer": {
+        "id": "c-1790038296403",
+        "phone": "-",
+        "name": "EMEDLUGUN",
+        "address": "-"
+      },
+      "subtotal": 210000,
+      "id": "tx-1790038332681",
+      "dueDate": "2026-09-22 08:00",
+      "tax": 0,
+      "status": "Selesai",
+      "total": 210000,
+      "notes": "",
+      "discount": 0,
+      "date": "2026-09-22 00:52",
+      "cashierId": "u1",
+      "cashierName": "DIMAS",
+      "orderType": "Kasir (Dimas)",
+      "invoiceNo": "#INV/60356"
+    },
+    {
+      "tax": 0,
+      "dueDate": "2026-09-22 08:00",
+      "total": 30000,
+      "id": "tx-1790038368425",
+      "notes": "",
+      "amountPaid": 30000,
+      "status": "Selesai",
+      "discount": 0,
+      "subtotal": 30000,
+      "customer": {
+        "name": "Pelanggan Umum (Walk-in)",
+        "phone": "-",
+        "id": "c0"
+      },
+      "cashierId": "u1",
+      "date": "2026-09-22 00:52",
+      "items": [
+        {
+          "costPrice": 20000,
+          "subtotal": 30000,
+          "productId": "p-1790038260380",
+          "notes": "",
+          "quantity": 1,
+          "sku": "SKU/00018",
+          "name": "SABLON A4",
+          "price": 30000
+        }
+      ],
+      "paymentMethod": "Transfer Bank",
+      "invoiceNo": "#INV/91862",
+      "cashierName": "DIMAS",
+      "orderType": "Kasir (Dimas)",
+      "change": 0
+    },
+    {
+      "tax": 0,
+      "change": 0,
+      "notes": "[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.45.06]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.45.41]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.01.52]",
+      "dueDate": "2026-09-29 08:00",
+      "total": 1755000,
+      "amountPaid": 1228000,
+      "discount": 0,
+      "cashierId": "u1",
+      "remainingAmount": 527000,
+      "invoiceNo": "#ORD/55962",
+      "paymentStatus": "DP",
+      "cashierName": "DIMAS",
+      "orderType": "Kasir (Dimas)",
+      "items": [
+        {
+          "name": "JERSEY ATASAN (>7PCS)",
+          "sku": "SKU/00007",
+          "notes": "Untuk nmr punggung dan ukuran baju 1. ‎No. 18/L 2. ‎No. 32/L 3. ‎No. 13/L 4. ‎No. 32/XL 5. ‎No. 1/L 6. ‎No. 40/XL 7. ‎No. 11/L 8. ‎No. 3/L 9. ‎No. 12/l 10. ‎No. 21/XL 11. ‎No. 9/L 12. ‎No. 6/L 13. ‎No. 14/L",
+          "costPrice": 90000,
+          "productId": "p2",
+          "price": 135000,
+          "subtotal": 1755000,
+          "quantity": 13
+        }
+      ],
+      "id": "tx-1790037953737",
+      "status": "Sedang Dikerjakan",
+      "customer": {
+        "name": "MEI POL AIR",
+        "id": "c-1790037852448",
+        "phone": "-",
+        "address": "SENTANI"
+      },
+      "subtotal": 1755000,
+      "date": "2026-09-22 00:45",
       "paymentMethod": "Transfer Bank"
     },
     {
+      "discount": 40000,
+      "notes": "Selesai tepat waktu",
+      "change": 0,
+      "total": 1200000,
+      "date": "2026-09-20 04:50",
+      "tax": 0,
+      "dueDate": "2026-09-21 16:00",
+      "id": "tx-39983",
+      "status": "Selesai",
+      "cashierId": "u2",
+      "items": [
+        {
+          "costPrice": 90000,
+          "subtotal": 1080000,
+          "productId": "p2",
+          "notes": "Jersey Atasan Garuda Jayapura",
+          "quantity": 8,
+          "sku": "SKU/00007",
+          "name": "JERSEY ATASAN (>7PCS)",
+          "price": 135000
+        },
+        {
+          "price": 20000,
+          "quantity": 8,
+          "productId": "p7",
+          "subtotal": 160000,
+          "name": "TAMBAHAN KERAH POLO",
+          "costPrice": 9000,
+          "sku": "SKU/00010",
+          "notes": "Kerah Polo variasi"
+        }
+      ],
+      "orderType": "Admin (DEAZBAR)",
+      "invoiceNo": "#INV/39983",
+      "cashierName": "ATHREE(Owner)",
+      "paymentMethod": "Transfer Bank",
+      "remainingAmount": 0,
+      "customer": {
+        "id": "c4",
+        "name": "FC Garuda Jayapura (Bpk. Yohan)",
+        "phone": "0812-4899-2311",
+        "address": "Abepura, Jayapura"
+      },
+      "subtotal": 1240000,
+      "amountPaid": 1200000
+    },
+    {
+      "orderType": "Kasir (Dimas)",
+      "invoiceNo": "#INV/18529",
+      "customer": {
+        "name": "Pelanggan Umum (Walk-in)",
+        "id": "c0",
+        "phone": "-"
+      },
+      "cashierName": "DIMAS",
+      "change": 20000,
+      "dueDate": "2026-09-18 12:00",
+      "cashierId": "u1",
+      "subtotal": 130000,
       "items": [
         {
           "productId": "p13",
           "quantity": 2,
           "costPrice": 42000,
           "subtotal": 130000,
-          "price": 65000,
           "notes": "Kaos polos hitam & putih",
+          "sku": "SKU/00014",
           "name": "KAOS POLOS COTTON COMBED 30S",
-          "sku": "SKU/00014"
+          "price": 65000
         }
       ],
-      "id": "tx-18529",
-      "invoiceNo": "#INV/18529",
-      "change": 20000,
-      "amountPaid": 150000,
-      "date": "2026-09-18 07:20",
-      "orderType": "Kasir (Dimas)",
-      "cashierId": "u1",
-      "notes": "Pembelian langsung walk-in",
-      "paymentMethod": "Tunai",
       "remainingAmount": 0,
-      "total": 130000,
-      "customer": {
-        "name": "Pelanggan Umum (Walk-in)",
-        "id": "c0",
-        "phone": "-"
-      },
-      "subtotal": 130000,
-      "discount": 0,
+      "amountPaid": 150000,
       "tax": 0,
-      "cashierName": "DIMAS",
-      "dueDate": "2026-09-18 12:00",
-      "status": "Selesai"
+      "status": "Selesai",
+      "date": "2026-09-18 07:20",
+      "discount": 0,
+      "total": 130000,
+      "notes": "Pembelian langsung walk-in",
+      "id": "tx-18529",
+      "paymentMethod": "Tunai"
     },
     {
-      "invoiceNo": "#INV/11028",
-      "total": 1040000,
-      "id": "tx-11028",
-      "date": "2026-09-17 05:39",
-      "status": "Selesai",
-      "amountPaid": 1040000,
       "tax": 0,
+      "change": 0,
+      "notes": "Lunas Transfer Bank",
+      "total": 1040000,
+      "dueDate": "2026-09-18 16:00",
+      "discount": 0,
+      "amountPaid": 1040000,
       "cashierId": "u2",
       "remainingAmount": 0,
+      "invoiceNo": "#INV/11028",
       "orderType": "Admin (DEAZBAR)",
       "cashierName": "ATHREE(Owner)",
-      "dueDate": "2026-09-18 16:00",
-      "change": 0,
+      "id": "tx-11028",
       "items": [
         {
           "sku": "SKU/00008",
-          "notes": "Jersey Touring Komunitas Motor Noken",
           "price": 260000,
-          "productId": "p3",
-          "costPrice": 165000,
+          "name": "JERSEY FULL PRINTING (ATASAN + CELANA)",
           "quantity": 4,
+          "productId": "p3",
+          "notes": "Jersey Touring Komunitas Motor Noken",
           "subtotal": 1040000,
-          "name": "JERSEY FULL PRINTING (ATASAN + CELANA)"
+          "costPrice": 165000
         }
       ],
+      "status": "Selesai",
       "customer": {
         "phone": "0821-9988-1234",
         "name": "Komunitas Motor Noken",
-        "id": "c5",
-        "address": "Entrop, Jayapura"
+        "address": "Entrop, Jayapura",
+        "id": "c5"
       },
-      "discount": 0,
       "subtotal": 1040000,
-      "notes": "Lunas Transfer Bank",
+      "date": "2026-09-17 05:39",
       "paymentMethod": "Transfer Bank"
     }
   ],
-  "cashFlowRecords": [],
+  "cashFlowRecords": [
+    {
+      "createdAt": "2026-09-24T11:12:01.141Z",
+      "shiftId": "shift-1790197790826",
+      "amount": 5000,
+      "id": "cf-1790248321141",
+      "category": "Pengeluaran Lainnya",
+      "type": "EXPENSE",
+      "recordedBy": "ATHREE(Owner)",
+      "description": "SELISIH TALSON",
+      "date": "2026-09-24 20:12"
+    },
+    {
+      "id": "cf-1790248234792",
+      "description": "BAYAR SELISIH TRF TALSON",
+      "shiftId": "shift-1790197790826",
+      "type": "EXPENSE",
+      "recordedBy": "ATHREE(Owner)",
+      "createdAt": "2026-09-24T11:10:34.792Z",
+      "date": "2026-09-24 20:10",
+      "category": "Pengeluaran Lainnya",
+      "amount": 20000
+    },
+    {
+      "recordedBy": "ATHREE(Owner)",
+      "id": "cf-1790248181938",
+      "category": "Gaji / Uang Makan Staf",
+      "type": "EXPENSE",
+      "shiftId": "shift-1790197790826",
+      "description": "Operasional / Pengeluaran toko",
+      "date": "2026-09-24 20:09",
+      "amount": 40000,
+      "createdAt": "2026-09-24T11:09:41.938Z"
+    }
+  ],
   "shiftHistory": [
     {
-      "shiftNumber": 1,
-      "difference": 0,
-      "totalDiscount": 25000,
-      "id": "shift-1",
-      "nonCashSales": 1800000,
-      "startTime": "16 Sep 2026, 08:00",
-      "cashSales": 1250000,
+      "id": "shift-test",
       "isOpen": false,
-      "notes": "Shift #1 ditutup balance 100%",
-      "expectedCash": 1750000,
-      "outletName": "Default Outlet",
+      "startTime": "08:00",
+      "endTime": "17:00",
       "startingCash": 500000,
       "actualCash": 1750000,
-      "endTime": "16 Sep 2026, 17:00",
-      "unpaidCount": 0,
-      "unpaidAmount": 0,
+      "cashierName": "DIMAS"
+    },
+    {
       "totalSales": 3050000,
+      "difference": 0,
+      "cashierName": "Dian Octaviani",
+      "cashSales": 1250000,
+      "expectedCash": 1750000,
+      "isOpen": false,
+      "actualCash": 1750000,
+      "startTime": "16 Sep 2026, 08:00",
+      "notes": "Shift #1 ditutup balance 100%",
+      "unpaidAmount": 0,
+      "unpaidCount": 0,
+      "shiftNumber": 1,
       "paymentMethodBreakdown": {
         "other": 0,
         "cash": 1250000,
         "qris": 800000,
         "transfer": 1000000
       },
-      "cashierName": "Dian Octaviani",
-      "totalTransactions": 6
+      "totalTransactions": 6,
+      "totalDiscount": 25000,
+      "id": "shift-1",
+      "nonCashSales": 1800000,
+      "outletName": "Default Outlet",
+      "startingCash": 500000,
+      "endTime": "16 Sep 2026, 17:00"
     },
     {
-      "isOpen": false,
+      "actualCash": 105000,
+      "startTime": "22 Sep 2026, 09.43",
+      "nonCashSales": 6885000,
+      "totalSales": 6885000,
+      "difference": 0,
+      "id": "shift-1790037795713",
+      "totalTransactions": 0,
+      "startingCash": 80000,
+      "cashSales": 0,
+      "endTime": "22 Sep 2026, 20.05",
+      "cashierName": "DIMAS",
+      "outletName": "athree studio jayapura",
       "cashDenominations": {
-        "k50": 0,
-        "k100": 0,
         "k20": 0,
         "k1": 0,
         "k10": 0,
+        "k50": 0,
         "k5": 0,
         "coins": 0,
+        "k100": 0,
         "k2": 0
       },
-      "nonCashSales": 6885000,
-      "cashierName": "DIMAS",
-      "unpaidCount": 0,
-      "startTime": "22 Sep 2026, 09.43",
-      "difference": 0,
-      "notes": "Shift Pagi - Sampai Malam",
-      "cashSales": 0,
-      "unpaidAmount": 0,
       "totalDiscount": 45000,
-      "id": "shift-1790037795713",
-      "totalSales": 6885000,
-      "totalTransactions": 0,
+      "expectedCash": 105000,
+      "unpaidCount": 0,
       "shiftNumber": 3,
-      "outletName": "athree studio jayapura",
-      "actualCash": 105000,
-      "endTime": "22 Sep 2026, 20.05",
+      "isOpen": false,
       "paymentMethodBreakdown": {
-        "qris": 0,
-        "transfer": 6885000,
+        "cash": 0,
         "other": 0,
-        "cash": 0
+        "qris": 0,
+        "transfer": 6885000
       },
-      "startingCash": 80000,
-      "expectedCash": 105000
+      "notes": "Shift Pagi - Sampai Malam",
+      "unpaidAmount": 0
     },
     {
+      "cashSales": 165000,
+      "totalTransactions": 0,
+      "endTime": "24 Sep 2026, 06.09",
+      "unpaidAmount": 0,
+      "cashierName": "DIMAS",
+      "startTime": "23 Sep 2026, 07.54",
       "outletName": "athree studio jayapura",
-      "actualCash": 190000,
+      "notes": "Shift Pagi - Sampai Malam",
+      "expectedCash": 190000,
       "unpaidCount": 0,
-      "cashDenominations": {
-        "k100": 0,
-        "k10": 0,
-        "k5": 0,
-        "k20": 0,
-        "k2": 0,
-        "k50": 0,
-        "coins": 0,
-        "k1": 0
-      },
+      "shiftNumber": 4,
+      "nonCashSales": 9230000,
+      "isOpen": false,
+      "totalSales": 9395000,
+      "difference": 0,
+      "startingCash": 40000,
       "paymentMethodBreakdown": {
-        "transfer": 9230000,
-        "qris": 0,
         "other": 0,
+        "qris": 0,
+        "transfer": 9230000,
         "cash": 165000
       },
-      "cashierName": "DIMAS",
-      "unpaidAmount": 0,
-      "expectedCash": 190000,
       "totalDiscount": 85000,
-      "startingCash": 40000,
-      "isOpen": false,
-      "startTime": "23 Sep 2026, 07.54",
-      "totalSales": 9395000,
-      "endTime": "24 Sep 2026, 06.09",
-      "cashSales": 165000,
-      "nonCashSales": 9230000,
-      "totalTransactions": 0,
+      "actualCash": 190000,
       "id": "shift-1790117698945",
-      "difference": 0,
-      "shiftNumber": 4,
-      "notes": "Shift Pagi - Sampai Malam"
-    },
-    {
-      "cashSales": 130000,
-      "shiftNumber": 1,
-      "id": "shift-today",
-      "unpaidAmount": 0,
       "cashDenominations": {
+        "k1": 0,
         "coins": 0,
         "k5": 0,
-        "k2": 0,
+        "k20": 0,
         "k100": 0,
-        "k1": 0,
+        "k2": 0,
         "k10": 0,
-        "k50": 0,
-        "k20": 0
-      },
-      "difference": 0,
+        "k50": 0
+      }
+    },
+    {
+      "startingCash": 35000,
+      "endTime": "24 Sep 2026, 20.13",
+      "shiftNumber": 5,
+      "unpaidCount": 0,
+      "actualCash": 5000,
+      "startTime": "24 Sep 2026, 06.09",
+      "totalTransactions": 0,
+      "notes": "Shift Pagi - Sampai Malam",
+      "nonCashSales": 1175000,
       "isOpen": false,
-      "expectedCash": 155000,
-      "totalDiscount": 85000,
-      "endTime": "24 Sep 2026, 06.33",
+      "cashSales": 35000,
+      "difference": 0,
+      "totalSales": 1210000,
+      "endTimestamp": 1790248396459,
+      "outletName": "athree studio jayapura",
+      "unpaidAmount": 0,
+      "cashierName": "DIMAS",
+      "totalDiscount": 140000,
       "paymentMethodBreakdown": {
-        "transfer": 9125000,
-        "cash": 130000,
+        "transfer": 1175000,
+        "cash": 35000,
         "other": 0,
         "qris": 0
       },
-      "startingCash": 40000,
-      "outletName": "Athree Studio Jayapura",
-      "actualCash": 155000,
-      "notes": "Shift Pagi - Siang aktif Kasir Dimas",
-      "nonCashSales": 9125000,
-      "totalTransactions": 0,
+      "cashDenominations": {
+        "k10": 0,
+        "k5": 0,
+        "k50": 0,
+        "k20": 0,
+        "k100": 0,
+        "k2": 0,
+        "coins": 0,
+        "k1": 0
+      },
+      "expectedCash": 5000,
+      "id": "shift-1790197790826"
+    },
+    {
+      "paymentMethodBreakdown": {
+        "cash": 0,
+        "qris": 0,
+        "other": 0,
+        "transfer": 0
+      },
+      "cashDenominations": {
+        "k10": 0,
+        "k5": 0,
+        "k50": 0,
+        "coins": 0,
+        "k2": 0,
+        "k20": 0,
+        "k1": 0,
+        "k100": 0
+      },
+      "startTime": "25 Sep 2026, 07.54",
+      "endTimestamp": 1790373936804,
+      "cashierName": "DIMAS",
+      "outletName": "athree studio jayapura",
+      "isOpen": false,
+      "startingCash": 5000,
+      "cashSales": 0,
+      "nonCashSales": 0,
+      "id": "shift-1790290494947",
+      "startTimestamp": 1790290494947,
+      "expectedCash": 5000,
+      "shiftNumber": 6,
       "unpaidCount": 0,
-      "startTime": "23 Sep 2026, 08:00",
+      "endTime": "26 Sep 2026, 07.05",
+      "actualCash": 5000,
+      "totalDiscount": 0,
+      "unpaidAmount": 0,
+      "notes": "Shift Pagi - Sampai Malam",
+      "totalTransactions": 0,
+      "difference": 0,
+      "totalSales": 0
+    },
+    {
+      "startTimestamp": 1790485552147,
+      "endTime": "27 Sep 2026, 15.31",
+      "id": "shift-2026-09-27",
+      "outletName": "athree studio jayapura",
+      "paymentMethodBreakdown": {
+        "transfer": 0,
+        "cash": 0,
+        "qris": 0,
+        "other": 0
+      },
+      "cashierName": "ATHREE(Owner)",
+      "expectedCash": 70000,
+      "cashDenominations": {
+        "k20": 0,
+        "k100": 0,
+        "k10": 0,
+        "k50": 0,
+        "k1": 0,
+        "k5": 0,
+        "k2": 0,
+        "coins": 0
+      },
+      "totalDiscount": 0,
+      "isOpen": false,
+      "unpaidAmount": 0,
+      "notes": "Shift Harian Otomatis - 27 Sep 2026",
+      "actualCash": 0,
+      "endTimestamp": 1790490660141,
+      "startTime": "27 Sep 2026, 08:00",
+      "unpaidCount": 0,
+      "shiftNumber": 1,
+      "totalTransactions": 0,
+      "totalSales": 0,
+      "nonCashSales": 0,
+      "difference": -70000,
+      "cashSales": 0,
+      "startingCash": 70000
+    },
+    {
+      "isOpen": false,
+      "endTime": "26 Sep 2026, 23.42",
+      "nonCashSales": 0,
+      "actualCash": 5000,
+      "startingCash": 5000,
+      "endTimestamp": 1790433725541,
+      "cashierName": "ATHREE(Owner)",
+      "difference": 0,
+      "totalSales": 0,
+      "totalDiscount": 0,
+      "notes": "Shift Harian Aktif - 26 Sep 2026",
+      "id": "shift-2026-09-26",
+      "cashDenominations": {
+        "k1": 0,
+        "k20": 0,
+        "k50": 0,
+        "k10": 0,
+        "k2": 0,
+        "coins": 0,
+        "k5": 0,
+        "k100": 0
+      },
+      "paymentMethodBreakdown": {
+        "cash": 0,
+        "transfer": 0,
+        "qris": 0,
+        "other": 0
+      },
+      "totalTransactions": 0,
+      "unpaidAmount": 0,
+      "startTimestamp": 1790399789398,
+      "outletName": "athree studio jayapura",
+      "startTime": "26 Sep 2026, 08:00",
+      "shiftNumber": 1,
+      "unpaidCount": 0,
+      "cashSales": 0,
+      "expectedCash": 5000
+    },
+    {
+      "id": "shift-today",
+      "endTime": "24 Sep 2026, 06.33",
+      "actualCash": 155000,
+      "totalTransactions": 0,
+      "expectedCash": 155000,
+      "shiftNumber": 1,
+      "unpaidCount": 0,
+      "totalDiscount": 85000,
       "totalSales": 9255000,
-      "cashierName": "DIMAS"
+      "difference": 0,
+      "unpaidAmount": 0,
+      "isOpen": false,
+      "paymentMethodBreakdown": {
+        "other": 0,
+        "qris": 0,
+        "transfer": 9125000,
+        "cash": 130000
+      },
+      "outletName": "Athree Studio Jayapura",
+      "startTime": "23 Sep 2026, 08:00",
+      "nonCashSales": 9125000,
+      "cashDenominations": {
+        "k50": 0,
+        "k2": 0,
+        "coins": 0,
+        "k10": 0,
+        "k5": 0,
+        "k20": 0,
+        "k1": 0,
+        "k100": 0
+      },
+      "cashSales": 130000,
+      "cashierName": "DIMAS",
+      "startingCash": 40000,
+      "notes": "Shift Pagi - Siang aktif Kasir Dimas"
     }
   ],
   "kaosStocks": [
     {
-      "minStock": 2,
-      "id": "kaos_abu_misty_3xl",
       "size": "3XL",
       "stock": 6,
+      "id": "kaos_abu_misty_3xl",
+      "minStock": 2,
       "color": "Abu Misty"
     },
     {
-      "id": "kaos_abu_misty_l",
       "size": "L",
-      "stock": 22,
       "minStock": 6,
+      "stock": 22,
+      "id": "kaos_abu_misty_l",
       "color": "Abu Misty"
     },
     {
       "stock": 16,
       "size": "M",
-      "minStock": 5,
+      "color": "Abu Misty",
       "id": "kaos_abu_misty_m",
-      "color": "Abu Misty"
+      "minStock": 5
     },
     {
-      "minStock": 3,
       "id": "kaos_abu_misty_s",
-      "color": "Abu Misty",
+      "size": "S",
       "stock": 10,
-      "size": "S"
+      "minStock": 3,
+      "color": "Abu Misty"
     },
     {
       "size": "XL",
+      "stock": 18,
       "id": "kaos_abu_misty_xl",
       "minStock": 5,
-      "stock": 18,
       "color": "Abu Misty"
     },
     {
-      "minStock": 3,
       "size": "XXL",
-      "id": "kaos_abu_misty_xxl",
+      "minStock": 3,
       "stock": 10,
+      "id": "kaos_abu_misty_xxl",
       "color": "Abu Misty"
     },
     {
       "color": "Biru Benhur",
       "stock": 4,
       "minStock": 2,
-      "id": "kaos_biru_benhur_3xl",
-      "size": "3XL"
+      "size": "3XL",
+      "id": "kaos_biru_benhur_3xl"
     },
     {
       "size": "L",
-      "stock": 15,
-      "color": "Biru Benhur",
+      "minStock": 4,
       "id": "kaos_biru_benhur_l",
-      "minStock": 4
-    },
-    {
-      "id": "kaos_biru_benhur_m",
-      "minStock": 3,
-      "size": "M",
-      "stock": 10,
+      "stock": 15,
       "color": "Biru Benhur"
     },
     {
+      "minStock": 3,
+      "color": "Biru Benhur",
+      "size": "M",
+      "id": "kaos_biru_benhur_m",
+      "stock": 10
+    },
+    {
+      "stock": 6,
       "id": "kaos_biru_benhur_s",
+      "color": "Biru Benhur",
       "size": "S",
+      "minStock": 2
+    },
+    {
+      "minStock": 3,
+      "size": "XL",
+      "id": "kaos_biru_benhur_xl",
+      "color": "Biru Benhur",
+      "stock": 12
+    },
+    {
+      "size": "XXL",
+      "id": "kaos_biru_benhur_xxl",
       "stock": 6,
       "color": "Biru Benhur",
       "minStock": 2
     },
     {
-      "stock": 12,
-      "id": "kaos_biru_benhur_xl",
-      "color": "Biru Benhur",
-      "size": "XL",
-      "minStock": 3
-    },
-    {
-      "minStock": 2,
-      "color": "Biru Benhur",
-      "size": "XXL",
-      "stock": 6,
-      "id": "kaos_biru_benhur_xxl"
-    },
-    {
+      "id": "kaos_hijau_botol_3xl",
+      "size": "3XL",
       "stock": 4,
       "minStock": 2,
-      "size": "3XL",
-      "color": "Hijau Botol",
-      "id": "kaos_hijau_botol_3xl"
+      "color": "Hijau Botol"
     },
     {
-      "id": "kaos_hijau_botol_l",
       "size": "L",
-      "stock": 18,
+      "id": "kaos_hijau_botol_l",
       "minStock": 5,
+      "stock": 18,
       "color": "Hijau Botol"
     },
     {
       "id": "kaos_hijau_botol_m",
       "minStock": 4,
       "color": "Hijau Botol",
-      "stock": 12,
-      "size": "M"
+      "size": "M",
+      "stock": 12
     },
     {
-      "minStock": 2,
-      "id": "kaos_hijau_botol_s",
-      "size": "S",
       "color": "Hijau Botol",
-      "stock": 6
+      "minStock": 2,
+      "stock": 6,
+      "size": "S",
+      "id": "kaos_hijau_botol_s"
     },
     {
-      "minStock": 4,
+      "stock": 14,
       "color": "Hijau Botol",
       "size": "XL",
-      "stock": 14,
-      "id": "kaos_hijau_botol_xl"
+      "id": "kaos_hijau_botol_xl",
+      "minStock": 4
     },
     {
-      "color": "Hijau Botol",
-      "stock": 8,
-      "id": "kaos_hijau_botol_xxl",
       "size": "XXL",
-      "minStock": 3
+      "minStock": 3,
+      "stock": 8,
+      "color": "Hijau Botol",
+      "id": "kaos_hijau_botol_xxl"
     },
     {
-      "size": "3XL",
-      "stock": 10,
       "color": "Hitam",
+      "stock": 10,
+      "size": "3XL",
       "minStock": 3,
       "id": "kaos_hitam_3xl"
     },
     {
       "id": "kaos_hitam_l",
-      "minStock": 10,
+      "stock": 34,
       "color": "Hitam",
-      "stock": 35,
-      "size": "L"
+      "size": "L",
+      "minStock": 10
     },
     {
-      "id": "kaos_hitam_m",
-      "size": "M",
-      "stock": 25,
       "minStock": 8,
-      "color": "Hitam"
+      "color": "Hitam",
+      "stock": 24,
+      "id": "kaos_hitam_m",
+      "size": "M"
     },
     {
-      "color": "Hitam",
+      "size": "S",
       "stock": 15,
       "minStock": 5,
-      "size": "S",
-      "id": "kaos_hitam_s"
+      "id": "kaos_hitam_s",
+      "color": "Hitam"
     },
     {
       "id": "kaos_hitam_xl",
       "color": "Hitam",
-      "minStock": 10,
       "stock": 30,
+      "minStock": 10,
       "size": "XL"
     },
     {
-      "minStock": 5,
-      "id": "kaos_hitam_xxl",
       "color": "Hitam",
       "stock": 18,
-      "size": "XXL"
+      "minStock": 5,
+      "size": "XXL",
+      "id": "kaos_hitam_xxl"
     },
     {
-      "id": "kaos_kuning_mustard_3xl",
       "color": "Kuning Mustard",
+      "stock": 4,
+      "id": "kaos_kuning_mustard_3xl",
       "minStock": 2,
-      "size": "3XL",
-      "stock": 4
+      "size": "3XL"
     },
     {
-      "size": "L",
       "stock": 14,
       "minStock": 4,
-      "id": "kaos_kuning_mustard_l",
-      "color": "Kuning Mustard"
+      "color": "Kuning Mustard",
+      "size": "L",
+      "id": "kaos_kuning_mustard_l"
     },
     {
-      "size": "M",
       "color": "Kuning Mustard",
-      "id": "kaos_kuning_mustard_m",
       "minStock": 3,
-      "stock": 10
+      "stock": 10,
+      "id": "kaos_kuning_mustard_m",
+      "size": "M"
     },
     {
       "id": "kaos_kuning_mustard_s",
-      "color": "Kuning Mustard",
-      "size": "S",
       "minStock": 2,
-      "stock": 6
+      "color": "Kuning Mustard",
+      "stock": 6,
+      "size": "S"
     },
     {
-      "id": "kaos_kuning_mustard_xl",
-      "stock": 10,
       "size": "XL",
+      "stock": 10,
+      "minStock": 3,
       "color": "Kuning Mustard",
-      "minStock": 3
+      "id": "kaos_kuning_mustard_xl"
     },
     {
-      "color": "Kuning Mustard",
-      "id": "kaos_kuning_mustard_xxl",
+      "size": "XXL",
       "minStock": 2,
       "stock": 6,
-      "size": "XXL"
+      "id": "kaos_kuning_mustard_xxl",
+      "color": "Kuning Mustard"
     },
     {
-      "size": "3XL",
-      "minStock": 2,
       "stock": 5,
+      "id": "kaos_maroon_3xl",
       "color": "Maroon",
-      "id": "kaos_maroon_3xl"
+      "size": "3XL",
+      "minStock": 2
     },
     {
       "color": "Maroon",
@@ -1035,657 +1630,269 @@
       "size": "L"
     },
     {
-      "size": "M",
-      "stock": 15,
       "minStock": 5,
+      "size": "M",
       "id": "kaos_maroon_m",
+      "stock": 15,
       "color": "Maroon"
     },
     {
-      "color": "Maroon",
-      "stock": 8,
       "minStock": 3,
+      "color": "Maroon",
+      "id": "kaos_maroon_s",
       "size": "S",
-      "id": "kaos_maroon_s"
+      "stock": 8
     },
     {
       "size": "XL",
       "id": "kaos_maroon_xl",
       "stock": 16,
-      "minStock": 5,
-      "color": "Maroon"
-    },
-    {
-      "id": "kaos_maroon_xxl",
       "color": "Maroon",
-      "size": "XXL",
-      "stock": 10,
-      "minStock": 3
+      "minStock": 5
     },
     {
-      "minStock": 2,
-      "color": "Merah Cabe",
-      "stock": 4,
+      "color": "Maroon",
+      "stock": 10,
+      "id": "kaos_maroon_xxl",
+      "minStock": 3,
+      "size": "XXL"
+    },
+    {
       "size": "3XL",
+      "minStock": 2,
+      "stock": 4,
+      "color": "Merah Cabe",
       "id": "kaos_merah_cabe_3xl"
     },
     {
-      "size": "L",
+      "color": "Merah Cabe",
       "minStock": 5,
       "stock": 16,
       "id": "kaos_merah_cabe_l",
-      "color": "Merah Cabe"
-    },
-    {
-      "color": "Merah Cabe",
-      "minStock": 4,
-      "id": "kaos_merah_cabe_m",
-      "stock": 14,
-      "size": "M"
-    },
-    {
-      "size": "S",
-      "id": "kaos_merah_cabe_s",
-      "stock": 8,
-      "minStock": 2,
-      "color": "Merah Cabe"
-    },
-    {
-      "minStock": 4,
-      "size": "XL",
-      "color": "Merah Cabe",
-      "id": "kaos_merah_cabe_xl",
-      "stock": 12
-    },
-    {
-      "size": "XXL",
-      "stock": 8,
-      "id": "kaos_merah_cabe_xxl",
-      "color": "Merah Cabe",
-      "minStock": 2
-    },
-    {
-      "id": "kaos_navy_3xl",
-      "color": "Navy",
-      "stock": 6,
-      "minStock": 2,
-      "size": "3XL"
-    },
-    {
-      "size": "L",
-      "stock": 24,
-      "color": "Navy",
-      "id": "kaos_navy_l",
-      "minStock": 8
-    },
-    {
-      "color": "Navy",
-      "id": "kaos_navy_m",
-      "stock": 18,
-      "minStock": 6,
-      "size": "M"
-    },
-    {
-      "minStock": 4,
-      "color": "Navy",
-      "size": "S",
-      "id": "kaos_navy_s",
-      "stock": 10
-    },
-    {
-      "color": "Navy",
-      "stock": 20,
-      "id": "kaos_navy_xl",
-      "minStock": 6,
-      "size": "XL"
-    },
-    {
-      "color": "Navy",
-      "stock": 12,
-      "id": "kaos_navy_xxl",
-      "size": "XXL",
-      "minStock": 4
-    },
-    {
-      "minStock": 3,
-      "color": "Putih",
-      "size": "3XL",
-      "id": "kaos_putih_3xl",
-      "stock": 8
-    },
-    {
-      "color": "Putih",
-      "stock": 28,
-      "id": "kaos_putih_l",
-      "minStock": 10,
       "size": "L"
     },
     {
-      "color": "Putih",
-      "stock": 20,
-      "minStock": 8,
-      "id": "kaos_putih_m",
-      "size": "M"
+      "size": "M",
+      "stock": 14,
+      "color": "Merah Cabe",
+      "id": "kaos_merah_cabe_m",
+      "minStock": 4
     },
     {
+      "id": "kaos_merah_cabe_s",
+      "minStock": 2,
+      "color": "Merah Cabe",
       "size": "S",
+      "stock": 8
+    },
+    {
+      "size": "XL",
+      "id": "kaos_merah_cabe_xl",
       "stock": 12,
-      "minStock": 5,
-      "id": "kaos_putih_s",
+      "minStock": 4,
+      "color": "Merah Cabe"
+    },
+    {
+      "stock": 8,
+      "size": "XXL",
+      "color": "Merah Cabe",
+      "id": "kaos_merah_cabe_xxl",
+      "minStock": 2
+    },
+    {
+      "color": "Navy",
+      "stock": 6,
+      "size": "3XL",
+      "minStock": 2,
+      "id": "kaos_navy_3xl"
+    },
+    {
+      "size": "L",
+      "minStock": 8,
+      "id": "kaos_navy_l",
+      "stock": 24,
+      "color": "Navy"
+    },
+    {
+      "size": "M",
+      "stock": 18,
+      "minStock": 6,
+      "color": "Navy",
+      "id": "kaos_navy_m"
+    },
+    {
+      "stock": 10,
+      "id": "kaos_navy_s",
+      "size": "S",
+      "color": "Navy",
+      "minStock": 4
+    },
+    {
+      "id": "kaos_navy_xl",
+      "color": "Navy",
+      "size": "XL",
+      "minStock": 6,
+      "stock": 20
+    },
+    {
+      "minStock": 4,
+      "color": "Navy",
+      "stock": 12,
+      "id": "kaos_navy_xxl",
+      "size": "XXL"
+    },
+    {
+      "id": "kaos_putih_3xl",
+      "stock": 8,
+      "color": "Putih",
+      "size": "3XL",
+      "minStock": 3
+    },
+    {
+      "size": "L",
+      "id": "kaos_putih_l",
+      "stock": 28,
+      "minStock": 10,
       "color": "Putih"
     },
     {
-      "color": "Putih",
-      "stock": 22,
-      "id": "kaos_putih_xl",
+      "id": "kaos_putih_m",
       "minStock": 8,
-      "size": "XL"
+      "size": "M",
+      "stock": 20,
+      "color": "Putih"
     },
     {
-      "size": "XXL",
-      "id": "kaos_putih_xxl",
-      "stock": 14,
+      "stock": 12,
+      "size": "S",
+      "id": "kaos_putih_s",
       "color": "Putih",
       "minStock": 5
+    },
+    {
+      "stock": 22,
+      "size": "XL",
+      "color": "Putih",
+      "minStock": 8,
+      "id": "kaos_putih_xl"
+    },
+    {
+      "id": "kaos_putih_xxl",
+      "size": "XXL",
+      "minStock": 5,
+      "stock": 14,
+      "color": "Putih"
     }
   ],
   "stockMovements": [
     {
-      "id": "sm-del-1790065978823-p5",
-      "productId": "p5",
-      "productName": "PAKET SABLON + KAOS A3",
-      "sku": "SKU/00002",
-      "type": "IN",
-      "qty": 4,
-      "prevStock": 53,
-      "newStock": 57,
-      "date": "2026-09-22 08:32",
-      "reason": "Pembatalan/Hapus Faktur #INV/43814 (Pesanan dibatalkan)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/43814"
-    },
-    {
-      "id": "sm-del-1790065978826-p5",
-      "productId": "p5",
-      "productName": "PAKET SABLON + KAOS A3",
-      "sku": "SKU/00002",
-      "type": "IN",
-      "qty": 4,
-      "prevStock": 53,
-      "newStock": 57,
-      "date": "2026-09-22 08:32",
-      "reason": "Pembatalan/Hapus Faktur #INV/43814 (Pesanan dibatalkan)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/43814"
-    },
-    {
-      "id": "sm-kaos-rst-1790065978826-tf5v",
-      "productId": "kaos_hitam_l",
-      "productName": "Kaos Polos [Hitam - Size L]",
-      "sku": "KAOS-HIT-L",
-      "type": "IN",
-      "qty": 4,
-      "prevStock": 31,
-      "newStock": 35,
-      "date": "2026-09-22 08:32",
-      "reason": "Hapus Faktur (#INV/43814)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/43814"
-    },
-    {
-      "id": "sm-kaos-rst-1790065978830-95n7",
-      "productId": "kaos_hitam_l",
-      "productName": "Kaos Polos [Hitam - Size L]",
-      "sku": "KAOS-HIT-L",
-      "type": "IN",
-      "qty": 4,
-      "prevStock": 31,
-      "newStock": 35,
-      "date": "2026-09-22 08:32",
-      "reason": "Hapus Faktur (#INV/43814)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/43814"
-    },
-    {
-      "id": "sm-del-1790065973856-p5",
-      "productId": "p5",
-      "productName": "PAKET SABLON + KAOS A3",
-      "sku": "SKU/00002",
-      "type": "IN",
-      "qty": 14,
-      "prevStock": 39,
-      "newStock": 53,
-      "date": "2026-09-22 08:32",
-      "reason": "Pembatalan/Hapus Faktur #INV/34565 (Pesanan dibatalkan)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/34565"
-    },
-    {
-      "id": "sm-del-1790065973857-p5",
-      "productId": "p5",
-      "productName": "PAKET SABLON + KAOS A3",
-      "sku": "SKU/00002",
-      "type": "IN",
-      "qty": 14,
-      "prevStock": 39,
-      "newStock": 53,
-      "date": "2026-09-22 08:32",
-      "reason": "Pembatalan/Hapus Faktur #INV/34565 (Pesanan dibatalkan)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/34565"
-    },
-    {
-      "id": "sm-kaos-rst-1790065973858-6n8u",
-      "productId": "kaos_hitam_s",
-      "productName": "Kaos Polos [Hitam - Size S]",
-      "sku": "KAOS-HIT-S",
-      "type": "IN",
-      "qty": 14,
-      "prevStock": 1,
-      "newStock": 15,
-      "date": "2026-09-22 08:32",
-      "reason": "Hapus Faktur (#INV/34565)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/34565"
-    },
-    {
-      "id": "sm-kaos-rst-1790065973858-vgcs",
-      "productId": "kaos_hitam_s",
-      "productName": "Kaos Polos [Hitam - Size S]",
-      "sku": "KAOS-HIT-S",
-      "type": "IN",
-      "qty": 14,
-      "prevStock": 1,
-      "newStock": 15,
-      "date": "2026-09-22 08:32",
-      "reason": "Hapus Faktur (#INV/34565)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/34565"
-    },
-    {
-      "id": "sm-1790065958246-p5",
-      "productId": "p5",
-      "productName": "PAKET SABLON + KAOS A3",
-      "sku": "SKU/00002",
-      "type": "SALE",
-      "qty": 14,
-      "prevStock": 53,
-      "newStock": 39,
-      "date": "2026-09-22 08:32",
-      "reason": "Penjualan Kasir #INV/34565",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/34565"
-    },
-    {
-      "id": "sm-1790065958246-p5",
-      "productId": "p5",
-      "productName": "PAKET SABLON + KAOS A3",
-      "sku": "SKU/00002",
-      "type": "SALE",
-      "qty": 14,
-      "prevStock": 53,
-      "newStock": 39,
-      "date": "2026-09-22 08:32",
-      "reason": "Penjualan Kasir #INV/34565",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/34565"
-    },
-    {
-      "id": "sm-kaos-1790065958247-Hitam-S-zhdy",
-      "productId": "kaos_hitam_s",
-      "productName": "Kaos Polos [Hitam - Size S]",
-      "sku": "KAOS-HIT-S",
-      "type": "SALE",
-      "qty": 14,
-      "prevStock": 15,
-      "newStock": 1,
-      "date": "2026-09-22 08:32",
-      "reason": "Penjualan #INV/34565 (PAKET SABLON + KAOS A3)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/34565"
-    },
-    {
-      "id": "sm-kaos-1790065958247-Hitam-S-3xq7",
-      "productId": "kaos_hitam_s",
-      "productName": "Kaos Polos [Hitam - Size S]",
-      "sku": "KAOS-HIT-S",
-      "type": "SALE",
-      "qty": 14,
-      "prevStock": 15,
-      "newStock": 1,
-      "date": "2026-09-22 08:32",
-      "reason": "Penjualan #INV/34565 (PAKET SABLON + KAOS A3)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/34565"
-    },
-    {
-      "id": "sm-1790065224232-p5",
-      "productId": "p5",
-      "productName": "PAKET SABLON + KAOS A3",
-      "sku": "SKU/00002",
-      "type": "SALE",
-      "qty": 4,
-      "prevStock": 57,
-      "newStock": 53,
-      "date": "2026-09-22 08:20",
-      "reason": "Penjualan Kasir #INV/43814",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/43814"
-    },
-    {
-      "id": "sm-1790065224232-p5",
-      "productId": "p5",
-      "productName": "PAKET SABLON + KAOS A3",
-      "sku": "SKU/00002",
-      "type": "SALE",
-      "qty": 4,
-      "prevStock": 57,
-      "newStock": 53,
-      "date": "2026-09-22 08:20",
-      "reason": "Penjualan Kasir #INV/43814",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/43814"
-    },
-    {
-      "id": "sm-kaos-1790065224233-Hitam-L-6x5o",
-      "productId": "kaos_hitam_l",
-      "productName": "Kaos Polos [Hitam - Size L]",
-      "sku": "KAOS-HIT-L",
-      "type": "SALE",
-      "qty": 4,
-      "prevStock": 35,
-      "newStock": 31,
-      "date": "2026-09-22 08:20",
-      "reason": "Penjualan #INV/43814 (PAKET SABLON + KAOS A3)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/43814"
-    },
-    {
-      "id": "sm-kaos-1790065224233-Hitam-L-xn1n",
-      "productId": "kaos_hitam_l",
-      "productName": "Kaos Polos [Hitam - Size L]",
-      "sku": "KAOS-HIT-L",
-      "type": "SALE",
-      "qty": 4,
-      "prevStock": 35,
-      "newStock": 31,
-      "date": "2026-09-22 08:20",
-      "reason": "Penjualan #INV/43814 (PAKET SABLON + KAOS A3)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/43814"
-    },
-    {
-      "id": "sm-del-1789993753440-p2",
-      "productId": "p2",
-      "productName": "JERSEY ATASAN (>7PCS)",
-      "sku": "SKU/00007",
-      "type": "IN",
-      "qty": 8,
-      "prevStock": 84,
-      "newStock": 92,
-      "date": "2026-09-21 12:29",
-      "reason": "Pembatalan/Hapus Faktur #INV/39983 (Pesanan dibatalkan)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/39983"
-    },
-    {
-      "id": "sm-del-1789993753440-p7",
-      "productId": "p7",
-      "productName": "TAMBAHAN KERAH POLO",
-      "sku": "SKU/00010",
-      "type": "IN",
-      "qty": 8,
-      "prevStock": 44,
-      "newStock": 52,
-      "date": "2026-09-21 12:29",
-      "reason": "Pembatalan/Hapus Faktur #INV/39983 (Pesanan dibatalkan)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/39983"
-    },
-    {
-      "id": "sm-del-1789993753441-p2",
-      "productId": "p2",
-      "productName": "JERSEY ATASAN (>7PCS)",
-      "sku": "SKU/00007",
-      "type": "IN",
-      "qty": 8,
-      "prevStock": 84,
-      "newStock": 92,
-      "date": "2026-09-21 12:29",
-      "reason": "Pembatalan/Hapus Faktur #INV/39983 (Pesanan dibatalkan)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/39983"
-    },
-    {
-      "id": "sm-del-1789993753441-p7",
-      "productId": "p7",
-      "productName": "TAMBAHAN KERAH POLO",
-      "sku": "SKU/00010",
-      "type": "IN",
-      "qty": 8,
-      "prevStock": 44,
-      "newStock": 52,
-      "date": "2026-09-21 12:29",
-      "reason": "Pembatalan/Hapus Faktur #INV/39983 (Pesanan dibatalkan)",
-      "operatorName": "ATHREE(Owner)",
-      "referenceNo": "#INV/39983"
-    },
-    {
-      "id": "sm-1789879830326-p2",
-      "productId": "p2",
-      "productName": "JERSEY ATASAN (>7PCS)",
-      "sku": "SKU/00007",
-      "type": "SALE",
-      "qty": 8,
-      "prevStock": 92,
-      "newStock": 84,
-      "date": "2026-09-20 04:50",
-      "reason": "Penjualan Kasir #INV/39983",
-      "operatorName": "Ahmad Rizky (Owner)",
-      "referenceNo": "#INV/39983"
-    },
-    {
-      "id": "sm-1789879830326-p7",
-      "productId": "p7",
-      "productName": "TAMBAHAN KERAH POLO",
-      "sku": "SKU/00010",
-      "type": "SALE",
-      "qty": 8,
-      "prevStock": 52,
-      "newStock": 44,
-      "date": "2026-09-20 04:50",
-      "reason": "Penjualan Kasir #INV/39983",
-      "operatorName": "Ahmad Rizky (Owner)",
-      "referenceNo": "#INV/39983"
-    },
-    {
-      "id": "sm-1789879830327-p2",
-      "productId": "p2",
-      "productName": "JERSEY ATASAN (>7PCS)",
-      "sku": "SKU/00007",
-      "type": "SALE",
-      "qty": 8,
-      "prevStock": 92,
-      "newStock": 84,
-      "date": "2026-09-20 04:50",
-      "reason": "Penjualan Kasir #INV/39983",
-      "operatorName": "Ahmad Rizky (Owner)",
-      "referenceNo": "#INV/39983"
-    },
-    {
-      "id": "sm-1789879830327-p7",
-      "productId": "p7",
-      "productName": "TAMBAHAN KERAH POLO",
-      "sku": "SKU/00010",
-      "type": "SALE",
-      "qty": 8,
-      "prevStock": 52,
-      "newStock": 44,
-      "date": "2026-09-20 04:50",
-      "reason": "Penjualan Kasir #INV/39983",
-      "operatorName": "Ahmad Rizky (Owner)",
-      "referenceNo": "#INV/39983"
-    },
-    {
-      "id": "sm-1789629657969-p13",
-      "productId": "p13",
-      "productName": "KAOS POLOS COTTON COMBED 30S",
-      "sku": "SKU/00014",
-      "type": "SALE",
-      "qty": 2,
-      "prevStock": 120,
-      "newStock": 118,
-      "date": "2026-09-17 07:20",
-      "reason": "Penjualan Kasir #INV/18529",
-      "operatorName": "Ahmad Rizky (Owner)",
-      "referenceNo": "#INV/18529"
-    },
-    {
-      "id": "sm-1789629657969-p13",
-      "productId": "p13",
-      "productName": "KAOS POLOS COTTON COMBED 30S",
-      "sku": "SKU/00014",
-      "type": "SALE",
-      "qty": 2,
-      "prevStock": 120,
-      "newStock": 118,
-      "date": "2026-09-17 07:20",
-      "reason": "Penjualan Kasir #INV/18529",
-      "operatorName": "Ahmad Rizky (Owner)",
-      "referenceNo": "#INV/18529"
-    },
-    {
-      "id": "sm-1789623559741-p3",
-      "productId": "p3",
-      "productName": "JERSEY FULL PRINTING (ATASAN + CELANA)",
-      "sku": "SKU/00008",
-      "type": "SALE",
-      "qty": 4,
-      "prevStock": 28,
-      "newStock": 24,
-      "date": "2026-09-17 05:39",
-      "reason": "Penjualan Kasir #INV/11028",
-      "operatorName": "Dian Octaviani",
-      "referenceNo": "#INV/11028"
-    },
-    {
-      "id": "sm-1789623559741-p3",
-      "productId": "p3",
-      "productName": "JERSEY FULL PRINTING (ATASAN + CELANA)",
-      "sku": "SKU/00008",
-      "type": "SALE",
-      "qty": 4,
-      "prevStock": 28,
-      "newStock": 24,
-      "date": "2026-09-17 05:39",
-      "reason": "Penjualan Kasir #INV/11028",
-      "operatorName": "Dian Octaviani",
-      "referenceNo": "#INV/11028"
-    },
-    {
-      "id": "sm-1",
-      "productId": "p1",
-      "productName": "JERSEY ATASAN (STANDARD)",
-      "sku": "SKU/00006",
-      "type": "IN",
-      "qty": 50,
+      "productName": "+ EMBOS",
       "prevStock": 0,
-      "newStock": 50,
-      "date": "2026-09-15 10:00",
-      "reason": "Restock bahan jersey polos dari supplier",
-      "operatorName": "Ahmad Rizky (Owner)"
-    },
-    {
-      "id": "sm-2",
-      "productId": "p2",
-      "productName": "JERSEY ATASAN (>7PCS)",
-      "sku": "SKU/00007",
-      "type": "SALE",
-      "qty": 12,
-      "prevStock": 92,
-      "newStock": 80,
-      "date": "2026-09-17 09:30",
-      "reason": "Penjualan #INV/00001",
-      "operatorName": "Dian Octaviani",
-      "referenceNo": "#INV/00001"
+      "date": "2026-09-24 11:06",
+      "productId": "p-1790248004688",
+      "qty": 100,
+      "sku": "SKU/00020",
+      "operatorName": "ATHREE(Owner)",
+      "id": "sm-1790248004688",
+      "type": "IN",
+      "newStock": 100,
+      "reason": "Pencatatan Produk Baru Master"
     }
   ],
   "customers": [
+    {
+      "address": "-",
+      "name": "KEYZIA",
+      "phone": "-",
+      "id": "c-1790247670148"
+    },
+    {
+      "address": "-",
+      "name": "DRS SPEED",
+      "id": "c-1790247811946",
+      "phone": "-"
+    },
+    {
+      "address": "-",
+      "id": "c-1790374315956",
+      "name": "WOBS ROBERT",
+      "phone": "-"
+    },
     {
       "phone": "-",
       "name": "Pelanggan Umum (Walk-in)",
       "id": "c0"
     },
     {
-      "phone": "0812-4899-2311",
       "id": "c1",
       "name": "TALSON FC (Jayapura)",
+      "phone": "0812-4899-2311",
       "address": "Abepura, Jayapura"
     },
     {
-      "id": "c2",
-      "address": "Entrop, Jayapura",
       "phone": "0821-9988-1234",
+      "address": "Entrop, Jayapura",
+      "id": "c2",
       "name": "EMEDLUGUN Papuan Club"
     },
     {
-      "phone": "0813-4455-6677",
-      "address": "Sentani, Jayapura",
+      "name": "MELANESIA SENTANI",
       "id": "c3",
-      "name": "MELANESIA SENTANI"
+      "phone": "0813-4455-6677",
+      "address": "Sentani, Jayapura"
     },
     {
-      "address": "Abepura, Jayapura",
+      "id": "c4",
       "name": "FC Garuda Jayapura (Bpk. Yohan)",
       "phone": "0812-4899-2311",
-      "id": "c4"
+      "address": "Abepura, Jayapura"
     },
     {
+      "name": "Komunitas Motor Noken",
       "id": "c5",
       "address": "Entrop, Jayapura",
-      "phone": "0821-9988-1234",
-      "name": "Komunitas Motor Noken"
+      "phone": "0821-9988-1234"
     },
     {
-      "name": "Dinas Pariwisata Papua",
       "address": "Dok V, Kota Jayapura",
-      "phone": "0813-4455-6677",
-      "id": "c6"
+      "id": "c6",
+      "name": "Dinas Pariwisata Papua",
+      "phone": "0813-4455-6677"
     },
     {
+      "address": "Kotaraja",
       "id": "c7",
-      "phone": "0852-3322-1100",
       "name": "SMA Negeri 1 Jayapura (OSIS)",
-      "address": "Kotaraja"
+      "phone": "0852-3322-1100"
     }
   ],
   "users": [
     {
-      "username": "kasir_dimas",
-      "roleLabel": "Kasir POS",
-      "id": "u1",
       "name": "DIMAS",
-      "avatarText": "DI",
+      "roleLabel": "Kasir POS",
+      "username": "kasir_dimas",
       "pin": "1234",
-      "role": "kasir"
+      "role": "kasir",
+      "avatarText": "DI",
+      "id": "u1"
     },
     {
-      "username": "admin_athree",
-      "role": "admin",
       "roleLabel": "Administrator / Pemilik",
       "pin": "1234",
-      "id": "u2",
       "name": "ATHREE(Owner)",
-      "avatarText": "AT"
+      "id": "u2",
+      "avatarText": "AT",
+      "role": "admin",
+      "username": "admin_athree"
     },
     {
-      "roleLabel": "Staf Produksi / Desain",
-      "role": "staff",
-      "id": "u3",
-      "avatarText": "BS",
-      "username": "staff_budi",
       "pin": "1234",
-      "name": "Budi Santoso"
+      "role": "staff",
+      "roleLabel": "Staf Produksi / Desain",
+      "username": "staff_budi",
+      "avatarText": "BS",
+      "name": "Budi Santoso",
+      "id": "u3"
     }
   ],
   "salesList": [
@@ -1693,6 +1900,18 @@
     "Admin (DEAZBAR)"
   ],
   "isRealData": true,
-  "lastUpdated": "2026-09-23T21:41:56.637Z",
-  "sourceClient": "client_1790199435258_ybk0w"
+  "lastUpdated": "2026-09-27T07:01:58.623Z",
+  "sourceClient": "client_1790491392213_yobzt",
+  "savedBy": "Kasir",
+  "source": "sync",
+  "deletedTransactionIds": [],
+  "currentShift": {
+    "id": "shift-test",
+    "isOpen": false,
+    "startTime": "08:00",
+    "endTime": "17:00",
+    "startingCash": 500000,
+    "actualCash": 1750000,
+    "cashierName": "DIMAS"
+  }
 }

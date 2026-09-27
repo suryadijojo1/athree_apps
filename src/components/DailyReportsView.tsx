@@ -31,7 +31,8 @@ import {
   TrendingUp,
   TrendingDown,
   HardDrive,
-  Cloud
+  Cloud,
+  Check
 } from 'lucide-react';
 import { Transaction, User, CashierShift, CashFlowRecord } from '../types';
 import {
@@ -88,9 +89,24 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     s.setDate(s.getDate() - 7);
     return formatIsoDate(s);
   }, [todayObj]);
+  const thirtyDaysAgoIsoStr = useMemo(() => {
+    const s = new Date(todayObj);
+    s.setDate(s.getDate() - 30);
+    return formatIsoDate(s);
+  }, [todayObj]);
   const currentMonthPrefix = useMemo(() => {
     return `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}`;
   }, [todayObj]);
+
+  const lastMonthObj = useMemo(() => {
+    return new Date(todayObj.getFullYear(), todayObj.getMonth() - 1, 1);
+  }, [todayObj]);
+  const lastMonthPrefix = useMemo(() => {
+    return `${lastMonthObj.getFullYear()}-${String(lastMonthObj.getMonth() + 1).padStart(2, '0')}`;
+  }, [lastMonthObj]);
+  const lastMonthFormattedText = useMemo(() => {
+    return lastMonthObj.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  }, [lastMonthObj]);
 
   const todayFormattedText = useMemo(() => {
     return todayObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -109,7 +125,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
 
   // Filters State: Default to 'today' per current calendar date
   const [datePreset, setDatePreset] = useState<
-    'all' | 'today' | 'yesterday' | '7days' | 'month' | 'custom'
+    'all' | 'today' | 'yesterday' | '7days' | '30days' | 'month' | 'lastMonth' | 'custom'
   >('today');
 
   const [startDate, setStartDate] = useState<string>(todayIsoStr);
@@ -244,6 +260,12 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     }
   };
 
+  // Safe Date Extractor helper
+  const getTxDate = (t: Transaction): string => {
+    const raw = t.date || t.createdAt || '';
+    return raw ? raw.slice(0, 10) : '';
+  };
+
   // Available Cashiers from transaction history
   const availableCashiers = useMemo(() => {
     const set = new Set<string>();
@@ -266,23 +288,40 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     return Array.from(set);
   }, [transactions]);
 
-  // Main Filter Logic
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((t) => {
-      const tDate = t.date.slice(0, 10); // 'YYYY-MM-DD'
+  // Available Payment Methods dynamically collected from transaction data + standard POS options
+  const availablePaymentMethods = useMemo(() => {
+    const set = new Set<string>(['Tunai', 'QRIS', 'Transfer Bank', 'Kartu Debit']);
+    transactions.forEach((t) => {
+      if (t.paymentMethod && t.paymentMethod.trim()) {
+        set.add(t.paymentMethod.trim());
+      }
+    });
+    return Array.from(set);
+  }, [transactions]);
 
-      // 1. Date filter
+  // Stage 1 Filter: Filter by Date Range, Cashier, Sales, Status, and Search (All except Payment Method)
+  const dateFilteredTransactions = useMemo(() => {
+    return transactions.filter((t) => {
+      const tDate = getTxDate(t);
+
+      // 1. Date range filter
       if (datePreset === 'today') {
-        if (!t.date.startsWith(todayIsoStr)) return false;
+        if (!tDate.startsWith(todayIsoStr)) return false;
       } else if (datePreset === 'yesterday') {
-        if (!t.date.startsWith(yesterdayIsoStr)) return false;
+        if (!tDate.startsWith(yesterdayIsoStr)) return false;
       } else if (datePreset === '7days') {
         if (tDate < sevenDaysAgoIsoStr || tDate > todayIsoStr) return false;
+      } else if (datePreset === '30days') {
+        if (tDate < thirtyDaysAgoIsoStr || tDate > todayIsoStr) return false;
       } else if (datePreset === 'month') {
-        if (!t.date.startsWith(currentMonthPrefix)) return false;
+        if (!tDate.startsWith(currentMonthPrefix)) return false;
+      } else if (datePreset === 'lastMonth') {
+        if (!tDate.startsWith(lastMonthPrefix)) return false;
       } else if (datePreset === 'custom') {
-        if (startDate && tDate < startDate) return false;
-        if (endDate && tDate > endDate) return false;
+        const minD = startDate <= endDate ? startDate : endDate;
+        const maxD = startDate <= endDate ? endDate : startDate;
+        if (minD && tDate < minD) return false;
+        if (maxD && tDate > maxD) return false;
       }
       // 'all' includes every date
 
@@ -296,17 +335,12 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
         return false;
       }
 
-      // 4. Payment method filter
-      if (paymentFilter !== 'all' && t.paymentMethod !== paymentFilter) {
-        return false;
-      }
-
-      // 5. Status filter
+      // 4. Status filter
       if (statusFilter !== 'all' && t.status !== statusFilter) {
         return false;
       }
 
-      // 6. Search query (Invoice, customer, product items, notes, cashier, sales)
+      // 5. Search query (Invoice, customer, product items, notes, cashier, sales)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchInv = t.invoiceNo.toLowerCase().includes(q);
@@ -328,15 +362,70 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     todayIsoStr,
     yesterdayIsoStr,
     sevenDaysAgoIsoStr,
+    thirtyDaysAgoIsoStr,
     currentMonthPrefix,
+    lastMonthPrefix,
     startDate,
     endDate,
     cashierFilter,
     salesFilter,
-    paymentFilter,
     statusFilter,
     searchQuery
   ]);
+
+  // Performance breakdown by payment method for the active date range (for owner monitoring)
+  const paymentMethodStats = useMemo(() => {
+    const validTransactions = dateFilteredTransactions.filter((t) => t.status !== 'BATAL');
+    const totalDateRevenue = validTransactions.reduce((acc, t) => acc + t.total, 0);
+
+    const breakdown: Record<string, { total: number; count: number; percent: number }> = {};
+    availablePaymentMethods.forEach((m) => {
+      breakdown[m] = { total: 0, count: 0, percent: 0 };
+    });
+
+    let nonCashTotal = 0;
+    let nonCashCount = 0;
+
+    validTransactions.forEach((t) => {
+      const method = t.paymentMethod || 'Tunai';
+      if (!breakdown[method]) {
+        breakdown[method] = { total: 0, count: 0, percent: 0 };
+      }
+      breakdown[method].total += t.total;
+      breakdown[method].count += 1;
+
+      if (method !== 'Tunai') {
+        nonCashTotal += t.total;
+        nonCashCount += 1;
+      }
+    });
+
+    Object.keys(breakdown).forEach((m) => {
+      breakdown[m].percent = totalDateRevenue > 0 ? (breakdown[m].total / totalDateRevenue) * 100 : 0;
+    });
+
+    const nonCashPercent = totalDateRevenue > 0 ? (nonCashTotal / totalDateRevenue) * 100 : 0;
+
+    return {
+      totalRevenue: totalDateRevenue,
+      totalCount: validTransactions.length,
+      breakdown,
+      nonCash: {
+        total: nonCashTotal,
+        count: nonCashCount,
+        percent: nonCashPercent
+      }
+    };
+  }, [dateFilteredTransactions, availablePaymentMethods]);
+
+  // Stage 2 Filter: Final transactions filtered by selected Payment Method
+  const filteredTransactions = useMemo(() => {
+    if (paymentFilter === 'all') return dateFilteredTransactions;
+    if (paymentFilter === 'non_cash') {
+      return dateFilteredTransactions.filter((t) => t.paymentMethod !== 'Tunai');
+    }
+    return dateFilteredTransactions.filter((t) => t.paymentMethod === paymentFilter);
+  }, [dateFilteredTransactions, paymentFilter]);
 
   // Aggregate Metrics for Filtered Sales
   const totalRevenue = useMemo(() => {
@@ -370,10 +459,14 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
       if (datePreset === 'all') return true;
       if (datePreset === 'today') return recDate === todayIsoStr;
       if (datePreset === 'yesterday') return recDate === yesterdayIsoStr;
-      if (datePreset === '7days') return recDate >= sevenDaysAgoIsoStr;
-      if (datePreset === 'thisMonth') return recDate.startsWith(currentMonthPrefix);
+      if (datePreset === '7days') return recDate >= sevenDaysAgoIsoStr && recDate <= todayIsoStr;
+      if (datePreset === '30days') return recDate >= thirtyDaysAgoIsoStr && recDate <= todayIsoStr;
+      if (datePreset === 'month') return recDate.startsWith(currentMonthPrefix);
+      if (datePreset === 'lastMonth') return recDate.startsWith(lastMonthPrefix);
       if (datePreset === 'custom' && startDate && endDate) {
-        return recDate >= startDate && recDate <= endDate;
+        const minD = startDate <= endDate ? startDate : endDate;
+        const maxD = startDate <= endDate ? endDate : startDate;
+        return recDate >= minD && recDate <= maxD;
       }
       return true;
     });
@@ -383,7 +476,9 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     todayIsoStr,
     yesterdayIsoStr,
     sevenDaysAgoIsoStr,
+    thirtyDaysAgoIsoStr,
     currentMonthPrefix,
+    lastMonthPrefix,
     startDate,
     endDate
   ]);
@@ -505,14 +600,23 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
         return `Kemarin (${yesterdayFormattedText})`;
       case '7days':
         return '7 Hari Terakhir';
+      case '30days':
+        return '30 Hari Terakhir';
       case 'month':
         return `Bulan Ini (${monthFormattedText})`;
-      case 'custom':
-        return `${startDate} s/d ${endDate}`;
+      case 'lastMonth':
+        return `Bulan Lalu (${lastMonthFormattedText})`;
+      case 'custom': {
+        const minD = startDate <= endDate ? startDate : endDate;
+        const maxD = startDate <= endDate ? endDate : startDate;
+        return minD === maxD
+          ? `Tanggal ${formatSelectedReviewDate(minD)}`
+          : `Rentang ${formatSelectedReviewDate(minD)} s/d ${formatSelectedReviewDate(maxD)}`;
+      }
       default:
         return 'Semua Penjualan';
     }
-  }, [datePreset, startDate, endDate, todayFormattedText, yesterdayFormattedText, monthFormattedText]);
+  }, [datePreset, startDate, endDate, todayFormattedText, yesterdayFormattedText, monthFormattedText, lastMonthFormattedText]);
 
   const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
   const [driveUploadToast, setDriveUploadToast] = useState<{ message: string; link?: string; isError?: boolean } | null>(null);
@@ -904,155 +1008,407 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
             </div>
           </div>
 
-          {/* Baris 1: Filter Periode Tanggal Harian */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-slate-600 mr-1 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-slate-400" />
-              Periode:
-            </span>
+          {/* Bagian 1: Filter Rentang Tanggal (Date Range Filter) */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                <Calendar className="w-4 h-4 text-[#00871f]" />
+                <span>Rentang Tanggal Penjualan:</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 text-[#00871f] font-semibold border border-emerald-200">
+                  {datePresetLabel}
+                </span>
+              </div>
+              {datePreset === 'custom' && (
+                <span className="text-[11px] text-slate-500 font-medium">
+                  {startDate === endDate
+                    ? '1 Hari Terpilih'
+                    : `${Math.max(1, Math.round((new Date(endDate >= startDate ? endDate : startDate).getTime() - new Date(endDate >= startDate ? startDate : endDate).getTime()) / (1000 * 60 * 60 * 24)) + 1)} Hari Terpilih`}
+                </span>
+              )}
+            </div>
 
+            {/* Tombol Preset Rentang Tanggal */}
             <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
               <button
+                type="button"
                 onClick={() => {
                   setDatePreset('today');
                   setShowCustomDateInputs(false);
                   setSelectedReviewDate(todayIsoStr);
                 }}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                   datePreset === 'today'
                     ? 'bg-[#00871f] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
-                Hari Ini ({todayFormattedText})
+                Hari Ini
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setDatePreset('yesterday');
                   setShowCustomDateInputs(false);
                   setSelectedReviewDate(yesterdayIsoStr);
                 }}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                   datePreset === 'yesterday'
                     ? 'bg-[#00871f] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
                 Kemarin
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setDatePreset('7days');
                   setShowCustomDateInputs(false);
                 }}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                   datePreset === '7days'
                     ? 'bg-[#00871f] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
                 7 Hari Terakhir
               </button>
               <button
+                type="button"
+                onClick={() => {
+                  setDatePreset('30days');
+                  setShowCustomDateInputs(false);
+                }}
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  datePreset === '30days'
+                    ? 'bg-[#00871f] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                30 Hari Terakhir
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setDatePreset('month');
                   setShowCustomDateInputs(false);
                 }}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                   datePreset === 'month'
                     ? 'bg-[#00871f] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
                 Bulan Ini
               </button>
               <button
+                type="button"
+                onClick={() => {
+                  setDatePreset('lastMonth');
+                  setShowCustomDateInputs(false);
+                }}
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  datePreset === 'lastMonth'
+                    ? 'bg-[#00871f] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                Bulan Lalu
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setDatePreset('all');
                   setShowCustomDateInputs(false);
                 }}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                   datePreset === 'all'
                     ? 'bg-[#00871f] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
-                Semua Penjualan
+                Semua Periode
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setDatePreset('custom');
                   setShowCustomDateInputs(true);
                 }}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                   datePreset === 'custom'
                     ? 'bg-[#00871f] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
                 <CalendarDays className="w-3.5 h-3.5" />
-                <span>Pilih Tanggal / Rentang</span>
+                <span>Pilih Rentang Tanggal</span>
               </button>
             </div>
 
-            {/* Custom Date Range Picker inputs when active */}
-            {datePreset === 'custom' && (
-              <div className="flex flex-wrap items-center gap-2 bg-emerald-50/70 border border-emerald-200 p-1.5 rounded-xl animate-in fade-in zoom-in-95">
-                <span className="text-[11px] font-semibold text-emerald-800 ml-1">Dari:</span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => {
-                    setStartDate(e.target.value);
-                    if (endDate === startDate || !endDate) {
-                      setEndDate(e.target.value);
-                    }
-                    if (e.target.value) {
-                      setSelectedReviewDate(e.target.value);
-                    }
-                  }}
-                  className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#00871f]"
-                />
-                <span className="text-[11px] font-semibold text-emerald-800">Sampai:</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => {
-                    setEndDate(e.target.value);
-                    if (e.target.value && e.target.value === startDate) {
-                      setSelectedReviewDate(e.target.value);
-                    }
-                  }}
-                  className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#00871f]"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStartDate(todayIsoStr);
-                    setEndDate(todayIsoStr);
-                    setSelectedReviewDate(todayIsoStr);
-                  }}
-                  className="text-[10px] font-bold text-emerald-700 hover:underline px-1.5"
-                >
-                  Hari Ini
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStartDate(yesterdayIsoStr);
-                    setEndDate(yesterdayIsoStr);
-                    setSelectedReviewDate(yesterdayIsoStr);
-                  }}
-                  className="text-[10px] font-bold text-emerald-700 hover:underline px-1.5"
-                >
-                  Kemarin
-                </button>
+            {/* Drawer Input Rentang Tanggal Kustom (Custom Date Range Picker) */}
+            {(datePreset === 'custom' || showCustomDateInputs) && (
+              <div className="bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl animate-in fade-in zoom-in-95 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-emerald-900 flex items-center gap-1">
+                      <CalendarDays className="w-3.5 h-3.5 text-emerald-700" />
+                      Rentang Tanggal Kustom:
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-emerald-800">Dari:</span>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => {
+                          setStartDate(e.target.value);
+                          if (!endDate) {
+                            setEndDate(e.target.value);
+                          }
+                          if (e.target.value) {
+                            setSelectedReviewDate(e.target.value);
+                          }
+                        }}
+                        className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#00871f] shadow-2xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-emerald-800">Sampai:</span>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => {
+                          setEndDate(e.target.value);
+                          if (e.target.value && e.target.value === startDate) {
+                            setSelectedReviewDate(e.target.value);
+                          }
+                        }}
+                        className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#00871f] shadow-2xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Pintasan cepat di dalam picker */}
+                  <div className="flex items-center gap-1 text-[10px]">
+                    <span className="text-emerald-700 font-medium">Pintasan:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDate(todayIsoStr);
+                        setEndDate(todayIsoStr);
+                        setSelectedReviewDate(todayIsoStr);
+                        setDatePreset('today');
+                      }}
+                      className="px-2 py-0.5 rounded bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold transition-colors cursor-pointer"
+                    >
+                      Hari Ini
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDate(yesterdayIsoStr);
+                        setEndDate(yesterdayIsoStr);
+                        setSelectedReviewDate(yesterdayIsoStr);
+                        setDatePreset('yesterday');
+                      }}
+                      className="px-2 py-0.5 rounded bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold transition-colors cursor-pointer"
+                    >
+                      Kemarin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDate(sevenDaysAgoIsoStr);
+                        setEndDate(todayIsoStr);
+                        setDatePreset('custom');
+                      }}
+                      className="px-2 py-0.5 rounded bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold transition-colors cursor-pointer"
+                    >
+                      7 Hari
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDate(thirtyDaysAgoIsoStr);
+                        setEndDate(todayIsoStr);
+                        setDatePreset('custom');
+                      }}
+                      className="px-2 py-0.5 rounded bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold transition-colors cursor-pointer"
+                    >
+                      30 Hari
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Baris 2: Search, Filter Sales, Filter Kasir, Metode Pembayaran, dan Status */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-1">
+          {/* Bagian 2: Filter & Pemantauan Performa Metode Pembayaran (Payment Method Performance Filter) */}
+          <div className="space-y-2 pt-1 border-t border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                <CreditCard className="w-4 h-4 text-indigo-600" />
+                <span>Filter &amp; Performa Metode Pembayaran ({datePresetLabel}):</span>
+              </div>
+              <span className="text-[11px] text-slate-500 font-medium">
+                Omset Terfilter: <strong className="text-slate-800">{formatCurrency(totalRevenue)}</strong> ({filteredTransactions.length} Faktur)
+              </span>
+            </div>
+
+            {/* Kartu Tab Metode Pembayaran Presisi */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              {/* Tab Semua Metode */}
+              <button
+                type="button"
+                onClick={() => setPaymentFilter('all')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                  paymentFilter === 'all'
+                    ? 'bg-slate-800 border-slate-900 text-white shadow-xs'
+                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold block truncate">Semua Metode</span>
+                  {paymentFilter === 'all' && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                </div>
+                <span className={`text-xs font-extrabold block truncate ${paymentFilter === 'all' ? 'text-white' : 'text-slate-900'}`}>
+                  {formatCurrency(paymentMethodStats.totalRevenue)}
+                </span>
+                <span className={`text-[10px] block mt-0.5 font-medium ${paymentFilter === 'all' ? 'text-slate-300' : 'text-slate-500'}`}>
+                  {paymentMethodStats.totalCount} Faktur (100%)
+                </span>
+              </button>
+
+              {/* Tab Tunai */}
+              <button
+                type="button"
+                onClick={() => setPaymentFilter('Tunai')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                  paymentFilter === 'Tunai'
+                    ? 'bg-emerald-700 border-emerald-800 text-white shadow-xs'
+                    : 'bg-emerald-50/60 hover:bg-emerald-100/60 border-emerald-200 text-emerald-950'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold flex items-center gap-1 truncate">
+                    <Coins className="w-3 h-3 text-amber-500" />
+                    Tunai (Cash)
+                  </span>
+                  {paymentFilter === 'Tunai' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                </div>
+                <span className={`text-xs font-extrabold block truncate ${paymentFilter === 'Tunai' ? 'text-white' : 'text-emerald-900'}`}>
+                  {formatCurrency(paymentMethodStats.breakdown['Tunai']?.total || 0)}
+                </span>
+                <span className={`text-[10px] block mt-0.5 font-medium ${paymentFilter === 'Tunai' ? 'text-emerald-100' : 'text-emerald-700'}`}>
+                  {paymentMethodStats.breakdown['Tunai']?.count || 0} Faktur ({paymentMethodStats.breakdown['Tunai']?.percent.toFixed(0) || 0}%)
+                </span>
+              </button>
+
+              {/* Tab QRIS */}
+              <button
+                type="button"
+                onClick={() => setPaymentFilter('QRIS')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                  paymentFilter === 'QRIS'
+                    ? 'bg-blue-700 border-blue-800 text-white shadow-xs'
+                    : 'bg-blue-50/60 hover:bg-blue-100/60 border-blue-200 text-blue-950'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold flex items-center gap-1 truncate">
+                    <CheckCircle2 className="w-3 h-3 text-blue-500" />
+                    QRIS
+                  </span>
+                  {paymentFilter === 'QRIS' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                </div>
+                <span className={`text-xs font-extrabold block truncate ${paymentFilter === 'QRIS' ? 'text-white' : 'text-blue-900'}`}>
+                  {formatCurrency(paymentMethodStats.breakdown['QRIS']?.total || 0)}
+                </span>
+                <span className={`text-[10px] block mt-0.5 font-medium ${paymentFilter === 'QRIS' ? 'text-blue-100' : 'text-blue-700'}`}>
+                  {paymentMethodStats.breakdown['QRIS']?.count || 0} Faktur ({paymentMethodStats.breakdown['QRIS']?.percent.toFixed(0) || 0}%)
+                </span>
+              </button>
+
+              {/* Tab Transfer Bank */}
+              <button
+                type="button"
+                onClick={() => setPaymentFilter('Transfer Bank')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                  paymentFilter === 'Transfer Bank'
+                    ? 'bg-indigo-700 border-indigo-800 text-white shadow-xs'
+                    : 'bg-indigo-50/60 hover:bg-indigo-100/60 border-indigo-200 text-indigo-950'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold flex items-center gap-1 truncate">
+                    <ArrowUpRight className="w-3 h-3 text-indigo-500" />
+                    Transfer Bank
+                  </span>
+                  {paymentFilter === 'Transfer Bank' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                </div>
+                <span className={`text-xs font-extrabold block truncate ${paymentFilter === 'Transfer Bank' ? 'text-white' : 'text-indigo-900'}`}>
+                  {formatCurrency(paymentMethodStats.breakdown['Transfer Bank']?.total || 0)}
+                </span>
+                <span className={`text-[10px] block mt-0.5 font-medium ${paymentFilter === 'Transfer Bank' ? 'text-indigo-100' : 'text-indigo-700'}`}>
+                  {paymentMethodStats.breakdown['Transfer Bank']?.count || 0} Faktur ({paymentMethodStats.breakdown['Transfer Bank']?.percent.toFixed(0) || 0}%)
+                </span>
+              </button>
+
+              {/* Tab Kartu Debit */}
+              <button
+                type="button"
+                onClick={() => setPaymentFilter('Kartu Debit')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                  paymentFilter === 'Kartu Debit'
+                    ? 'bg-purple-700 border-purple-800 text-white shadow-xs'
+                    : 'bg-purple-50/60 hover:bg-purple-100/60 border-purple-200 text-purple-950'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold flex items-center gap-1 truncate">
+                    <CreditCard className="w-3 h-3 text-purple-500" />
+                    Kartu Debit
+                  </span>
+                  {paymentFilter === 'Kartu Debit' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                </div>
+                <span className={`text-xs font-extrabold block truncate ${paymentFilter === 'Kartu Debit' ? 'text-white' : 'text-purple-900'}`}>
+                  {formatCurrency(paymentMethodStats.breakdown['Kartu Debit']?.total || 0)}
+                </span>
+                <span className={`text-[10px] block mt-0.5 font-medium ${paymentFilter === 'Kartu Debit' ? 'text-purple-100' : 'text-purple-700'}`}>
+                  {paymentMethodStats.breakdown['Kartu Debit']?.count || 0} Faktur ({paymentMethodStats.breakdown['Kartu Debit']?.percent.toFixed(0) || 0}%)
+                </span>
+              </button>
+
+              {/* Tab Semua Non-Tunai */}
+              <button
+                type="button"
+                onClick={() => setPaymentFilter('non_cash')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                  paymentFilter === 'non_cash'
+                    ? 'bg-amber-700 border-amber-800 text-white shadow-xs'
+                    : 'bg-amber-50/60 hover:bg-amber-100/60 border-amber-200 text-amber-950'
+                }`}
+                title="Saring gabungan semua transaksi non-tunai (QRIS + Transfer + Debit)"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold flex items-center gap-1 truncate">
+                    <SlidersHorizontal className="w-3 h-3 text-amber-600" />
+                    Semua Non-Tunai
+                  </span>
+                  {paymentFilter === 'non_cash' && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                </div>
+                <span className={`text-xs font-extrabold block truncate ${paymentFilter === 'non_cash' ? 'text-white' : 'text-amber-900'}`}>
+                  {formatCurrency(paymentMethodStats.nonCash.total)}
+                </span>
+                <span className={`text-[10px] block mt-0.5 font-medium ${paymentFilter === 'non_cash' ? 'text-amber-100' : 'text-amber-700'}`}>
+                  {paymentMethodStats.nonCash.count} Faktur ({paymentMethodStats.nonCash.percent.toFixed(0)}%)
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Bagian 3: Search, Filter Sales, Kasir, Dropdown Pembayaran & Status Pesanan */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-1 border-t border-slate-100">
             {/* Search Input */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
@@ -1088,7 +1444,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                 onChange={(e) => setCashierFilter(e.target.value)}
                 className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00871f]"
               >
-                <option value="all">Semua Kasir & Operator</option>
+                <option value="all">Semua Kasir &amp; Operator</option>
                 {availableCashiers.map((c) => (
                   <option key={c} value={c}>
                     Kasir: {c}
@@ -1097,18 +1453,26 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
               </select>
             </div>
 
-            {/* Filter Metode Pembayaran */}
+            {/* Filter Metode Pembayaran Dropdown */}
             <div>
               <select
                 value={paymentFilter}
                 onChange={(e) => setPaymentFilter(e.target.value)}
-                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00871f]"
+                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 font-semibold focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00871f]"
               >
                 <option value="all">Semua Metode Pembayaran</option>
-                <option value="Tunai">Tunai</option>
+                <option value="Tunai">Tunai (Cash)</option>
                 <option value="QRIS">QRIS</option>
                 <option value="Transfer Bank">Transfer Bank</option>
                 <option value="Kartu Debit">Kartu Debit</option>
+                <option value="non_cash">Semua Non-Tunai (Gabungan)</option>
+                {availablePaymentMethods
+                  .filter((m) => !['Tunai', 'QRIS', 'Transfer Bank', 'Kartu Debit'].includes(m))
+                  .map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -1126,6 +1490,109 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
               </select>
             </div>
           </div>
+
+          {/* Bagian 4: Tag Filter Aktif (Active Filter Chips) */}
+          {isCustomFiltered && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 text-xs">
+              <span className="text-[11px] font-semibold text-slate-500 mr-1">Filter Diterapkan:</span>
+
+              {datePreset !== 'today' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold border border-emerald-200">
+                  <Calendar className="w-3 h-3" />
+                  Periode: {datePresetLabel}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDatePreset('today');
+                      setStartDate(todayIsoStr);
+                      setEndDate(todayIsoStr);
+                      setSelectedReviewDate(todayIsoStr);
+                    }}
+                    className="hover:text-emerald-950 font-bold ml-0.5 cursor-pointer"
+                    title="Hapus filter periode"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              {paymentFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-semibold border border-blue-200">
+                  <CreditCard className="w-3 h-3" />
+                  Metode: {paymentFilter === 'non_cash' ? 'Semua Non-Tunai' : paymentFilter}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentFilter('all')}
+                    className="hover:text-blue-950 font-bold ml-0.5 cursor-pointer"
+                    title="Hapus filter metode bayar"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              {salesFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-semibold border border-indigo-200">
+                  Sales: {salesFilter}
+                  <button
+                    type="button"
+                    onClick={() => setSalesFilter('all')}
+                    className="hover:text-indigo-950 font-bold ml-0.5 cursor-pointer"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              {cashierFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-200">
+                  Kasir: {cashierFilter}
+                  <button
+                    type="button"
+                    onClick={() => setCashierFilter('all')}
+                    className="hover:text-amber-950 font-bold ml-0.5 cursor-pointer"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              {statusFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-800 text-[11px] font-semibold">
+                  Status: {statusFilter}
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('all')}
+                    className="hover:text-slate-950 font-bold ml-0.5 cursor-pointer"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              {searchQuery.trim() !== '' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-semibold border border-purple-200">
+                  <Search className="w-3 h-3" />
+                  "{searchQuery}"
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="hover:text-purple-950 font-bold ml-0.5 cursor-pointer"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-[11px] font-bold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer ml-1"
+              >
+                Reset Semua
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Top selling preview banner */}
@@ -1219,18 +1686,25 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
 
         {/* Transactions Table */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-          <div className="p-3 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="p-3 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold text-slate-800">
                 Daftar Transaksi Penjualan
               </span>
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-semibold">
                 {filteredTransactions.length} Data
               </span>
+              {paymentFilter !== 'all' && (
+                <span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold border border-blue-200">
+                  Metode: {paymentFilter === 'non_cash' ? 'Semua Non-Tunai' : paymentFilter}
+                </span>
+              )}
             </div>
-            <span className="text-[11px] text-slate-500">
-              Total Omset: <strong>{formatCurrency(totalRevenue)}</strong>
-            </span>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              <span>Periode: <strong>{datePresetLabel}</strong></span>
+              <span>•</span>
+              <span>Total Omset: <strong className="text-slate-900 font-bold">{formatCurrency(totalRevenue)}</strong></span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1301,7 +1775,19 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                         </p>
                       </td>
                       <td className="py-2.5 px-3">
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-semibold">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            t.paymentMethod === 'Tunai'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : t.paymentMethod === 'QRIS'
+                              ? 'bg-blue-100 text-blue-800'
+                              : t.paymentMethod === 'Transfer Bank'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : t.paymentMethod === 'Kartu Debit'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
                           {t.paymentMethod}
                         </span>
                       </td>
