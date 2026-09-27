@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   LayoutGrid,
   List,
@@ -26,7 +26,9 @@ import {
   Unlock,
   Shirt,
   Layers,
-  Palette
+  Palette,
+  CheckCircle2,
+  Check
 } from 'lucide-react';
 import {
   Product,
@@ -103,13 +105,37 @@ export const PosView: React.FC<PosViewProps> = ({
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(customers[0]?.id || 'c0');
   const [orderNotes, setOrderNotes] = useState<string>('');
 
+  // Format date to local YYYY-MM-DDTHH:mm string without timezone shifts
+  const formatLocalDateTime = (d: Date): string => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  // Helper to add working days excluding Sunday (Hari Minggu TIDAK termasuk dalam hitungan hari)
+  const addDaysExcludingSunday = (startDate: Date, days: number): Date => {
+    const d = new Date(startDate);
+    if (days <= 0) return d;
+    let added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      // getDay() === 0 adalah hari Minggu -> tidak dihitung sebagai hari kerja pengerjaan
+      if (d.getDay() !== 0) {
+        added++;
+      }
+    }
+    return d;
+  };
+
   // TANGGAL JATUH TEMPO PENYELESAIAN (Due Date for completion/production)
-  // Default to 3 days from now
+  // Default to +2 Hari Kerja (excluding Sundays) jam 17:00
   const getDefaultDueDate = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
+    const d = addDaysExcludingSunday(new Date(), 2);
     d.setHours(17, 0, 0, 0);
-    return d.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
+    return formatLocalDateTime(d);
   };
   const [dueDate, setDueDate] = useState<string>(getDefaultDueDate());
 
@@ -118,6 +144,8 @@ export const PosView: React.FC<PosViewProps> = ({
   const [nonCashType, setNonCashType] = useState<'QRIS' | 'Transfer Bank' | 'Kartu Debit'>('QRIS');
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [cashGiven, setCashGiven] = useState<number>(0);
+  const [nonCashGiven, setNonCashGiven] = useState<number>(0);
+  const [hasEditedNonCash, setHasEditedNonCash] = useState<boolean>(false);
 
   // New customer quick modal
   const [showAddCustomerModal, setShowAddCustomerModal] = useState<boolean>(false);
@@ -153,12 +181,19 @@ export const PosView: React.FC<PosViewProps> = ({
 
   const total = Math.max(0, subtotal - discountAmount);
 
+  // Keep nonCashGiven synced to total unless cashier has manually edited the amount
+  useEffect(() => {
+    if (!hasEditedNonCash) {
+      setNonCashGiven(total);
+    }
+  }, [total, hasEditedNonCash]);
+
   const totalQuantity = useMemo(() => {
     return cartItems.reduce((acc, item) => acc + item.quantity, 0);
   }, [cartItems]);
 
-  // Sisa tagihan or Kembalian
-  const effectiveCash = paymentMethodTab === 'Tunai' ? cashGiven : total;
+  // Sisa tagihan or Kembalian (Berlaku baik untuk Tunai maupun Non Tunai)
+  const effectiveCash = paymentMethodTab === 'Tunai' ? cashGiven : nonCashGiven;
   const remainingBill = Math.max(0, total - effectiveCash);
   const changeAmount = Math.max(0, effectiveCash - total);
 
@@ -308,12 +343,20 @@ export const PosView: React.FC<PosViewProps> = ({
     setShowAddCustomerModal(false);
   };
 
-  // Quick preset days for Due Date
+  // Quick preset days for Due Date (excluding Sundays per business rule)
   const setDuePreset = (days: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    d.setHours(17, 0, 0, 0);
-    setDueDate(d.toISOString().slice(0, 16));
+    if (days === 0) {
+      const d = new Date();
+      d.setHours(17, 0, 0, 0);
+      if (new Date().getHours() >= 17) {
+        d.setHours(new Date().getHours() + 2, 0, 0, 0);
+      }
+      setDueDate(formatLocalDateTime(d));
+    } else {
+      const d = addDaysExcludingSunday(new Date(), days);
+      d.setHours(17, 0, 0, 0);
+      setDueDate(formatLocalDateTime(d));
+    }
   };
 
   // Handle Pay
@@ -378,6 +421,8 @@ export const PosView: React.FC<PosViewProps> = ({
     setCartItems([]);
     setDiscountAmount(0);
     setCashGiven(0);
+    setNonCashGiven(0);
+    setHasEditedNonCash(false);
     setOrderNotes('');
   };
 
@@ -440,6 +485,8 @@ export const PosView: React.FC<PosViewProps> = ({
     setCartItems([]);
     setDiscountAmount(0);
     setCashGiven(0);
+    setNonCashGiven(0);
+    setHasEditedNonCash(false);
     setOrderNotes('');
   };
 
@@ -1029,32 +1076,48 @@ export const PosView: React.FC<PosViewProps> = ({
             <button
               type="button"
               onClick={() => setDuePreset(0)}
-              className="px-2 py-0.5 text-[10px] font-semibold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap"
+              className="px-2.5 py-1 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap cursor-pointer transition-colors shadow-2xs"
+              title="Selesai hari ini"
             >
               Langsung Jadi
             </button>
             <button
               type="button"
               onClick={() => setDuePreset(2)}
-              className="px-2 py-0.5 text-[10px] font-semibold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap"
+              className="px-2.5 py-1 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap cursor-pointer transition-colors shadow-2xs"
+              title="+2 Hari Kerja (Hari Minggu tidak dihitung)"
             >
               +2 Hari
             </button>
             <button
               type="button"
               onClick={() => setDuePreset(5)}
-              className="px-2 py-0.5 text-[10px] font-semibold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap"
+              className="px-2.5 py-1 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap cursor-pointer transition-colors shadow-2xs"
+              title="+5 Hari Kerja (Hari Minggu tidak dihitung)"
             >
               +5 Hari
             </button>
             <button
               type="button"
-              onClick={() => setDuePreset(7)}
-              className="px-2 py-0.5 text-[10px] font-semibold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap"
+              onClick={() => setDuePreset(8)}
+              className="px-2.5 py-1 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap cursor-pointer transition-colors shadow-2xs"
+              title="+8 Hari Kerja (Hari Minggu tidak dihitung)"
             >
-              +7 Hari
+              +8 Hari
+            </button>
+            <button
+              type="button"
+              onClick={() => setDuePreset(14)}
+              className="px-2.5 py-1 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 whitespace-nowrap cursor-pointer transition-colors shadow-2xs"
+              title="+14 Hari Kerja (Hari Minggu tidak dihitung)"
+            >
+              +14 Hari
             </button>
           </div>
+          <p className="text-[10px] text-amber-800/90 mt-1 italic flex items-center gap-1 font-medium">
+            <span>ℹ️</span>
+            <span>Ketentuan: Hari Minggu tidak termasuk dalam hitungan jumlah hari pengerjaan.</span>
+          </p>
         </div>
 
         {/* Totals Breakdown */}
@@ -1150,22 +1213,73 @@ export const PosView: React.FC<PosViewProps> = ({
                 </div>
               </div>
             ) : (
-              /* Non-Cash sub-options */
-              <div className="grid grid-cols-3 gap-1.5 mb-3">
-                {(['QRIS', 'Transfer Bank', 'Kartu Debit'] as const).map((method) => (
+              /* Non-Cash sub-options & quick payment helpers */
+              <div className="space-y-2 mb-3">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['QRIS', 'Transfer Bank', 'Kartu Debit'] as const).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setNonCashType(method)}
+                      className={`py-1.5 px-1 text-[11px] font-semibold rounded border transition-all text-center cursor-pointer ${
+                        nonCashType === method
+                          ? 'bg-emerald-50 text-[#00871f] border-[#00871f] font-bold shadow-2xs'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {method}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Quick Non-Cash Payment Amount Helpers */}
+                <div className="grid grid-cols-3 gap-1.5 text-[10px]">
                   <button
-                    key={method}
                     type="button"
-                    onClick={() => setNonCashType(method)}
-                    className={`py-1.5 px-1 text-[11px] font-semibold rounded border transition-all text-center ${
-                      nonCashType === method
-                        ? 'bg-emerald-50 text-[#00871f] border-[#00871f] font-bold'
-                        : 'bg-slate-50 text-slate-600 border-slate-200'
+                    onClick={() => {
+                      setNonCashGiven(total);
+                      setHasEditedNonCash(false);
+                    }}
+                    className={`py-1 px-1.5 rounded font-bold border transition-colors cursor-pointer ${
+                      nonCashGiven === total
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                     }`}
+                    title="Bayar lunas 100% total tagihan"
                   >
-                    {method}
+                    Bayar Full (Lunas)
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNonCashGiven(Math.round(total / 2));
+                      setHasEditedNonCash(true);
+                    }}
+                    className={`py-1 px-1.5 rounded font-bold border transition-colors cursor-pointer ${
+                      nonCashGiven === Math.round(total / 2) && total > 0
+                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                    title="Uang Muka 50% tagihan"
+                  >
+                    DP 50%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNonCashGiven(0);
+                      setHasEditedNonCash(true);
+                    }}
+                    className={`py-1 px-1.5 rounded font-bold border transition-colors cursor-pointer ${
+                      nonCashGiven === 0
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                    title="Belum bayar / Piutang penuh"
+                  >
+                    Piutang (0)
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1177,21 +1291,43 @@ export const PosView: React.FC<PosViewProps> = ({
               </div>
 
               <div className="flex justify-between items-center text-slate-600">
-                <span>Total Pembayaran</span>
+                <span className="font-medium flex items-center gap-1">
+                  <span>Total Pembayaran</span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    ({paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType})
+                  </span>
+                </span>
                 {paymentMethodTab === 'Tunai' ? (
-                  <input
-                    type="number"
-                    value={cashGiven || ''}
-                    onChange={(e) => setCashGiven(Math.max(0, Number(e.target.value) || 0))}
-                    placeholder="0"
-                    className="w-28 text-right px-2 py-1 border border-slate-200 rounded text-xs font-semibold focus:ring-1 focus:ring-[#00871f] focus:outline-none"
-                  />
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-400 text-xs font-semibold">Rp</span>
+                    <input
+                      type="number"
+                      value={cashGiven || ''}
+                      onChange={(e) => setCashGiven(Math.max(0, Number(e.target.value) || 0))}
+                      placeholder="0"
+                      className="w-28 text-right px-2 py-1 border border-slate-200 rounded text-xs font-semibold focus:ring-1 focus:ring-[#00871f] focus:outline-none"
+                    />
+                  </div>
                 ) : (
-                  <span className="font-semibold text-slate-800">{formatCurrency(total)}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-400 text-xs font-semibold">Rp</span>
+                    <input
+                      type="number"
+                      value={nonCashGiven !== undefined && nonCashGiven !== null ? (nonCashGiven === 0 && !hasEditedNonCash ? '' : nonCashGiven) : ''}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value) || 0);
+                        setNonCashGiven(val);
+                        setHasEditedNonCash(true);
+                      }}
+                      placeholder="0"
+                      className="w-28 text-right px-2 py-1 border border-emerald-300 bg-emerald-50/20 rounded text-xs font-bold text-slate-800 focus:ring-1 focus:ring-[#00871f] focus:outline-none"
+                      title={`Masukkan nominal pembayaran ${nonCashType} yang diterima`}
+                    />
+                  </div>
                 )}
               </div>
 
-              {/* If remainingBill > 0: Show Piutang Conversion Banner & Info */}
+              {/* Status Pembayaran: FULL (LUNAS) vs DIALIHKAN KE PIUTANG */}
               {remainingBill > 0 ? (
                 <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 space-y-1 mt-1">
                   <div className="flex justify-between items-center text-amber-900 font-bold">
@@ -1205,17 +1341,26 @@ export const PosView: React.FC<PosViewProps> = ({
                     <span>Jatuh Tempo Piutang:</span>
                     <span className="font-bold">{dueDate ? dueDate.replace('T', ' ') : 'Sesuai Deadline'}</span>
                   </div>
-                  <div className="text-[10px] text-slate-500 flex justify-between">
-                    <span>Status:</span>
-                    <span className="font-semibold text-amber-700">
-                      {effectiveCash > 0 ? `Uang Muka (DP: ${formatCurrency(effectiveCash)})` : 'Piutang Penuh (Tempo)'}
+                  <div className="text-[10px] text-slate-600 flex justify-between">
+                    <span>Status Pembayaran:</span>
+                    <span className="font-semibold text-amber-800">
+                      {effectiveCash > 0
+                        ? `Uang Muka (${paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType} DP: ${formatCurrency(effectiveCash)})`
+                        : `Piutang Penuh / Belum Bayar (${paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType})`}
                     </span>
                   </div>
                 </div>
               ) : (
-                <div className="flex justify-between items-center pt-1 text-emerald-600">
-                  <span className="font-semibold">Kembalian</span>
-                  <span className="font-bold text-sm">{formatCurrency(changeAmount)}</span>
+                <div className="flex justify-between items-center pt-1 text-emerald-700 bg-emerald-50/80 px-2 py-1 rounded-md text-[11px] font-bold border border-emerald-200 mt-1">
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Status: Pembayaran FULL (Lunas)
+                  </span>
+                  {changeAmount > 0 ? (
+                    <span className="text-emerald-800 font-black">Kembalian: {formatCurrency(changeAmount)}</span>
+                  ) : (
+                    <span className="text-emerald-800">Lunas Pas</span>
+                  )}
                 </div>
               )}
             </div>

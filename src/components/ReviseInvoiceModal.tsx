@@ -77,6 +77,31 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [preparedTx, setPreparedTx] = useState<Transaction | null>(null);
 
+  // Helper to add working days excluding Sunday (Hari Minggu TIDAK termasuk dalam hitungan hari)
+  const addDaysExcludingSunday = (startDate: Date, days: number): Date => {
+    const d = new Date(startDate);
+    if (days <= 0) return d;
+    let added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      if (d.getDay() !== 0) {
+        added++;
+      }
+    }
+    return d;
+  };
+
+  const setDuePreset = (days: number) => {
+    const d = days === 0 ? new Date() : addDaysExcludingSunday(new Date(), days);
+    d.setHours(17, 0, 0, 0);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    setDueDate(`${year}-${month}-${day}T${hours}:${minutes}`);
+  };
+
   // Calculations
   const subtotal = items.reduce((acc, it) => acc + it.price * it.quantity, 0);
   const total = Math.max(0, subtotal - discount);
@@ -391,16 +416,58 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1 text-amber-900">
-                <Clock className="w-3.5 h-3.5 text-amber-600" />
-                Target Jatuh Tempo
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1 text-amber-900">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  Target Jatuh Tempo
+                </label>
+                <span className="text-[10px] text-amber-700 italic">
+                  *Hari Minggu libur / tidak dihitung
+                </span>
+              </div>
               <input
                 type="datetime-local"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 className="w-full text-xs font-medium px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-amber-50/50"
               />
+              <div className="flex items-center gap-1 mt-1.5 overflow-x-auto no-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => setDuePreset(0)}
+                  className="px-2 py-0.5 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 cursor-pointer"
+                >
+                  Hari Ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDuePreset(2)}
+                  className="px-2 py-0.5 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 cursor-pointer"
+                >
+                  +2 Hari
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDuePreset(5)}
+                  className="px-2 py-0.5 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 cursor-pointer"
+                >
+                  +5 Hari
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDuePreset(8)}
+                  className="px-2 py-0.5 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 cursor-pointer"
+                >
+                  +8 Hari
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDuePreset(14)}
+                  className="px-2 py-0.5 text-[10px] font-bold bg-white border border-amber-300 hover:bg-amber-100 rounded text-amber-900 cursor-pointer"
+                >
+                  +14 Hari
+                </button>
+              </div>
             </div>
           </div>
 
