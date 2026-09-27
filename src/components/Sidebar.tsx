@@ -167,11 +167,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
 
-          {/* 5. Google Drive Cloud Backup & Storage (Khusus Admin atau jika Kasir diizinkan) */}
+          {/* 5. Google Drive Cloud Backup & Storage (Khusus Cadangan & Pemulihan Database Manual) */}
           {(isAdmin || allowCashierDrive) && (
             <button
               onClick={() => setActiveTab('drive')}
-              title="Google Drive Cloud Storage & Cadangan Data"
+              title="Google Drive: Cadangan & Pemulihan Database Manual"
               className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
                 activeTab === 'drive'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-950'

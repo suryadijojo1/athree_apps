@@ -2032,23 +2032,94 @@ export default function App() {
     products?: Product[];
     cashFlowRecords?: CashFlowRecord[];
     kaosStocks?: KaosStockItem[];
+    shifts?: CashierShift[];
+    customers?: Customer[];
+    stockMovements?: StockMovement[];
+    users?: User[];
+    salesList?: string[];
+    categories?: string[];
   }) => {
-    if (data.transactions && Array.isArray(data.transactions)) {
-      setTransactions(data.transactions);
-      localStorage.setItem('athree_transactions', JSON.stringify(data.transactions));
+    const newTx = data.transactions && Array.isArray(data.transactions) ? data.transactions : transactions;
+    const newProd = data.products && Array.isArray(data.products) ? data.products : products;
+    const newCf = data.cashFlowRecords && Array.isArray(data.cashFlowRecords) ? data.cashFlowRecords : cashFlowRecords;
+    const newKaos = data.kaosStocks && Array.isArray(data.kaosStocks) ? data.kaosStocks : kaosStocks;
+    const newShifts = data.shifts && Array.isArray(data.shifts) ? data.shifts : shiftHistory;
+    const newCust = data.customers && Array.isArray(data.customers) ? data.customers : customers;
+    const newSm = data.stockMovements && Array.isArray(data.stockMovements) ? data.stockMovements : stockMovements;
+    const newUsers = data.users && Array.isArray(data.users) ? data.users : users;
+    const newSales = data.salesList && Array.isArray(data.salesList) ? data.salesList : salesList;
+    const newCats = data.categories && Array.isArray(data.categories) ? data.categories : categories;
+
+    if (data.transactions) {
+      setTransactions(newTx);
+      localStorage.setItem('athree_transactions', JSON.stringify(newTx));
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(newTx));
     }
-    if (data.products && Array.isArray(data.products)) {
-      setProducts(data.products);
-      localStorage.setItem('athree_products', JSON.stringify(data.products));
+    if (data.products) {
+      setProducts(newProd);
+      localStorage.setItem('athree_products', JSON.stringify(newProd));
     }
-    if (data.cashFlowRecords && Array.isArray(data.cashFlowRecords)) {
-      setCashFlowRecords(data.cashFlowRecords);
-      localStorage.setItem('athree_cash_flow', JSON.stringify(data.cashFlowRecords));
+    if (data.cashFlowRecords) {
+      setCashFlowRecords(newCf);
+      localStorage.setItem('athree_cash_flow', JSON.stringify(newCf));
     }
-    if (data.kaosStocks && Array.isArray(data.kaosStocks)) {
-      setKaosStocks(data.kaosStocks);
-      localStorage.setItem('athree_kaos_stocks', JSON.stringify(data.kaosStocks));
+    if (data.kaosStocks) {
+      setKaosStocks(newKaos);
+      localStorage.setItem('athree_kaos_stocks', JSON.stringify(newKaos));
     }
+    if (data.shifts) {
+      setShiftHistory(newShifts);
+      localStorage.setItem('athree_shift_history', JSON.stringify(newShifts));
+    }
+    if (data.customers) {
+      setCustomers(newCust);
+      localStorage.setItem('athree_customers', JSON.stringify(newCust));
+    }
+    if (data.stockMovements) {
+      setStockMovements(newSm);
+      localStorage.setItem('athree_stock_movements', JSON.stringify(newSm));
+    }
+    if (data.users) {
+      setUsers(newUsers);
+      localStorage.setItem('athree_users', JSON.stringify(newUsers));
+    }
+    if (data.salesList) {
+      setSalesList(newSales);
+      localStorage.setItem('athree_sales_list', JSON.stringify(newSales));
+    }
+    if (data.categories) {
+      setCategories(newCats);
+      localStorage.setItem('athree_categories', JSON.stringify(newCats));
+    }
+
+    // Push restored state to the single integrated Cloud SQL / Server database
+    saveServerDatabase({
+      products: newProd,
+      categories: newCats,
+      transactions: newTx,
+      cashFlowRecords: newCf,
+      shiftHistory: newShifts,
+      kaosStocks: newKaos,
+      stockMovements: newSm,
+      customers: newCust,
+      users: newUsers,
+      salesList: newSales,
+      isRealData: true
+    }, {
+      savedBy: `${currentUser.name} (Pulihkan dari Google Drive)`,
+      source: 'google-drive-restore'
+    }).catch((err) => console.warn('Sync restored data to server error:', err));
+
+    syncAllLocalDataToFirestore({
+      products: newProd,
+      transactions: newTx,
+      cashFlowRecords: newCf,
+      shifts: newShifts,
+      kaosStocks: newKaos,
+      customers: newCust,
+      users: newUsers,
+      stockMovements: newSm
+    }).catch((err) => console.warn('Sync restored data to Firestore error:', err));
   };
 
   // 0. INITIAL SCREEN: LOGIN SCREEN (Matches uploaded fluid wave image)
@@ -2293,6 +2364,12 @@ export default function App() {
               products={products}
               cashFlowRecords={cashFlowRecords}
               shifts={shiftHistory}
+              kaosStocks={kaosStocks}
+              stockMovements={stockMovements}
+              customers={customers}
+              users={users}
+              salesList={salesList}
+              categories={categories}
               currentStartingCash={shift?.startingCash}
               currentUser={currentUser}
               allowCashierDrive={allowCashierDrive}

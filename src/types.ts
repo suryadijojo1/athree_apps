@@ -168,5 +168,6 @@ export interface DriveFile {
   iconLink?: string;
   thumbnailLink?: string;
   parents?: string[];
+  description?: string;
 }
 

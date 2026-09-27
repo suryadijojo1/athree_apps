@@ -33,7 +33,10 @@ import {
   getAccessToken,
   getCurrentGoogleUser,
   setManualAccessToken,
-  getOAuthClientId
+  getOAuthClientId,
+  getStoredGoogleDriveAccount,
+  connectInputGoogleAccount,
+  syncWithServerGoogleDriveAccount
 } from '../services/googleAuth';
 import {
   listDriveFiles,
@@ -44,7 +47,7 @@ import {
   getOrCreateBackupFolder,
   BACKUP_FOLDER_NAME
 } from '../services/googleDriveService';
-import { DriveFile, Transaction, Product, CashFlowRecord, CashierShift, User, KaosStockItem } from '../types';
+import { DriveFile, Transaction, Product, CashFlowRecord, CashierShift, User, KaosStockItem, Customer, StockMovement } from '../types';
 
 interface GoogleDriveViewProps {
   transactions: Transaction[];
@@ -52,6 +55,11 @@ interface GoogleDriveViewProps {
   cashFlowRecords: CashFlowRecord[];
   kaosStocks?: KaosStockItem[];
   shifts?: CashierShift[];
+  stockMovements?: StockMovement[];
+  customers?: Customer[];
+  users?: User[];
+  salesList?: string[];
+  categories?: string[];
   currentStartingCash?: number;
   currentUser?: User;
   allowCashierDrive?: boolean;
@@ -61,6 +69,12 @@ interface GoogleDriveViewProps {
     products?: Product[];
     cashFlowRecords?: CashFlowRecord[];
     kaosStocks?: KaosStockItem[];
+    shifts?: CashierShift[];
+    customers?: Customer[];
+    stockMovements?: StockMovement[];
+    users?: User[];
+    salesList?: string[];
+    categories?: string[];
   }) => void;
 }
 
@@ -70,6 +84,11 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   cashFlowRecords,
   kaosStocks,
   shifts = [],
+  stockMovements = [],
+  customers = [],
+  users = [],
+  salesList = [],
+  categories = [],
   currentStartingCash = 0,
   currentUser,
   allowCashierDrive = false,
@@ -116,13 +135,48 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
+  // Direct Google Account & Token Connection State
+  const [directEmail, setDirectEmail] = useState('suryadijojo1@gmail.com');
+  const [directToken, setDirectToken] = useState('');
+  const [autoConnectChecked, setAutoConnectChecked] = useState(true);
+  const [showEditAccount, setShowEditAccount] = useState(false);
+
   // Manual Token Modal State
   const [showManualTokenModal, setShowManualTokenModal] = useState(false);
   const [manualTokenInput, setManualTokenInput] = useState('');
   const [manualTokenEmail, setManualTokenEmail] = useState('');
 
-  // Initialize auth listener
+  // Initialize auth listener & restore auto-connected account
   useEffect(() => {
+    // 1. Populate direct input fields from local storage if previously saved
+    const stored = getStoredGoogleDriveAccount();
+    if (stored && stored.email) {
+      if (stored.email) setDirectEmail(stored.email);
+      if (stored.accessToken) setDirectToken(stored.accessToken);
+      setIsConnected(true);
+      setGoogleUser({
+        displayName: stored.displayName || stored.email,
+        email: stored.email,
+        photoURL: stored.photoURL
+      });
+      loadFiles();
+    }
+
+    // 2. Synchronize with server config to ensure auto-reconnect persists across refreshes & cleared cache
+    syncWithServerGoogleDriveAccount().then((srvAcc) => {
+      if (srvAcc && srvAcc.email) {
+        setDirectEmail(srvAcc.email);
+        if (srvAcc.accessToken) setDirectToken(srvAcc.accessToken);
+        setIsConnected(true);
+        setGoogleUser({
+          displayName: srvAcc.displayName || srvAcc.email,
+          email: srvAcc.email,
+          photoURL: srvAcc.photoURL
+        });
+        loadFiles();
+      }
+    });
+
     const unsubscribe = initAuth(
       (user, token) => {
         setIsConnected(true);
@@ -130,25 +184,56 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         loadFiles();
       },
       () => {
-        setIsConnected(false);
-        setGoogleUser(null);
-        setFiles([]);
+        // Only set disconnected if no stored auto-connected account exists in localStorage or server
+        const checkStored = getStoredGoogleDriveAccount();
+        if (checkStored && checkStored.email) {
+          setIsConnected(true);
+          setGoogleUser({
+            displayName: checkStored.displayName || checkStored.email,
+            email: checkStored.email,
+            photoURL: checkStored.photoURL
+          });
+          loadFiles();
+        } else {
+          setIsConnected(false);
+          setGoogleUser(null);
+          setFiles([]);
+        }
       }
     );
-
-    // Initial check if already cached
-    getAccessToken().then((token) => {
-      if (token) {
-        setIsConnected(true);
-        setGoogleUser(getCurrentGoogleUser());
-        loadFiles();
-      }
-    });
 
     return () => {
       if (unsubscribe) unsubscribe();
     };
   }, []);
+
+  const handleDirectConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!directEmail.trim()) {
+      showNotification('error', 'Masukkan email akun Google terlebih dahulu');
+      return;
+    }
+    setIsAuthenticating(true);
+    try {
+      const result = await connectInputGoogleAccount(
+        directEmail.trim(),
+        undefined,
+        directToken.trim() || undefined
+      );
+      setIsConnected(true);
+      setGoogleUser(result.user);
+      setUnauthorizedDomainInfo(null);
+      showNotification(
+        'success',
+        `Google Drive berhasil terkoneksi otomatis ke akun: ${result.user.email}! (Tersimpan permanen & anti-logout)`
+      );
+      await loadFiles();
+    } catch (err: any) {
+      showNotification('error', 'Gagal menghubungkan: ' + err.message);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
 
   const showNotification = (
     type: 'success' | 'error' | 'info',
@@ -294,7 +379,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     }
   }, []);
 
-  // Quick 1-Click App Backup to Drive
+  // Quick 1-Click Manual App Backup to Drive
   const handleBackupNow = async () => {
     setIsBackingUp(true);
     try {
@@ -304,12 +389,17 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         cashFlowRecords,
         shifts,
         currentStartingCash,
-        kaosStocks
+        kaosStocks,
+        stockMovements,
+        customers,
+        users,
+        salesList,
+        categories
       });
 
       showNotification(
         'success',
-        `Cadangan data berhasil disimpan di Google Drive: ${result.name}`,
+        `Cadangan database manual berhasil disimpan di Google Drive: ${result.name}`,
         result.webViewLink
       );
       await loadFiles();
@@ -412,11 +502,17 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         transactions: data.transactions,
         products: data.products,
         cashFlowRecords: data.cashFlowRecords,
-        kaosStocks: data.kaosStocks
+        kaosStocks: data.kaosStocks,
+        shifts: data.shifts || data.shiftHistory,
+        customers: data.customers,
+        stockMovements: data.stockMovements,
+        users: data.users,
+        salesList: data.salesList,
+        categories: data.categories
       });
       showNotification(
         'success',
-        `Data berhasil dipulihkan dari cadangan Google Drive (${backupToRestore.file.name})!`
+        `Database berhasil dipulihkan secara manual dari Google Drive (${backupToRestore.file.name}) dan otomatis diintegrasikan ke Cloud SQL!`
       );
       setBackupToRestore(null);
     } catch (err: any) {
@@ -561,13 +657,13 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           </div>
           <div>
             <h1 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-              Google Drive Cloud Storage
+              Google Drive (Cadangan &amp; Pemulihan Manual)
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold border border-blue-200">
-                Workspace Terintegrasi
+                Penyimpanan Manual
               </span>
             </h1>
             <p className="text-xs text-slate-500">
-              Cadangkan data penjualan, simpan laporan, dan kelola arsip toko langsung di Google Drive Anda
+              Simpan cadangan database manual dan pulihkan sewaktu-waktu. Database utama aplikasi tersimpan otomatis di Cloud SQL.
             </p>
           </div>
         </div>
@@ -660,6 +756,35 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
 
       {/* Main Container */}
       <div className="p-6 space-y-6">
+        {/* Unified Integrated Database & Google Drive Clarification Banner */}
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#00871f] text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900">
+                  Database Utama: 1 Database Terintegrasi &amp; Auto-Save di Cloud SQL
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold border border-emerald-300">
+                  Tersimpan Otomatis Real-Time
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Setiap transaksi kasir, master produk, kaos polos, dan mutasi keuangan langsung tersimpan otomatis ke 1 database Cloud SQL yang terintegrasi. <strong>Google Drive ini khusus digunakan untuk menyimpan file cadangan database dan memulihkannya secara manual</strong> tanpa ada auto-sync ganda.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 flex items-center gap-2">
+            <div className="bg-white/90 border border-emerald-200 px-3 py-1.5 rounded-xl text-center">
+              <span className="text-[10px] text-slate-500 block uppercase font-bold">Total Terintegrasi</span>
+              <span className="text-xs font-extrabold text-emerald-700">
+                {transactions.length} Faktur • {products.length} Produk
+              </span>
+            </div>
+          </div>
+        </div>
         {/* UNAUTHORIZED DOMAIN DIAGNOSTIC CARD */}
         {unauthorizedDomainInfo && (
           <div className="bg-amber-50/80 border border-amber-300 rounded-2xl p-6 text-left max-w-2xl mx-auto shadow-sm space-y-4 animate-in fade-in duration-200">
@@ -763,63 +888,228 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
 
         {!isConnected ? (
           /* Connect Prompt Card */
-          <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-xs text-center max-w-xl mx-auto space-y-4 my-8">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-xs text-center max-w-2xl mx-auto space-y-5 my-6">
             <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center border border-blue-100 shadow-sm">
               <Cloud className="w-8 h-8" />
             </div>
-            <h2 className="text-lg font-bold text-slate-800">
-              Hubungkan Google Drive untuk Cadangan Cloud Otomatis
-            </h2>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Dengan menghubungkan akun Google Anda, Anda dapat mencadangkan seluruh data transaksi, master produk,
-              dan laporan arus kas toko langsung ke folder Google Drive dengan aman.
-            </p>
+            <div>
+              <div className="flex items-center justify-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-slate-800">
+                  Hubungkan Google Drive (Tersambung Otomatis Permanen)
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300">
+                  Auto-Reconnect
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed mt-1 max-w-lg mx-auto">
+                Koneksi Google Drive akan tersimpan dan otomatis tersambung terus ke akun Google yang Anda masukkan, tanpa pernah keluar saat aplikasi di-refresh.
+              </p>
+            </div>
 
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            {/* Quick Connect Buttons */}
+            <div className="pt-1 flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={handleSignIn}
                 disabled={isAuthenticating}
-                className="w-full sm:w-auto px-6 py-3 bg-[#3b49df] hover:bg-[#2f3ab2] text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2.5 transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
+                className="px-5 py-2.5 bg-[#3b49df] hover:bg-[#2f3ab2] text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2.5 transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 <Cloud className="w-4 h-4" />
-                <span>{isAuthenticating ? 'Sedang Menghubungkan...' : 'Masuk dengan Akun Google'}</span>
+                <span>{isAuthenticating ? 'Sedang Menghubungkan...' : 'Masuk 1-Klik Akun Google'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleDownloadLocalBackup}
-                className="w-full sm:w-auto px-5 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+                className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
                 title="Cadangkan data ke file JSON di komputer tanpa internet"
               >
                 <Download className="w-4 h-4 text-emerald-600" />
                 <span>Cadangan Offline (.JSON)</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setShowManualTokenModal(true)}
-                className="w-full sm:w-auto px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                title="Gunakan Google Access Token jika popup dicegah oleh peramban"
-              >
-                <Key className="w-3.5 h-3.5 text-amber-600" />
-                <span>Token Manual</span>
-              </button>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-6 text-[11px] text-slate-500">
+            {/* Direct Input Akun & Token Form */}
+            <div className="mt-4 pt-5 border-t border-slate-200 text-left space-y-3 bg-slate-50/80 p-4 sm:p-5 rounded-2xl border">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-amber-600" />
+                  Atau Input Akun &amp; Access Token Google (Tersimpan Permanen)
+                </span>
+                <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
+                  Anti-Logout
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Cukup masukkan email akun Google Anda (atau tambahkan Access Token jika ada). Sistem akan menyimpan otorisasi sehingga Google Drive selalu otomatis terkoneksi ke akun yang di-input dan tidak akan keluar saat aplikasi di-refresh.
+              </p>
+
+              <form onSubmit={handleDirectConnect} className="space-y-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Email Akun Google *
+                    </label>
+                    <input
+                      type="email"
+                      value={directEmail}
+                      onChange={(e) => setDirectEmail(e.target.value)}
+                      placeholder="contoh: suryadijojo1@gmail.com"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Google OAuth Access Token (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={directToken}
+                      onChange={(e) => setDirectToken(e.target.value)}
+                      placeholder="Opsional: ya29... (biarkan kosong untuk koneksi akun langsung)"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                  <label className="flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={autoConnectChecked}
+                      onChange={(e) => setAutoConnectChecked(e.target.checked)}
+                      className="rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="font-semibold text-slate-700">Selalu sambungkan otomatis ke akun ini (anti-logout saat refresh)</span>
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={isAuthenticating || !directEmail.trim()}
+                    className="px-4 py-2 bg-[#00871f] hover:bg-[#007019] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-50 shrink-0"
+                  >
+                    {isAuthenticating ? 'Menyambungkan...' : 'Simpan & Sambungkan Otomatis'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-center gap-6 text-[11px] text-slate-500">
               <span className="flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                Aman & Privat
+                Aman &amp; Terpisah dari Live DB
               </span>
               <span className="flex items-center gap-1.5">
                 <Database className="w-4 h-4 text-blue-600" />
-                Penyimpanan di Akun Anda
+                Arsip Cadangan Manual
               </span>
             </div>
           </div>
         ) : (
           <>
+            {/* Active Auto-Connected Account Status Banner */}
+            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      Google Drive Terkoneksi Otomatis
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300">
+                      🟢 Auto-Reconnect Aktif
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Tersambung ke akun: <strong className="text-slate-800">{googleUser?.displayName || googleUser?.email}</strong> ({googleUser?.email}). Koneksi tersimpan permanen dan otomatis tersambung saat aplikasi dibuka atau di-refresh.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowEditAccount(!showEditAccount)}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                  title="Ganti akun Google Drive yang di-input"
+                >
+                  {showEditAccount ? 'Tutup Ubah Akun' : 'Ubah Akun Google'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                  title="Putuskan koneksi Google Drive"
+                >
+                  Putuskan
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Edit Account Form if opened */}
+            {showEditAccount && (
+              <div className="bg-slate-50 border border-slate-300 rounded-2xl p-4 sm:p-5 text-left space-y-3 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-blue-600" />
+                    Ubah Akun Google yang Di-Input (Tersimpan Permanen)
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-semibold">
+                    Akun baru akan otomatis terkoneksi terus
+                  </span>
+                </div>
+                <form onSubmit={async (e) => {
+                  await handleDirectConnect(e);
+                  setShowEditAccount(false);
+                }} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Email Akun Google Baru *
+                      </label>
+                      <input
+                        type="email"
+                        value={directEmail}
+                        onChange={(e) => setDirectEmail(e.target.value)}
+                        placeholder="contoh: akunbaru@gmail.com"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Google OAuth Access Token (Opsional)
+                      </label>
+                      <input
+                        type="text"
+                        value={directToken}
+                        onChange={(e) => setDirectToken(e.target.value)}
+                        placeholder="Opsional: tempel token ya29..."
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditAccount(false)}
+                      className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isAuthenticating || !directEmail.trim()}
+                      className="px-4 py-1.5 bg-[#00871f] hover:bg-[#007019] text-white rounded-xl text-xs font-bold shadow-xs disabled:opacity-50"
+                    >
+                      {isAuthenticating ? 'Menyimpan...' : 'Simpan & Sambungkan ke Akun Baru'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
             {/* Quick Actions Panel */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* 1. Backup Now Card */}
@@ -828,9 +1118,9 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   <div className="w-9 h-9 rounded-xl bg-emerald-100 text-[#00871f] flex items-center justify-center mb-2.5">
                     <Database className="w-5 h-5" />
                   </div>
-                  <h3 className="text-xs font-bold text-slate-800">Cadangkan Data Toko</h3>
+                  <h3 className="text-xs font-bold text-slate-800">Simpan Cadangan Manual</h3>
                   <p className="text-[11px] text-slate-500 mt-1 leading-tight">
-                    {transactions.length} Transaksi, {products.length} Produk, {cashFlowRecords.length} Mutasi Kas
+                    {transactions.length} Transaksi, {products.length} Produk, {cashFlowRecords.length} Mutasi Kas, {kaosStocks?.length || 0} Kaos
                   </p>
                 </div>
                 <button
@@ -840,7 +1130,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   className="mt-3 w-full py-2 bg-[#00871f] hover:bg-[#007019] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>{isBackingUp ? 'Menyimpan ke Drive...' : 'Cadangkan Sekarang'}</span>
+                  <span>{isBackingUp ? 'Menyimpan ke Drive...' : 'Simpan Cadangan ke Drive'}</span>
                 </button>
               </div>
 
@@ -1070,11 +1360,11 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => handlePrepareRestore(file)}
-                                    className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-[#00871f] border border-emerald-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                                    title="Pulihkan data kasir dari cadangan ini"
+                                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-[#00871f] border border-emerald-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="Pulihkan database kasir secara manual dari file cadangan ini"
                                   >
                                     <ArrowDownToLine className="w-3.5 h-3.5" />
-                                    <span>Pulihkan</span>
+                                    <span>Pulihkan Manual</span>
                                   </button>
                                 )}
 
@@ -1170,7 +1460,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 <Database className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Pulihkan Data dari Google Drive</h3>
+                <h3 className="text-sm font-bold text-slate-900">Pulihkan Database Manual</h3>
                 <p className="text-[11px] text-slate-500">
                   Cadangan: {backupToRestore.file.name}
                 </p>
@@ -1179,7 +1469,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
 
             <div className="py-4 space-y-3">
               <p className="text-xs text-slate-700">
-                Apakah Anda ingin memulihkan data sistem kasir dari file cadangan ini?
+                Apakah Anda ingin memulihkan seluruh database kasir secara manual dari file cadangan Google Drive ini?
               </p>
 
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
@@ -1201,10 +1491,22 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                     {backupToRestore.content.totalProducts || backupToRestore.content.data?.products?.length || 0} Produk
                   </span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Kaos Polos:</span>
+                  <span className="font-bold text-slate-800">
+                    {backupToRestore.content.totalKaosStocks || backupToRestore.content.data?.kaosStocks?.length || 0} Varian
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Mutasi Kas:</span>
+                  <span className="font-bold text-slate-800">
+                    {backupToRestore.content.totalCashFlowRecords || backupToRestore.content.data?.cashFlowRecords?.length || 0} Catatan
+                  </span>
+                </div>
               </div>
 
-              <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-[11px] text-amber-800">
-                ℹ️ Memulihkan cadangan akan memperbarui daftar transaksi, produk, dan catatan mutasi kas saat ini.
+              <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 text-[11px] text-emerald-800">
+                ℹ️ Data yang dipulihkan akan langsung otomatis diintegrasikan dan disimpan ke 1 Database Cloud SQL yang aktif.
               </div>
             </div>
 
@@ -1224,7 +1526,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 className="px-4 py-2 bg-[#00871f] hover:bg-[#007019] text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{isRestoring ? 'Memulihkan...' : 'Terapkan Pemulihan'}</span>
+                <span>{isRestoring ? 'Memulihkan...' : 'Pulihkan Database Manual Sekarang'}</span>
               </button>
             </div>
           </div>

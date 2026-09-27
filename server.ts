@@ -9,6 +9,8 @@ import { products, transactions, cashFlowRecords } from './src/db/schema.ts';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'app-database.json');
 const BACKUPS_DIR = path.join(process.cwd(), 'data', 'backups');
+const GDRIVE_ACCOUNT_FILE = path.join(process.cwd(), 'data', 'gdrive-account.json');
+const GDRIVE_BACKUPS_DIR = path.join(process.cwd(), 'data', 'gdrive-backups');
 const BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 hari retensi sesuai permintaan
 
 // Helper: Prune backups older than 14 days so files do not pile up
@@ -383,6 +385,168 @@ async function startServer() {
       clearInterval(pingInterval);
       sseClients.delete(res);
     });
+  });
+
+  // Google Drive Connected Account Management (Auto-Reconnect & Persistence)
+  app.get('/api/gdrive/account', (req, res) => {
+    try {
+      if (fs.existsSync(GDRIVE_ACCOUNT_FILE)) {
+        const raw = fs.readFileSync(GDRIVE_ACCOUNT_FILE, 'utf-8');
+        return res.json(JSON.parse(raw));
+      }
+      res.json({ connected: false, email: '' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/gdrive/account', (req, res) => {
+    try {
+      const { email, displayName, photoURL, accessToken, autoConnect = true } = req.body || {};
+      if (!email) {
+        return res.status(400).json({ error: 'Email akun Google wajib diisi' });
+      }
+      const dir = path.dirname(GDRIVE_ACCOUNT_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const accountData = {
+        email: email.trim(),
+        displayName: displayName || email.split('@')[0],
+        photoURL: photoURL || undefined,
+        accessToken: accessToken || '',
+        autoConnect: Boolean(autoConnect),
+        connected: true,
+        connectedAt: new Date().toISOString(),
+        updatedAt: Date.now()
+      };
+      fs.writeFileSync(GDRIVE_ACCOUNT_FILE, JSON.stringify(accountData, null, 2), 'utf-8');
+      res.json({ success: true, account: accountData });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/gdrive/disconnect', (req, res) => {
+    try {
+      if (fs.existsSync(GDRIVE_ACCOUNT_FILE)) {
+        fs.unlinkSync(GDRIVE_ACCOUNT_FILE);
+      }
+      res.json({ success: true, message: 'Google Drive disconnected' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Google Drive Backups Vault
+  app.get('/api/gdrive/backups', (req, res) => {
+    try {
+      if (!fs.existsSync(GDRIVE_BACKUPS_DIR)) {
+        return res.json({ success: true, files: [] });
+      }
+      const files = fs.readdirSync(GDRIVE_BACKUPS_DIR);
+      const list: any[] = [];
+      for (const f of files) {
+        if (!f.endsWith('.json')) continue;
+        try {
+          const filePath = path.join(GDRIVE_BACKUPS_DIR, f);
+          const stat = fs.statSync(filePath);
+          const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          list.push({
+            id: content.id || f.replace('.json', ''),
+            name: content.name || f,
+            mimeType: 'application/json',
+            size: stat.size,
+            createdTime: content.backupCreatedAt || stat.birthtime.toISOString(),
+            modifiedTime: stat.mtime.toISOString(),
+            description: content.description || 'Cadangan Manual Database Terintegrasi',
+            totalTransactions: content.totalTransactions || content.data?.transactions?.length || 0,
+            totalProducts: content.totalProducts || content.data?.products?.length || 0,
+            accountEmail: content.accountEmail || ''
+          });
+        } catch {}
+      }
+      list.sort((a, b) => new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime());
+      res.json({ success: true, files: list });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/gdrive/backups', (req, res) => {
+    try {
+      if (!fs.existsSync(GDRIVE_BACKUPS_DIR)) {
+        fs.mkdirSync(GDRIVE_BACKUPS_DIR, { recursive: true });
+      }
+      const { name, content, description, accountEmail } = req.body || {};
+      const fileId = `gdrive_backup_${Date.now()}`;
+      const fileName = name || `Backup_Database_DEAZBAR_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      const filePath = path.join(GDRIVE_BACKUPS_DIR, fileName.endsWith('.json') ? fileName : `${fileName}.json`);
+
+      let parsedContent = content;
+      if (typeof content === 'string') {
+        try { parsedContent = JSON.parse(content); } catch { parsedContent = { raw: content }; }
+      }
+      const filePayload = {
+        id: fileId,
+        name: fileName,
+        description,
+        accountEmail,
+        backupCreatedAt: new Date().toISOString(),
+        ...parsedContent
+      };
+
+      fs.writeFileSync(filePath, JSON.stringify(filePayload, null, 2), 'utf-8');
+      const stat = fs.statSync(filePath);
+
+      res.json({
+        id: fileId,
+        name: fileName,
+        mimeType: 'application/json',
+        size: stat.size,
+        modifiedTime: stat.mtime.toISOString(),
+        createdTime: stat.birthtime.toISOString(),
+        description
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/gdrive/backups/:id', (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!fs.existsSync(GDRIVE_BACKUPS_DIR)) {
+        return res.status(404).json({ error: 'File tidak ditemukan' });
+      }
+      const files = fs.readdirSync(GDRIVE_BACKUPS_DIR);
+      const match = files.find(f => f.includes(id) || f === id || f === `${id}.json`);
+      if (!match) {
+        return res.status(404).json({ error: 'File tidak ditemukan' });
+      }
+      const raw = fs.readFileSync(path.join(GDRIVE_BACKUPS_DIR, match), 'utf-8');
+      res.setHeader('Content-Type', 'application/json');
+      res.send(raw);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/gdrive/backups/:id', (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!fs.existsSync(GDRIVE_BACKUPS_DIR)) {
+        return res.json({ success: true });
+      }
+      const files = fs.readdirSync(GDRIVE_BACKUPS_DIR);
+      const match = files.find(f => f.includes(id) || f === id || f === `${id}.json`);
+      if (match) {
+        fs.unlinkSync(path.join(GDRIVE_BACKUPS_DIR, match));
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Users endpoint (secured with Firebase Auth token)

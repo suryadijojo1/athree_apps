@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame, RotateCcw } from 'lucide-react';
+import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame, RotateCcw, Database } from 'lucide-react';
 import { User, CashierShift } from '../types';
 
 interface HeaderProps {
@@ -93,7 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Date, Shift button, Profile */}
       <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
-        {/* Firebase Cloud Status Badge & Trigger */}
+        {/* Integrated Cloud SQL Database Status Badge & Trigger */}
         {onOpenFirebaseModal && (
           <button
             type="button"
@@ -103,15 +103,15 @@ export const Header: React.FC<HeaderProps> = ({
                 ? 'bg-emerald-950/40 text-emerald-100 hover:bg-emerald-900/50 border-emerald-400/40'
                 : 'bg-black/20 text-white/90 hover:bg-black/30 border-white/20'
             }`}
-            title="Sinkronisasi Cloud Real-time Aktif - Data otomatis tersambung antar semua browser"
+            title="1 Database Terintegrasi: Menyimpan otomatis di Cloud SQL & Cloud DB secara real-time"
           >
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-            <span className="hidden sm:inline">Cloud:</span>
-            <span className="font-bold text-emerald-300">Sinkron Otomatis</span>
+            <Database className="w-3.5 h-3.5 text-emerald-300" />
+            <span className="hidden sm:inline">1 Database Terintegrasi:</span>
+            <span className="font-bold text-emerald-300">Auto-Save Cloud SQL</span>
           </button>
         )}
 

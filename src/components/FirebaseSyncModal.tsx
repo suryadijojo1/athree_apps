@@ -332,9 +332,14 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
               <Server className="w-5 h-5 text-emerald-200" />
             </div>
             <div>
-              <h3 className="font-bold text-base leading-tight">Sinkronisasi Database Pusat Real-time</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base leading-tight">1 Database Terintegrasi (Cloud SQL)</h3>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-800 text-[10px] font-bold text-emerald-100 border border-emerald-600">
+                  Auto-Save Aktif
+                </span>
+              </div>
               <p className="text-xs text-emerald-100 mt-0.5">
-                Menyinkronkan data otomatis antar semua browser &amp; perangkat secara langsung
+                Database terpusat menyimpan otomatis secara real-time. Hanya 1 database terintegrasi yang aktif.
               </p>
             </div>
           </div>
@@ -348,6 +353,17 @@ export const FirebaseSyncModal: React.FC<FirebaseSyncModalProps> = ({
 
         {/* Content */}
         <div className="p-5 space-y-4 overflow-y-auto">
+          {/* Explanation Banner */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs space-y-2">
+            <div className="flex items-center gap-2 text-emerald-900 font-bold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>Sistem Database Tunggal Terpadu</span>
+            </div>
+            <p className="text-slate-700 leading-relaxed text-[11px]">
+              • <strong>Database Cloud SQL:</strong> Menyimpan seluruh transaksi, produk, stok kaos, pelanggan, dan arus kas secara otomatis setiap ada aktivitas kasir.<br />
+              • <strong>Google Drive:</strong> Dikhususkan hanya untuk menyimpan file cadangan database dan pemulihan secara manual (tidak ada sinkronisasi ganda yang membingungkan).
+            </p>
+          </div>
           {/* Status Message */}
           {statusMessage && (
             <div

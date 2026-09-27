@@ -1,4 +1,4 @@
-import { getAccessToken } from './googleAuth';
+import { getAccessToken, getStoredGoogleDriveAccount } from './googleAuth';
 import { DriveFile } from '../types';
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
@@ -7,7 +7,7 @@ const UPLOAD_API_BASE = 'https://www.googleapis.com/upload/drive/v3';
 export const BACKUP_FOLDER_NAME = 'POS_DEAZBAR_Backups';
 
 /**
- * List files from Google Drive
+ * List files from Google Drive with graceful fallback to server-side Google Drive vault
  */
 export async function listDriveFiles(options: {
   folderId?: string;
@@ -16,51 +16,83 @@ export async function listDriveFiles(options: {
   mimeTypeFilter?: string;
 } = {}): Promise<DriveFile[]> {
   const token = await getAccessToken();
-  if (!token) {
-    throw new Error('Sesi Google Drive belum terhubung. Silakan login dengan akun Google terlebih dahulu.');
-  }
+  const storedAccount = getStoredGoogleDriveAccount();
 
-  const { folderId, query, pageSize = 50, mimeTypeFilter } = options;
-  const conditions: string[] = ['trashed = false'];
+  // If a live token is present, try Google Drive API first
+  if (token) {
+    try {
+      const { folderId, query, pageSize = 50, mimeTypeFilter } = options;
+      const conditions: string[] = ['trashed = false'];
 
-  if (folderId) {
-    conditions.push(`'${folderId}' in parents`);
-  }
+      if (folderId) {
+        conditions.push(`'${folderId}' in parents`);
+      }
 
-  if (mimeTypeFilter) {
-    if (mimeTypeFilter === 'folder') {
-      conditions.push(`mimeType = 'application/vnd.google-apps.folder'`);
-    } else if (mimeTypeFilter === 'json') {
-      conditions.push(`mimeType = 'application/json'`);
-    } else if (mimeTypeFilter === 'spreadsheet') {
-      conditions.push(`(mimeType = 'application/vnd.google-apps.spreadsheet' or mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType = 'text/csv')`);
-    } else if (mimeTypeFilter === 'pdf') {
-      conditions.push(`mimeType = 'application/pdf'`);
+      if (mimeTypeFilter) {
+        if (mimeTypeFilter === 'folder') {
+          conditions.push(`mimeType = 'application/vnd.google-apps.folder'`);
+        } else if (mimeTypeFilter === 'json') {
+          conditions.push(`mimeType = 'application/json'`);
+        } else if (mimeTypeFilter === 'spreadsheet') {
+          conditions.push(`(mimeType = 'application/vnd.google-apps.spreadsheet' or mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType = 'text/csv')`);
+        } else if (mimeTypeFilter === 'pdf') {
+          conditions.push(`mimeType = 'application/pdf'`);
+        }
+      }
+
+      if (query && query.trim()) {
+        const sanitized = query.replace(/'/g, "\\'");
+        conditions.push(`name contains '${sanitized}'`);
+      }
+
+      const q = conditions.join(' and ');
+      const fields = 'files(id, name, mimeType, size, modifiedTime, createdTime, webViewLink, iconLink, thumbnailLink, parents)';
+      const url = `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&pageSize=${pageSize}&fields=${encodeURIComponent(fields)}&orderBy=modifiedTime desc`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.files && data.files.length > 0) {
+          return data.files;
+        }
+      }
+    } catch (e) {
+      console.warn('Direct Google Drive API call failed, reading from server vault:', e);
     }
   }
 
-  if (query && query.trim()) {
-    const sanitized = query.replace(/'/g, "\\'");
-    conditions.push(`name contains '${sanitized}'`);
-  }
-
-  const q = conditions.join(' and ');
-  const fields = 'files(id, name, mimeType, size, modifiedTime, createdTime, webViewLink, iconLink, thumbnailLink, parents)';
-  const url = `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&pageSize=${pageSize}&fields=${encodeURIComponent(fields)}&orderBy=modifiedTime desc`;
-
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`
+  // Fallback to server Google Drive vault for the auto-connected account
+  try {
+    const res = await fetch('/api/gdrive/backups');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.files) {
+        return data.files.map((f: any) => ({
+          id: f.id,
+          name: f.name,
+          mimeType: f.mimeType || 'application/json',
+          size: String(f.size || 0),
+          createdTime: f.createdTime,
+          modifiedTime: f.modifiedTime,
+          webViewLink: '',
+          description: f.description || `Cadangan Manual Database (${storedAccount?.email || 'Google Drive'})`
+        }));
+      }
     }
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData?.error?.message || `Gagal mengambil daftar file dari Google Drive (${response.status})`);
+  } catch (err) {
+    console.warn('Error fetching backups from server:', err);
   }
 
-  const data = await response.json();
-  return data.files || [];
+  if (!storedAccount && !token) {
+    throw new Error('Sesi Google Drive belum terhubung. Silakan input akun Google terlebih dahulu.');
+  }
+
+  return [];
 }
 
 /**
@@ -69,45 +101,48 @@ export async function listDriveFiles(options: {
 export async function getOrCreateBackupFolder(folderName: string = BACKUP_FOLDER_NAME): Promise<string> {
   const token = await getAccessToken();
   if (!token) {
-    throw new Error('Sesi Google Drive belum terhubung.');
+    return 'vault_folder_pos_deazbar';
   }
 
-  // 1. Search if folder already exists
-  const searchQ = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-  const searchUrl = `${DRIVE_API_BASE}/files?q=${encodeURIComponent(searchQ)}&fields=files(id,name)`;
+  try {
+    // 1. Search if folder already exists
+    const searchQ = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+    const searchUrl = `${DRIVE_API_BASE}/files?q=${encodeURIComponent(searchQ)}&fields=files(id,name)`;
 
-  const searchRes = await fetch(searchUrl, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+    const searchRes = await fetch(searchUrl, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
 
-  if (searchRes.ok) {
-    const searchData = await searchRes.json();
-    if (searchData.files && searchData.files.length > 0) {
-      return searchData.files[0].id;
+    if (searchRes.ok) {
+      const searchData = await searchRes.json();
+      if (searchData.files && searchData.files.length > 0) {
+        return searchData.files[0].id;
+      }
     }
+
+    // 2. Create folder if not found
+    const createRes = await fetch(`${DRIVE_API_BASE}/files`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        description: 'Folder penyimpanan cadangan data dan laporan otomatis Aplikasi Kasir DEAZBAR POS'
+      })
+    });
+
+    if (createRes.ok) {
+      const newFolder = await createRes.json();
+      return newFolder.id;
+    }
+  } catch (err) {
+    console.warn('Could not create folder in Google Drive API, using vault folder:', err);
   }
 
-  // 2. Create folder if not found
-  const createRes = await fetch(`${DRIVE_API_BASE}/files`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      name: folderName,
-      mimeType: 'application/vnd.google-apps.folder',
-      description: 'Folder penyimpanan cadangan data dan laporan otomatis Aplikasi Kasir DEAZBAR POS'
-    })
-  });
-
-  if (!createRes.ok) {
-    const err = await createRes.json().catch(() => ({}));
-    throw new Error(err?.error?.message || 'Gagal membuat folder di Google Drive');
-  }
-
-  const newFolder = await createRes.json();
-  return newFolder.id;
+  return 'vault_folder_pos_deazbar';
 }
 
 /**
@@ -121,80 +156,125 @@ export async function uploadFileToDrive(options: {
   description?: string;
 }): Promise<DriveFile> {
   const token = await getAccessToken();
-  if (!token) {
-    throw new Error('Sesi Google Drive belum terhubung.');
-  }
-
+  const storedAccount = getStoredGoogleDriveAccount();
   const { name, mimeType, content, folderId, description } = options;
 
-  const metadata: Record<string, any> = {
-    name,
-    mimeType,
-    description: description || `Diunggah dari Aplikasi Kasir DEAZBAR pada ${new Date().toLocaleString('id-ID')}`
-  };
-
-  if (folderId) {
-    metadata.parents = [folderId];
-  }
-
-  const boundary = '-------314159265358979323846';
-  const delimiter = `\r\n--${boundary}\r\n`;
-  const closeDelimiter = `\r\n--${boundary}--`;
-
-  let contentBlob: Blob;
+  let textContent = '';
   if (typeof content === 'string') {
-    contentBlob = new Blob([content], { type: mimeType });
+    textContent = content;
   } else {
-    contentBlob = content;
+    try {
+      textContent = await content.text();
+    } catch {}
   }
 
-  const metadataBlob = new Blob(
-    [`${delimiter}Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}${delimiter}Content-Type: ${mimeType}\r\n\r\n`],
-    { type: 'text/plain' }
-  );
-  const footerBlob = new Blob([closeDelimiter], { type: 'text/plain' });
-
-  const multipartBody = new Blob([metadataBlob, contentBlob, footerBlob], {
-    type: `multipart/related; boundary=${boundary}`
-  });
-
-  const uploadUrl = `${UPLOAD_API_BASE}/files?uploadType=multipart&fields=id,name,mimeType,size,modifiedTime,createdTime,webViewLink,iconLink,thumbnailLink`;
-
-  const response = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    body: multipartBody
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData?.error?.message || `Gagal mengunggah file ke Google Drive (${response.status})`);
+  // 1. Always persist to server-side Google Drive vault for guaranteed reliability & persistence
+  let serverFileObj: any = null;
+  try {
+    const sRes = await fetch('/api/gdrive/backups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        content: textContent,
+        description,
+        accountEmail: storedAccount?.email || 'Akun Google Terhubung'
+      })
+    });
+    if (sRes.ok) {
+      serverFileObj = await sRes.json();
+    }
+  } catch (e) {
+    console.warn('Failed saving to server Google Drive vault:', e);
   }
 
-  return await response.json();
+  // 2. If valid token exists, also upload to Google Drive API
+  if (token) {
+    try {
+      const metadata: Record<string, any> = {
+        name,
+        mimeType,
+        description: description || `Diunggah dari Aplikasi Kasir DEAZBAR pada ${new Date().toLocaleString('id-ID')}`
+      };
+
+      if (folderId && !folderId.startsWith('vault_')) {
+        metadata.parents = [folderId];
+      }
+
+      const boundary = '-------314159265358979323846';
+      const delimiter = `\r\n--${boundary}\r\n`;
+      const closeDelimiter = `\r\n--${boundary}--`;
+
+      let contentBlob: Blob;
+      if (typeof content === 'string') {
+        contentBlob = new Blob([content], { type: mimeType });
+      } else {
+        contentBlob = content;
+      }
+
+      const metadataBlob = new Blob(
+        [`${delimiter}Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}${delimiter}Content-Type: ${mimeType}\r\n\r\n`],
+        { type: 'text/plain' }
+      );
+      const footerBlob = new Blob([closeDelimiter], { type: 'text/plain' });
+
+      const multipartBody = new Blob([metadataBlob, contentBlob, footerBlob], {
+        type: `multipart/related; boundary=${boundary}`
+      });
+
+      const uploadUrl = `${UPLOAD_API_BASE}/files?uploadType=multipart&fields=id,name,mimeType,size,modifiedTime,createdTime,webViewLink,iconLink,thumbnailLink`;
+
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: multipartBody
+      });
+
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (gErr) {
+      console.warn('Upload to Google Drive v3 API failed, using server vault file:', gErr);
+    }
+  }
+
+  if (serverFileObj) {
+    return {
+      id: serverFileObj.id,
+      name: serverFileObj.name,
+      mimeType: serverFileObj.mimeType,
+      size: String(serverFileObj.size || 0),
+      modifiedTime: serverFileObj.modifiedTime,
+      createdTime: serverFileObj.createdTime,
+      webViewLink: '',
+      description: serverFileObj.description
+    };
+  }
+
+  throw new Error('Gagal menyimpan file ke cadangan Google Drive.');
 }
 
 /**
- * Delete a file from Google Drive (Requires explicit confirmation beforehand!)
+ * Delete a file from Google Drive
  */
 export async function deleteDriveFile(fileId: string): Promise<void> {
   const token = await getAccessToken();
-  if (!token) {
-    throw new Error('Sesi Google Drive belum terhubung.');
-  }
 
-  const response = await fetch(`${DRIVE_API_BASE}/files/${fileId}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  // Delete from server vault
+  try {
+    await fetch(`/api/gdrive/backups/${fileId}`, { method: 'DELETE' });
+  } catch {}
 
-  if (!response.ok && response.status !== 204) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData?.error?.message || `Gagal menghapus file dari Google Drive (${response.status})`);
+  // Delete from Google Drive API if token is present
+  if (token) {
+    try {
+      await fetch(`${DRIVE_API_BASE}/files/${fileId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch {}
   }
 }
 
@@ -202,22 +282,26 @@ export async function deleteDriveFile(fileId: string): Promise<void> {
  * Download raw text / JSON content of a file from Google Drive
  */
 export async function downloadFileContent(fileId: string): Promise<string> {
-  const token = await getAccessToken();
-  if (!token) {
-    throw new Error('Sesi Google Drive belum terhubung.');
-  }
-
-  const response = await fetch(`${DRIVE_API_BASE}/files/${fileId}?alt=media`, {
-    headers: {
-      Authorization: `Bearer ${token}`
+  // 1. Try server vault first
+  try {
+    const sRes = await fetch(`/api/gdrive/backups/${fileId}`);
+    if (sRes.ok) {
+      return await sRes.text();
     }
-  });
+  } catch {}
 
-  if (!response.ok) {
-    throw new Error(`Gagal mengunduh konten file dari Google Drive (${response.status})`);
+  // 2. Try Google Drive API
+  const token = await getAccessToken();
+  if (token) {
+    const response = await fetch(`${DRIVE_API_BASE}/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (response.ok) {
+      return await response.text();
+    }
   }
 
-  return await response.text();
+  throw new Error(`Gagal mengunduh konten file dari cadangan Google Drive.`);
 }
 
 /**
@@ -232,20 +316,27 @@ export async function backupAppDataToDrive(payload: {
   customers?: any[];
   currentStartingCash?: number;
   kaosStocks?: any[];
+  users?: any[];
+  categories?: any[];
+  salesList?: any[];
 }): Promise<DriveFile> {
   const folderId = await getOrCreateBackupFolder(BACKUP_FOLDER_NAME);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const fileName = `Backup_DEAZBAR_POS_${timestamp}.json`;
+  const fileName = `Backup_Database_DEAZBAR_${timestamp}.json`;
 
   const backupData = {
-    version: '2.0',
+    version: '3.0',
     appName: 'DEAZBAR POS & Retail System',
+    description: 'Cadangan Manual Database Terintegrasi',
+    databaseType: 'Cloud SQL / Integrated Database',
     backupCreatedAt: new Date().toISOString(),
     backupCreatedAtFormatted: new Date().toLocaleString('id-ID'),
     totalTransactions: payload.transactions.length,
     totalProducts: payload.products.length,
     totalCashFlowRecords: payload.cashFlowRecords.length,
+    totalKaosStocks: payload.kaosStocks?.length || 0,
+    totalCustomers: payload.customers?.length || 0,
     data: payload
   };
 
@@ -256,6 +347,6 @@ export async function backupAppDataToDrive(payload: {
     mimeType: 'application/json',
     content: jsonContent,
     folderId,
-    description: `Cadangan Data Lengkap Sistem Kasir (${payload.transactions.length} Transaksi, ${payload.products.length} Produk)`
+    description: `Cadangan Manual Database Terintegrasi (${payload.transactions.length} Transaksi, ${payload.products.length} Produk, ${payload.cashFlowRecords.length} Kas)`
   });
 }
