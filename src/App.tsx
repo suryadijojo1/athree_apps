@@ -77,6 +77,7 @@ import {
 } from './services/firebase';
 import {
   fetchServerDatabase,
+  fetchCurrentShiftFromServer,
   saveServerDatabase,
   saveServerBackupSnapshot,
   subscribeToServerEvents,
@@ -115,22 +116,23 @@ export default function App() {
   // 1 Hour Inactivity / Unopened Timeout (1 Jam = 3.600.000 ms)
   const ONE_HOUR_TIMEOUT_MS = 60 * 60 * 1000;
 
-  // Cek apakah halaman baru saja di-refresh (F5 / tombol reload browser)
-  // Sesuai aturan: jika aplikasi di-refresh maka otomatis terlogout & bersihkan cache & cookies
-  const isRefreshed = isPageRefreshed();
-  if (isRefreshed) {
-    clearRefreshMark();
-    localStorage.setItem('athree_is_authenticated', 'false');
-    const refreshNotice =
-      'Aplikasi baru saja di-refresh. Anda telah otomatis terlogout demi keamanan kasir, serta seluruh cache dan cookies browser telah dibersihkan.';
-    localStorage.setItem('athree_timeout_notice', refreshNotice);
-    clearAllCachesAndCookies().catch(() => {});
+  // Cek apakah load ini reload (F5) atau baru pertama buka URL website
+  const isReload = isPageRefreshed();
+
+  // User Request: Ketika buka URL website langsung otomatis hapus cookies & langsung tampilkan form login
+  if (!isReload) {
+    clearAllCookies();
+    try {
+      fetch('/api/clear-session', { method: 'POST' }).catch(() => {});
+    } catch {}
+    localStorage.removeItem('athree_is_authenticated');
+    sessionStorage.removeItem('athree_session_active');
   }
 
+  // Clear refresh mark if present
+  clearRefreshMark();
+
   const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(() => {
-    if (isRefreshed) {
-      return 'Aplikasi baru saja di-refresh. Anda telah otomatis terlogout demi keamanan kasir, serta seluruh cache dan cookies browser telah dibersihkan.';
-    }
     return localStorage.getItem('athree_timeout_notice') || null;
   });
 
@@ -139,19 +141,24 @@ export default function App() {
     localStorage.removeItem('athree_timeout_notice');
   };
 
-  // Authentication state (Cek apakah aplikasi di-refresh atau tidak terbuka/tidak aktif selama 1 jam)
+  // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    if (isRefreshed) {
+    // 1. Jika bukan reload F5 (misal buka URL awal di tab/browser baru), SELALU langsung tampilkan form login
+    if (!isPageRefreshed()) {
       return false;
     }
 
-    const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
+    // 2. Jika reload F5 dalam tab yang sama, pastikan sesi aktif terverifikasi
+    const isAuth =
+      localStorage.getItem('athree_is_authenticated') === 'true' &&
+      sessionStorage.getItem('athree_session_active') === 'true';
     if (!isAuth) return false;
 
     const lastActive = Number(localStorage.getItem('athree_last_active_time') || 0);
     if (lastActive > 0 && Date.now() - lastActive >= ONE_HOUR_TIMEOUT_MS) {
       // Lebih dari 1 jam tidak dibuka / tidak aktif -> otomatis logout
       localStorage.setItem('athree_is_authenticated', 'false');
+      sessionStorage.removeItem('athree_session_active');
       const notice = 'Sesi Anda telah keluar otomatis karena aplikasi tidak dibuka / tidak aktif selama lebih dari 1 jam. Seluruh database penjualan telah otomatis tersimpan aman di Cloud & Server.';
       localStorage.setItem('athree_timeout_notice', notice);
       clearAllCachesAndCookies().catch(() => {});
@@ -254,70 +261,19 @@ export default function App() {
 
   const [shift, setShift] = useState<CashierShift>(() => {
     const saved = localStorage.getItem('athree_shift');
-    const todayIso = new Date().toISOString().slice(0, 10);
     const todayFormatted = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 
     if (saved) {
       try {
         const parsed: CashierShift = JSON.parse(saved);
-        // Cek apakah shift ini dari hari ini (bukan sesi lama yang tertinggal dari hari/minggu kemarin)
-        const isFromToday = parsed.startTimestamp
-          ? new Date(parsed.startTimestamp).toISOString().slice(0, 10) === todayIso
-          : parsed.startTime?.includes(todayFormatted);
-
-        if (!isFromToday) {
-          // Hari baru: status kasir belum dibuka (isOpen: false) sampai Kasir/Admin membuka kasir
-          return {
-            id: `shift-${todayIso}`,
-            shiftNumber: 1,
-            outletName: parsed.outletName || 'Athree Studio Jayapura',
-            cashierName: parsed.cashierName || 'DIMAS',
-            startTime: `${todayFormatted}, 08:00`,
-            startTimestamp: Date.now(),
-            startingCash: parsed.startingCash || 500000,
-            cashSales: 0,
-            nonCashSales: 0,
-            totalSales: 0,
-            expectedCash: parsed.startingCash || 500000,
-            isOpen: false,
-            notes: `Kasir Harian - ${todayFormatted}`
-          };
+        // Manual & Real-time: Pertahankan status buka/tutup kasir (isOpen) apa adanya tanpa reset otomatis saat refresh
+        if (parsed && typeof parsed.isOpen === 'boolean') {
+          return parsed;
         }
-
-        if (
-          parsed.isOpen &&
-          (parsed.cashSales === 490000 || (parsed.cashSales === 130000 && parsed.nonCashSales === 9125000))
-        ) {
-          return {
-            ...parsed,
-            cashSales: 0,
-            nonCashSales: 0,
-            totalSales: 0,
-            expectedCash: parsed.startingCash,
-            startTimestamp: parsed.startTimestamp || Date.now()
-          };
-        }
-        return parsed;
-      } catch {
-        return {
-          id: `shift-${todayIso}`,
-          shiftNumber: 1,
-          outletName: 'Athree Studio Jayapura',
-          cashierName: 'DIMAS',
-          startTime: `${todayFormatted}, 08:00`,
-          startTimestamp: Date.now(),
-          startingCash: 500000,
-          cashSales: 0,
-          nonCashSales: 0,
-          totalSales: 0,
-          expectedCash: 500000,
-          isOpen: false,
-          notes: `Kasir Harian - ${todayFormatted}`
-        };
-      }
+      } catch {}
     }
     return {
-      id: `shift-${todayIso}`,
+      id: `shift-active`,
       shiftNumber: 1,
       outletName: 'Athree Studio Jayapura',
       cashierName: 'DIMAS',
@@ -626,6 +582,28 @@ export default function App() {
 
     checkAndSyncCentralServer();
 
+    // Fast-fetch active live shift from central server for instant cross-browser agreement
+    fetchCurrentShiftFromServer().then((remoteShift) => {
+      if (!isSubscribed || !remoteShift) return;
+      setShift((prevShift) => {
+        if (
+          remoteShift.isOpen !== prevShift.isOpen ||
+          remoteShift.id !== prevShift.id ||
+          remoteShift.endTime !== prevShift.endTime ||
+          remoteShift.actualCash !== prevShift.actualCash ||
+          remoteShift.startingCash !== prevShift.startingCash
+        ) {
+          console.log('Real-Time Sync: Initial active shift synced from server:', {
+            isOpen: remoteShift.isOpen,
+            cashierName: remoteShift.cashierName
+          });
+          localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
+          return remoteShift;
+        }
+        return prevShift;
+      });
+    }).catch(() => {});
+
     const unsubServer = subscribeToServerEvents((remoteData) => {
       if (!isSubscribed) return;
       console.log('Central Server: Received real-time live update from another browser');
@@ -635,6 +613,16 @@ export default function App() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkAndSyncCentralServer();
+        fetchCurrentShiftFromServer().then((remoteShift) => {
+          if (!isSubscribed || !remoteShift) return;
+          setShift((prevShift) => {
+            if (remoteShift.isOpen !== prevShift.isOpen || remoteShift.id !== prevShift.id) {
+              localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
+              return remoteShift;
+            }
+            return prevShift;
+          });
+        }).catch(() => {});
       }
     };
     window.addEventListener('visibilitychange', handleVisibilityChange);
@@ -647,6 +635,16 @@ export default function App() {
         if (!isSubscribed) return;
         if (event.data && event.data.payload) {
           applyFullDatabasePayload(event.data.payload);
+        }
+        if (event.data && event.data.currentShift) {
+          const remoteShift = event.data.currentShift;
+          setShift((prevShift) => {
+            if (remoteShift.isOpen !== prevShift.isOpen || remoteShift.id !== prevShift.id) {
+              localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
+              return remoteShift;
+            }
+            return prevShift;
+          });
         }
       };
     } catch {}
@@ -1098,46 +1096,6 @@ export default function App() {
     handleUpdateShift(closedShift);
     saveShiftToFirestore(closedShift).catch((err) => console.warn('Sync shift error:', err));
   };
-
-  // Auto-rollover shift jika berganti hari (hilangkan shift per sesi agar tidak menghitung dari waktu yang lama)
-  useEffect(() => {
-    const checkDailyShiftRollover = () => {
-      const todayIso = new Date().toISOString().slice(0, 10);
-      const todayFormatted = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-      if (shift && shift.isOpen) {
-        const shiftDateIso = shift.startTimestamp
-          ? new Date(shift.startTimestamp).toISOString().slice(0, 10)
-          : null;
-        if (shiftDateIso && shiftDateIso !== todayIso) {
-          // Shift dari hari kemarin/lama -> arsipkan jika ada omzet dan buka shift harian bersih hari ini
-          if (shift.totalSales > 0 || (shift.actualCash !== undefined && shift.actualCash > 0)) {
-            const archived = { ...shift, isOpen: false, endTime: `${shift.startTime} (Auto Rollover)` };
-            setShiftHistory((prev) => [archived, ...prev]);
-            saveShiftToFirestore(archived).catch(() => {});
-          }
-          setShift({
-            id: `shift-${todayIso}`,
-            shiftNumber: 1,
-            outletName: shift.outletName || 'Athree Studio Jayapura',
-            cashierName: currentUser?.name || shift.cashierName || 'DIMAS',
-            startTime: `${todayFormatted}, 08:00`,
-            startTimestamp: Date.now(),
-            startingCash: shift.startingCash || 500000,
-            cashSales: 0,
-            nonCashSales: 0,
-            totalSales: 0,
-            expectedCash: shift.startingCash || 500000,
-            isOpen: false,
-            notes: `Kasir Harian - ${todayFormatted}`
-          });
-        }
-      }
-    };
-
-    checkDailyShiftRollover();
-    const interval = setInterval(checkDailyShiftRollover, 60000); // Cek tiap 1 menit
-    return () => clearInterval(interval);
-  }, [shift, currentUser?.name]);
 
   useEffect(() => {
     localStorage.setItem('athree_cash_flow', JSON.stringify(cashFlowRecords));

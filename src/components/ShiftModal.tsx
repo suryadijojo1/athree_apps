@@ -471,7 +471,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     };
 
     onUpdateShift(newShift);
-    setViewMode('overview');
+    onClose();
+    alert(`✅ Kasir Berhasil Dibuka!\n\nKasir: ${assignedCashierName}\nModal Awal: ${formatCurrency(startingCashInput)}\nWaktu Buka: ${fullStartDateTime}\n\nStatus kasir sekarang Terbuka dan menu penjualan telah aktif di semua browser.`);
   };
 
   // Handler: Print shift closure receipt / report
@@ -1564,16 +1565,26 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 )}
               </div>
 
-              {/* Primary Actions: Akhiri Shift Langsung & Logout ATAU Kroscek Dulu */}
-              <div className="flex items-center gap-2">
+              {/* Primary Actions: Tutup Kasir Sekarang ATAU Akhiri Shift Langsung & Logout ATAU Kroscek Dulu */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCloseCashierNow}
+                  className="px-3.5 py-2.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
+                  title="Tutup Kasir Sekarang (Status Menjadi Tutup & Penjualan Dinonaktifkan)"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Tutup Kasir Sekarang</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => handleEndShiftAndLogout()}
                   className="px-4 py-2.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
                   title="Menu Akhiri Shift Kasir & Logout Sistem"
                 >
-                  <Lock className="w-4 h-4" />
-                  <span>Akhiri Shift &amp; Logout</span>
+                  <LogOut className="w-4 h-4" />
+                  <span>Tutup Kasir &amp; Logout</span>
                 </button>
 
                 <button

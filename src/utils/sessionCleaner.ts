@@ -92,6 +92,11 @@ export function clearAllCookies(): void {
         }
       }
     }
+
+    // Trigger server-side session and cookie clearance
+    try {
+      fetch('/api/clear-session', { method: 'POST' }).catch(() => {});
+    } catch {}
   } catch (err) {
     console.warn('Error clearing cookies:', err);
   }

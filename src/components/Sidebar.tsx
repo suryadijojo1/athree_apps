@@ -27,6 +27,7 @@ interface SidebarProps {
   lowKaosStockCount?: number;
   allowCashierDrive?: boolean;
   isCashierOpen?: boolean;
+  onOpenShiftModal?: (mode: 'overview' | 'reconcile' | 'open_shift') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -39,7 +40,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   lowStockCount,
   lowKaosStockCount = 0,
   allowCashierDrive = false,
-  isCashierOpen = true
+  isCashierOpen = true,
+  onOpenShiftModal
 }) => {
   const isAdmin = currentUser.role === 'admin';
   const isKasir = currentUser.role === 'kasir';
@@ -81,15 +83,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* 1. KASIR (Menu Penjualan) */}
           <button
-            onClick={() => setActiveTab('pos')}
-            title={isCashierOpen ? 'KASIR (Menu Penjualan Aktif)' : 'KASIR (Kasir Belum Dibuka / Terdisable)'}
+            onClick={() => {
+              if (!isCashierOpen) {
+                if (onOpenShiftModal) {
+                  onOpenShiftModal('open_shift');
+                }
+                alert(
+                  '⚠️ Menu Kasir (Penjualan) Otomatis Tidak Aktif!\n\nStatus kasir saat ini adalah TUTUP. Silakan klik tombol "Buka Kasir Sekarang" pada jendela yang tampil untuk mengaktifkan menu transaksi kasir.'
+                );
+                return;
+              }
+              setActiveTab('pos');
+            }}
+            title={
+              isCashierOpen
+                ? 'KASIR (Menu Penjualan Aktif)'
+                : 'Menu Kasir Tidak Aktif (Kasir Tutup - Klik untuk Buka Kasir)'
+            }
             className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
-              activeTab === 'pos'
-                ? isCashierOpen
-                  ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
-                  : 'bg-amber-600 text-white shadow-md shadow-amber-950'
+              activeTab === 'pos' && isCashierOpen
+                ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
                 : !isCashierOpen
-                ? 'text-slate-400 hover:bg-slate-800 hover:text-amber-300'
+                ? 'text-slate-500 bg-slate-800/40 hover:bg-slate-800 hover:text-amber-400 opacity-60'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
           >
