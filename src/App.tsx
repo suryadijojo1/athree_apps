@@ -20,8 +20,10 @@ import {
   OrderStatus,
   OrderItem,
   CashFlowRecord,
-  KaosStockItem
+  KaosStockItem,
+  PaymentMethod
 } from './types';
+import { formatCurrency } from './utils/exportUtils';
 import { deductKaosStock, restoreMultipleKaosStock } from './utils/kaosStockUtils';
 import { Sidebar, ActiveTab } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -37,6 +39,7 @@ import { ShiftModal } from './components/ShiftModal';
 import { CustomProductModal } from './components/CustomProductModal';
 import { ReviseInvoiceModal } from './components/ReviseInvoiceModal';
 import { DeleteInvoiceModal } from './components/DeleteInvoiceModal';
+import { PayPiutangModal } from './components/PayPiutangModal';
 import { ParsedImportProduct } from './components/ImportProductsModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { GoogleDriveView } from './components/GoogleDriveView';
@@ -106,6 +109,29 @@ if (typeof window !== 'undefined' && !isPageRefreshed()) {
     console.warn('Initial URL cookie clearance notice:', err);
   }
 }
+
+// Helper to check if incoming remote shift has real-time changes
+const shouldApplyRemoteShift = (remoteShift: CashierShift, prevShift: CashierShift): boolean => {
+  if (!remoteShift) return false;
+  if (!prevShift) return true;
+  if (remoteShift.id !== prevShift.id) return true;
+  if (remoteShift.isOpen !== prevShift.isOpen) return true;
+  if (remoteShift.startTime !== prevShift.startTime) return true;
+  if (remoteShift.startTimestamp !== prevShift.startTimestamp) return true;
+  if (remoteShift.cashierName !== prevShift.cashierName) return true;
+  if (remoteShift.startingCash !== prevShift.startingCash) return true;
+  if (remoteShift.expectedCash !== prevShift.expectedCash) return true;
+  if (remoteShift.actualCash !== prevShift.actualCash) return true;
+  if (remoteShift.endTime !== prevShift.endTime) return true;
+  if (remoteShift.totalSales !== prevShift.totalSales) return true;
+  if (remoteShift.cashSales !== prevShift.cashSales) return true;
+  if (remoteShift.nonCashSales !== prevShift.nonCashSales) return true;
+  if (remoteShift.totalTransactions !== prevShift.totalTransactions) return true;
+  if (remoteShift.unpaidCount !== prevShift.unpaidCount) return true;
+  if (remoteShift.unpaidAmount !== prevShift.unpaidAmount) return true;
+  if (remoteShift.notes !== prevShift.notes) return true;
+  return false;
+};
 
 export default function App() {
   // Persistence via localStorage
@@ -280,8 +306,8 @@ export default function App() {
       shiftNumber: 1,
       outletName: 'Athree Studio Jayapura',
       cashierName: 'DIMAS',
-      startTime: `${todayFormatted}, 08:00`,
-      startTimestamp: Date.now(),
+      startTime: '-',
+      startTimestamp: 0,
       startingCash: 500000,
       cashSales: 0,
       nonCashSales: 0,
@@ -385,6 +411,7 @@ export default function App() {
   const [successTx, setSuccessTx] = useState<Transaction | null>(null);
   const [revisingTx, setRevisingTx] = useState<Transaction | null>(null);
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
+  const [payingPiutangTx, setPayingPiutangTx] = useState<Transaction | null>(null);
 
   // Firebase & Server Cloud Sync State
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
@@ -469,16 +496,11 @@ export default function App() {
       if (payload.currentShift) {
         const remoteShift = payload.currentShift;
         setShift((prevShift) => {
-          if (
-            remoteShift.isOpen !== prevShift.isOpen ||
-            remoteShift.id !== prevShift.id ||
-            remoteShift.endTime !== prevShift.endTime ||
-            remoteShift.actualCash !== prevShift.actualCash ||
-            remoteShift.startingCash !== prevShift.startingCash
-          ) {
+          if (shouldApplyRemoteShift(remoteShift, prevShift)) {
             console.log('Real-Time Sync: Updating active shift from central database:', {
               isOpen: remoteShift.isOpen,
-              endTime: remoteShift.endTime
+              startTime: remoteShift.startTime,
+              cashierName: remoteShift.cashierName
             });
             localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
             return remoteShift;
@@ -589,15 +611,10 @@ export default function App() {
     fetchCurrentShiftFromServer().then((remoteShift) => {
       if (!isSubscribed || !remoteShift) return;
       setShift((prevShift) => {
-        if (
-          remoteShift.isOpen !== prevShift.isOpen ||
-          remoteShift.id !== prevShift.id ||
-          remoteShift.endTime !== prevShift.endTime ||
-          remoteShift.actualCash !== prevShift.actualCash ||
-          remoteShift.startingCash !== prevShift.startingCash
-        ) {
+        if (shouldApplyRemoteShift(remoteShift, prevShift)) {
           console.log('Real-Time Sync: Initial active shift synced from server:', {
             isOpen: remoteShift.isOpen,
+            startTime: remoteShift.startTime,
             cashierName: remoteShift.cashierName
           });
           localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
@@ -619,7 +636,7 @@ export default function App() {
         fetchCurrentShiftFromServer().then((remoteShift) => {
           if (!isSubscribed || !remoteShift) return;
           setShift((prevShift) => {
-            if (remoteShift.isOpen !== prevShift.isOpen || remoteShift.id !== prevShift.id) {
+            if (shouldApplyRemoteShift(remoteShift, prevShift)) {
               localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
               return remoteShift;
             }
@@ -642,7 +659,7 @@ export default function App() {
         if (event.data && event.data.currentShift) {
           const remoteShift = event.data.currentShift;
           setShift((prevShift) => {
-            if (remoteShift.isOpen !== prevShift.isOpen || remoteShift.id !== prevShift.id) {
+            if (shouldApplyRemoteShift(remoteShift, prevShift)) {
               localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
               return remoteShift;
             }
@@ -782,15 +799,10 @@ export default function App() {
       if (remoteActiveShift) {
         setIsFirebaseConnected(true);
         setShift((prevShift) => {
-          if (
-            remoteActiveShift.isOpen !== prevShift.isOpen ||
-            remoteActiveShift.id !== prevShift.id ||
-            remoteActiveShift.endTime !== prevShift.endTime ||
-            remoteActiveShift.actualCash !== prevShift.actualCash ||
-            remoteActiveShift.startingCash !== prevShift.startingCash
-          ) {
+          if (shouldApplyRemoteShift(remoteActiveShift, prevShift)) {
             console.log('Real-Time Cloud: Live active shift updated from another browser:', {
               isOpen: remoteActiveShift.isOpen,
+              startTime: remoteActiveShift.startTime,
               cashierName: remoteActiveShift.cashierName,
               endTime: remoteActiveShift.endTime
             });
@@ -1766,7 +1778,99 @@ export default function App() {
     if (revisingTx && revisingTx.id === transactionId) {
       setRevisingTx(null);
     }
+    if (payingPiutangTx && payingPiutangTx.id === transactionId) {
+      setPayingPiutangTx(null);
+    }
     setDeletingTx(null);
+  };
+
+  // Handler: Catat Pembayaran / Pelunasan Sisa Piutang
+  const handleSavePiutangPayment = (
+    transactionId: string,
+    paymentData: {
+      amount: number;
+      date: string;
+      paymentMethod: PaymentMethod;
+      notes: string;
+    }
+  ) => {
+    const tx = transactions.find((t) => t.id === transactionId);
+    if (!tx) return;
+
+    const currentRem = Math.max(0, tx.remainingAmount ?? (tx.total - tx.amountPaid));
+    const payAmt = Math.min(currentRem, paymentData.amount);
+    const newRemaining = Math.max(0, currentRem - payAmt);
+    const newAmountPaid = (tx.amountPaid || 0) + payAmt;
+    const newStatus = newRemaining <= 0 ? 'LUNAS' : (newAmountPaid > 0 ? 'DP' : 'PIUTANG');
+
+    const newPaymentRecord = {
+      id: `pp-${Date.now()}`,
+      date: paymentData.date,
+      amount: payAmt,
+      paymentMethod: paymentData.paymentMethod,
+      notes: paymentData.notes || 'Pembayaran sisa piutang',
+      recordedBy: currentUser.name,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedPayments = [...(tx.piutangPayments || []), newPaymentRecord];
+    const auditNote = `[Pelunasan Piutang: ${formatCurrency(payAmt)} via ${paymentData.paymentMethod} pd ${paymentData.date} oleh ${currentUser.name}]`;
+
+    const updatedTx: Transaction = {
+      ...tx,
+      amountPaid: newAmountPaid,
+      remainingAmount: newRemaining,
+      paymentStatus: newStatus,
+      piutangPaidDate: paymentData.date,
+      piutangPayments: updatedPayments,
+      notes: tx.notes ? `${tx.notes}\n${auditNote}` : auditNote
+    };
+
+    // 1. Update transactions state & Firestore
+    setTransactions((prev) =>
+      prev.map((t) => (t.id === transactionId ? updatedTx : t))
+    );
+    saveTransactionToFirestore(updatedTx).catch((err) =>
+      console.warn('Sync piutang payment error:', err)
+    );
+
+    // 2. Update cash drawer in active shift
+    if (paymentData.paymentMethod === 'Tunai') {
+      setShift((prev) => ({
+        ...prev,
+        cashSales: prev.cashSales + payAmt,
+        expectedCash: prev.expectedCash + payAmt,
+        unpaidAmount: Math.max(0, prev.unpaidAmount - payAmt),
+        unpaidCount: newRemaining <= 0 ? Math.max(0, prev.unpaidCount - 1) : prev.unpaidCount
+      }));
+    } else {
+      setShift((prev) => ({
+        ...prev,
+        nonCashSales: prev.nonCashSales + payAmt,
+        unpaidAmount: Math.max(0, prev.unpaidAmount - payAmt),
+        unpaidCount: newRemaining <= 0 ? Math.max(0, prev.unpaidCount - 1) : prev.unpaidCount
+      }));
+    }
+
+    // 3. Catat ke Arus Kas
+    const newCashFlow: CashFlowRecord = {
+      id: `cf-piutang-${Date.now()}`,
+      date: paymentData.date.slice(0, 10),
+      type: 'INCOME',
+      category: 'Pelunasan Piutang',
+      description: `Pelunasan Piutang Faktur ${tx.invoiceNo} (${tx.customer.name}) - ${paymentData.paymentMethod} (${paymentData.notes || 'Pelunasan Piutang'})`,
+      amount: payAmt,
+      recordedBy: currentUser.name,
+      createdAt: new Date().toISOString()
+    };
+    setCashFlowRecords((prev) => [newCashFlow, ...prev]);
+    saveCashFlowToFirestore(newCashFlow).catch(() => {});
+
+    // Refresh modal if viewing
+    if (successTx && successTx.id === transactionId) {
+      setSuccessTx(updatedTx);
+    }
+    setPayingPiutangTx(null);
   };
 
   // Handler: Update order status (Selesai, Sedang Dikerjakan, etc.)
@@ -2322,6 +2426,14 @@ export default function App() {
           currentUserRole={currentUser.role}
         />
 
+        <PayPiutangModal
+          isOpen={!!payingPiutangTx}
+          transaction={payingPiutangTx}
+          onClose={() => setPayingPiutangTx(null)}
+          onSavePayment={handleSavePiutangPayment}
+          currentUserName={currentUser.name}
+        />
+
         <UserManagementModal
           isOpen={isUserManagementModalOpen}
           onClose={() => setIsUserManagementModalOpen(false)}
@@ -2406,6 +2518,7 @@ export default function App() {
               onViewReceipt={(tx) => setSuccessTx(tx)}
               onReviseInvoice={(tx) => setRevisingTx(tx)}
               onDeleteInvoice={(tx) => setDeletingTx(tx)}
+              onPayPiutang={(tx) => setPayingPiutangTx(tx)}
               isAdmin={currentUser.role === 'admin'}
             />
           )}
@@ -2417,6 +2530,7 @@ export default function App() {
               onViewReceipt={(tx) => setSuccessTx(tx)}
               onReviseInvoice={(tx) => setRevisingTx(tx)}
               onDeleteInvoice={(tx) => setDeletingTx(tx)}
+              onPayPiutang={(tx) => setPayingPiutangTx(tx)}
               shift={shift}
               onUpdateShift={handleUpdateShift}
               cashFlowRecords={cashFlowRecords}
@@ -2563,6 +2677,14 @@ export default function App() {
         onClose={() => setDeletingTx(null)}
         onConfirmDelete={handleConfirmDeleteInvoice}
         currentUserRole={currentUser.role}
+      />
+
+      <PayPiutangModal
+        isOpen={!!payingPiutangTx}
+        transaction={payingPiutangTx}
+        onClose={() => setPayingPiutangTx(null)}
+        onSavePayment={handleSavePiutangPayment}
+        currentUserName={currentUser.name}
       />
 
       <UserManagementModal

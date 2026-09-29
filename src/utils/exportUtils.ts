@@ -44,7 +44,16 @@ export const exportSalesToExcel = (
       'Total Item': t.items.reduce((sum, item) => sum + item.quantity, 0),
       Subtotal: t.subtotal,
       Diskon: t.discount,
-      'Total Penjualan': t.total
+      'Total Penjualan': t.total,
+      'Sisa Pembayaran Piutang': t.remainingAmount || 0,
+      'Tanggal Pembayaran Piutang':
+        t.piutangPaidDate ||
+        (t.piutangPayments && t.piutangPayments.length > 0
+          ? t.piutangPayments[t.piutangPayments.length - 1].date
+          : t.dueDate || '-'),
+      'Status Pembayaran':
+        t.paymentStatus ||
+        (t.remainingAmount && t.remainingAmount > 0 ? 'PIUTANG' : 'LUNAS')
     };
 
     // Rincian biaya dan keuntungan hanya disertakan jika diunduh oleh Admin / Owner
@@ -130,11 +139,15 @@ export const exportSalesToPDF = (
     idx + 1,
     t.invoiceNo,
     t.date,
-    t.dueDate || '-',
     t.customer.name,
     t.orderType,
     t.items.map((i) => `${i.name} (x${i.quantity})`).join(', '),
     formatCurrency(t.total),
+    t.remainingAmount && t.remainingAmount > 0 ? formatCurrency(t.remainingAmount) : '-',
+    t.piutangPaidDate ||
+      (t.piutangPayments && t.piutangPayments.length > 0
+        ? t.piutangPayments[t.piutangPayments.length - 1].date
+        : t.dueDate || '-'),
     t.paymentMethod,
     t.status
   ]);
@@ -146,11 +159,12 @@ export const exportSalesToPDF = (
         'No',
         'Faktur',
         'Tgl Order',
-        'Jatuh Tempo',
         'Pelanggan',
         'Tipe',
         'Rincian Item',
         'Total',
+        'Sisa Piutang',
+        'Tgl Bayar/Tempo',
         'Metode',
         'Status'
       ]

@@ -26,7 +26,8 @@ import {
   TrendingUp,
   Truck,
   Lock,
-  Edit3
+  Edit3,
+  Wallet
 } from 'lucide-react';
 import { Transaction, OrderStatus } from '../types';
 import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUtils';
@@ -40,6 +41,7 @@ interface ProductionOrdersViewProps {
   onViewReceipt: (transaction: Transaction) => void;
   onReviseInvoice?: (transaction: Transaction) => void;
   onDeleteInvoice?: (transaction: Transaction) => void;
+  onPayPiutang?: (transaction: Transaction) => void;
   isAdmin?: boolean;
 }
 
@@ -51,6 +53,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   onViewReceipt,
   onReviseInvoice,
   onDeleteInvoice,
+  onPayPiutang,
   isAdmin = false
 }) => {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE'>('ALL');
@@ -488,6 +491,19 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                               <Eye className="w-3.5 h-3.5" />
                               <span>Preview</span>
                             </button>
+
+                            {/* Tombol Bayar Piutang jika belum lunas */}
+                            {isPiutang && onPayPiutang && (
+                              <button
+                                type="button"
+                                onClick={() => onPayPiutang(t)}
+                                className="px-2 py-1 bg-amber-50 hover:bg-emerald-50 text-amber-800 hover:text-[#00871f] border border-amber-300 hover:border-emerald-300 rounded-md text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Bayar / Pelunasan Sisa Piutang"
+                              >
+                                <Wallet className="w-3.5 h-3.5 text-[#00871f]" />
+                                <span>Bayar</span>
+                              </button>
+                            )}
 
                             {/* Tombol Selesai Cepat */}
                             {t.status !== 'Selesai' ? (
@@ -993,12 +1009,29 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                       <span className="font-bold text-emerald-700">{formatCurrency(previewTx.amountPaid || previewTx.total)}</span>
                     </div>
                     {pIsPiutang ? (
-                      <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-rose-600 font-bold">
-                        <span className="flex items-center gap-1">
-                          <AlertCircle className="w-4 h-4 text-rose-500" />
-                          Sisa Piutang yang Harus Dilunasi:
-                        </span>
-                        <span className="text-base font-black">{formatCurrency(previewTx.remainingAmount || 0)}</span>
+                      <div className="pt-2 border-t border-slate-200 space-y-2">
+                        <div className="flex justify-between items-center text-rose-600 font-bold">
+                          <span className="flex items-center gap-1">
+                            <AlertCircle className="w-4 h-4 text-rose-500" />
+                            Sisa Piutang yang Harus Dilunasi:
+                          </span>
+                          <span className="text-base font-black">{formatCurrency(previewTx.remainingAmount || 0)}</span>
+                        </div>
+                        {onPayPiutang && (
+                          <div className="flex justify-end pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onPayPiutang(previewTx);
+                                setPreviewTx(null);
+                              }}
+                              className="px-3 py-1.5 bg-[#00871f] hover:bg-[#007019] text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                            >
+                              <Wallet className="w-3.5 h-3.5" />
+                              <span>Bayar / Lunasi Sisa Piutang</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-emerald-600 font-bold">

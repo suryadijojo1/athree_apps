@@ -92,13 +92,15 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const dayName = days[date.getDay()];
     const dateStr = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-    const timeStr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStr = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     return `${dayName}, ${dateStr} - ${timeStr} WIT`;
   };
 
   const formatShortDateTime = (date: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
     const dateStr = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-    const timeStr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     return `${dateStr}, ${timeStr}`;
   };
 
@@ -156,7 +158,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         jun: '06', jul: '07', agu: '08', aug: '08', sep: '09', okt: '10',
         oct: '10', nop: '11', nov: '11', des: '12', dec: '12'
       };
-      const match = cleaned.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:,\s*(\d{1,2}):(\d{2}))?/);
+      const match = cleaned.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:,\s*(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
       if (match) {
         const day = match[1].padStart(2, '0');
         const monStr = match[2].toLowerCase().slice(0, 3);
@@ -164,7 +166,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
         const year = match[3];
         const hour = (match[4] || '00').padStart(2, '0');
         const min = (match[5] || '00').padStart(2, '0');
-        const iso = `${year}-${mon}-${day}T${hour}:${min}:00`;
+        const sec = (match[6] || '00').padStart(2, '0');
+        const iso = `${year}-${mon}-${day}T${hour}:${min}:${sec}`;
         const t = Date.parse(iso);
         if (!isNaN(t)) return t;
       }
@@ -598,14 +601,14 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     </h3>
                     <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mt-0.5">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{summaryShift.startTime || '17 Sep 2026, 12:10'}</span>
+                      <span>{summaryShift.startTime || (summaryShift.startTimestamp ? formatShortDateTime(new Date(summaryShift.startTimestamp)) : '-')}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="text-right">
                   <span className="text-xs font-medium text-slate-600 block">Detil Kasir</span>
-                  <span className="text-xl font-bold text-slate-700">#{summaryShift.shiftNumber || 2}</span>
+                  <span className="text-xl font-bold text-slate-700">#{summaryShift.shiftNumber || 1}</span>
                 </div>
               </div>
 
@@ -616,7 +619,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     NAMA OUTLET
                   </span>
                   <span className="text-sm font-bold text-slate-800 mt-1 block">
-                    {summaryShift.outletName || 'Default Outlet'}
+                    {summaryShift.outletName || 'athree studio jayapura'}
                   </span>
                 </div>
                 <div>
@@ -624,7 +627,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     WAKTU BUKA
                   </span>
                   <span className="text-sm font-bold text-slate-800 mt-1 block">
-                    {summaryShift.startTime || '17 Sep 2026, 12:10'}
+                    {summaryShift.startTime || (summaryShift.startTimestamp ? formatShortDateTime(new Date(summaryShift.startTimestamp)) : '-')}
                   </span>
                 </div>
                 <div>
@@ -632,7 +635,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     WAKTU TUTUP
                   </span>
                   <span className="text-sm font-bold text-slate-800 mt-1 block">
-                    {summaryShift.endTime || '18 Sep 2026, 07:48'}
+                    {summaryShift.endTime || (summaryShift.endTimestamp ? formatShortDateTime(new Date(summaryShift.endTimestamp)) : '-')}
                   </span>
                 </div>
               </div>

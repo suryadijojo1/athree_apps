@@ -82,11 +82,23 @@ export interface Transaction {
   status: OrderStatus;
   paymentStatus?: 'LUNAS' | 'PIUTANG' | 'DP';
   remainingAmount?: number; // Sisa tagihan yang dialihkan menjadi piutang
+  piutangPaidDate?: string; // Tanggal pembayaran/pelunasan sisa piutang terakhir
+  piutangPayments?: PiutangPayment[]; // Riwayat cicilan / pembayaran pelunasan piutang
   cashierName: string;
   cashierId: string;
   notes?: string;
   createdAt?: string;
   shiftId?: string;
+}
+
+export interface PiutangPayment {
+  id: string;
+  date: string; // YYYY-MM-DD or YYYY-MM-DD HH:mm
+  amount: number;
+  paymentMethod: PaymentMethod;
+  notes?: string;
+  recordedBy?: string;
+  createdAt?: string;
 }
 
 export interface StockMovement {

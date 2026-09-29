@@ -18,14 +18,13 @@ export const DeleteInvoiceModal: React.FC<DeleteInvoiceModalProps> = ({
   onConfirmDelete,
   currentUserRole
 }) => {
-  if (!isOpen || !transaction) return null;
-
   const isAdmin = currentUserRole === 'admin';
   const [restoreStock, setRestoreStock] = useState<boolean>(true);
   const [deleteReason, setDeleteReason] = useState<string>('Pesanan dibatalkan');
 
   const handleDelete = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!transaction) return;
     if (!isAdmin) {
       alert('Akses Ditolak: Hanya akun Administrator yang berwenang menghapus faktur.');
       return;
@@ -33,6 +32,8 @@ export const DeleteInvoiceModal: React.FC<DeleteInvoiceModalProps> = ({
     onConfirmDelete(transaction.id, restoreStock, deleteReason);
     onClose();
   };
+
+  if (!isOpen || !transaction) return null;
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">

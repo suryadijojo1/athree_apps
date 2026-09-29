@@ -25,8 +25,6 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
   const [pinInput, setPinInput] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
 
-  if (!isOpen) return null;
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedCandidate.pin && pinInput !== selectedCandidate.pin) {
@@ -59,6 +57,8 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
       'Akses Finansial Dibatasi'
     ]
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">

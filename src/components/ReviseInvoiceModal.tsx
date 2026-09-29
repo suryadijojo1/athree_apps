@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   FileEdit,
@@ -55,33 +55,53 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   onAddSales,
   onDeleteSales
 }) => {
-  if (!isOpen || !transaction) return null;
-
-  // Editable fields initialized from existing transaction
-  const [invoiceNo, setInvoiceNo] = useState<string>(transaction.invoiceNo);
+  // Editable fields initialized safely from existing transaction
+  const [invoiceNo, setInvoiceNo] = useState<string>(transaction?.invoiceNo || '');
   const [transactionDate, setTransactionDate] = useState<string>(
-    transaction.date ? transaction.date.replace(' ', 'T') : ''
+    transaction?.date ? transaction.date.replace(' ', 'T') : ''
   );
-  const [customerName, setCustomerName] = useState<string>(transaction.customer.name);
-  const [customerPhone, setCustomerPhone] = useState<string>(transaction.customer.phone);
-  const [orderType, setOrderType] = useState<OrderType>(transaction.orderType);
+  const [customerName, setCustomerName] = useState<string>(transaction?.customer?.name || '');
+  const [customerPhone, setCustomerPhone] = useState<string>(transaction?.customer?.phone || '');
+  const [orderType, setOrderType] = useState<OrderType>(transaction?.orderType || 'Kasir (Dimas)');
   const [showAddSalesModal, setShowAddSalesModal] = useState<boolean>(false);
   const [dueDate, setDueDate] = useState<string>(
-    transaction.dueDate ? transaction.dueDate.replace(' ', 'T') : ''
+    transaction?.dueDate ? transaction.dueDate.replace(' ', 'T') : ''
   );
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(transaction.paymentMethod);
-  const [status, setStatus] = useState<OrderStatus>(transaction.status);
-  const [discount, setDiscount] = useState<number>(transaction.discount || 0);
-  const [vendorCost, setVendorCost] = useState<number>(transaction.vendorCost || 0);
-  const [shippingCost, setShippingCost] = useState<number>(transaction.shippingCost || 0);
-  const [amountPaid, setAmountPaid] = useState<number>(transaction.amountPaid ?? transaction.total);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(transaction?.paymentMethod || 'Tunai');
+  const [status, setStatus] = useState<OrderStatus>(transaction?.status || 'Sedang Dikerjakan');
+  const [discount, setDiscount] = useState<number>(transaction?.discount || 0);
+  const [vendorCost, setVendorCost] = useState<number>(transaction?.vendorCost || 0);
+  const [shippingCost, setShippingCost] = useState<number>(transaction?.shippingCost || 0);
+  const [amountPaid, setAmountPaid] = useState<number>(transaction?.amountPaid ?? (transaction?.total || 0));
   const [items, setItems] = useState<OrderItem[]>(
-    transaction.items.map((it) => ({ ...it }))
+    transaction?.items ? transaction.items.map((it) => ({ ...it })) : []
   );
   const [revisionNote, setRevisionNote] = useState<string>('');
   const [selectedAddProductId, setSelectedAddProductId] = useState<string>('');
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [preparedTx, setPreparedTx] = useState<Transaction | null>(null);
+
+  // Sync state whenever transaction or isOpen changes
+  useEffect(() => {
+    if (transaction && isOpen) {
+      setInvoiceNo(transaction.invoiceNo || '');
+      setTransactionDate(transaction.date ? transaction.date.replace(' ', 'T') : '');
+      setCustomerName(transaction.customer?.name || '');
+      setCustomerPhone(transaction.customer?.phone || '');
+      setOrderType(transaction.orderType || 'Kasir (Dimas)');
+      setDueDate(transaction.dueDate ? transaction.dueDate.replace(' ', 'T') : '');
+      setPaymentMethod(transaction.paymentMethod || 'Tunai');
+      setStatus(transaction.status || 'Sedang Dikerjakan');
+      setDiscount(transaction.discount || 0);
+      setVendorCost(transaction.vendorCost || 0);
+      setShippingCost(transaction.shippingCost || 0);
+      setAmountPaid(transaction.amountPaid ?? transaction.total);
+      setItems(transaction.items ? transaction.items.map((it) => ({ ...it })) : []);
+      setRevisionNote('');
+      setShowConfirmModal(false);
+      setPreparedTx(null);
+    }
+  }, [transaction, isOpen]);
 
   // Helper to add working days excluding Sunday (Hari Minggu TIDAK termasuk dalam hitungan hari)
   const addDaysExcludingSunday = (startDate: Date, days: number): Date => {
@@ -257,6 +277,11 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       change,
       remainingAmount,
       paymentStatus,
+      piutangPaidDate:
+        remainingAmount <= 0 && (transaction.remainingAmount || 0) > 0
+          ? transaction.piutangPaidDate || new Date().toISOString().slice(0, 16).replace('T', ' ')
+          : transaction.piutangPaidDate,
+      piutangPayments: transaction.piutangPayments,
       notes: combinedNotes
     };
 
@@ -271,6 +296,8 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       onClose();
     }
   };
+
+  if (!isOpen || !transaction) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">

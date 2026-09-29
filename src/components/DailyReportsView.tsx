@@ -32,7 +32,8 @@ import {
   TrendingDown,
   HardDrive,
   Cloud,
-  Check
+  Check,
+  Wallet
 } from 'lucide-react';
 import { Transaction, User, CashierShift, CashFlowRecord } from '../types';
 import {
@@ -51,6 +52,7 @@ interface DailyReportsViewProps {
   onViewReceipt: (transaction: Transaction) => void;
   onReviseInvoice?: (transaction: Transaction) => void;
   onDeleteInvoice?: (transaction: Transaction) => void;
+  onPayPiutang?: (transaction: Transaction) => void;
   shift?: CashierShift;
   onUpdateShift?: (shift: CashierShift) => void;
   cashFlowRecords?: CashFlowRecord[];
@@ -63,6 +65,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   onViewReceipt,
   onReviseInvoice,
   onDeleteInvoice,
+  onPayPiutang,
   shift,
   onUpdateShift,
   cashFlowRecords = [],
@@ -156,6 +159,8 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   const [newSaldoInput, setNewSaldoInput] = useState<number>(currentStartingCash);
   const [revisiNoteInput, setRevisiNoteInput] = useState<string>('');
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
+  const [driveUploadToast, setDriveUploadToast] = useState<{ message: string; link?: string; isError?: boolean } | null>(null);
 
   const formatSelectedReviewDate = (isoStr: string) => {
     try {
@@ -267,6 +272,120 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     return raw ? raw.slice(0, 10) : '';
   };
 
+  // Helper to check if a specific date falls within the active preset/range
+  const isDateInActiveRange = (dateStr?: string): boolean => {
+    if (!dateStr) return false;
+    const d = dateStr.slice(0, 10);
+    if (datePreset === 'all') return true;
+    if (datePreset === 'today') return d === todayIsoStr;
+    if (datePreset === 'yesterday') return d === yesterdayIsoStr;
+    if (datePreset === '7days') return d >= sevenDaysAgoIsoStr && d <= todayIsoStr;
+    if (datePreset === '30days') return d >= thirtyDaysAgoIsoStr && d <= todayIsoStr;
+    if (datePreset === 'month') return d.startsWith(currentMonthPrefix);
+    if (datePreset === 'lastMonth') return d.startsWith(lastMonthPrefix);
+    if (datePreset === 'custom') {
+      const minD = startDate <= endDate ? startDate : endDate;
+      const maxD = startDate <= endDate ? endDate : startDate;
+      if (minD && d < minD) return false;
+      if (maxD && d > maxD) return false;
+      return true;
+    }
+    return false;
+  };
+
+  // Check if transaction has order creation OR piutang payment in active date range
+  const doesTxMatchDateRange = (t: Transaction): boolean => {
+    // 1. Order created in active date range
+    if (isDateInActiveRange(getTxDate(t))) return true;
+    // 2. Piutang paid date in active date range
+    if (t.piutangPaidDate && isDateInActiveRange(t.piutangPaidDate)) return true;
+    // 3. Any individual piutang payment in active date range
+    if (t.piutangPayments && t.piutangPayments.some((p) => isDateInActiveRange(p.date))) return true;
+    return false;
+  };
+
+  // Financial breakdown of transaction for the selected date range
+  const getTxRangeFinancials = (t: Transaction) => {
+    const isOrderInActiveRange = isDateInActiveRange(getTxDate(t));
+
+    // Piutang payments made within this active date range
+    const piutangPaymentsInRange = (t.piutangPayments || []).filter((p) =>
+      isDateInActiveRange(p.date)
+    );
+
+    const piutangCashReceived = piutangPaymentsInRange
+      .filter((p) => p.paymentMethod === 'Tunai')
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    const piutangNonCashReceived = piutangPaymentsInRange
+      .filter((p) => p.paymentMethod !== 'Tunai')
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    // Fallback if transaction has piutangPaidDate in range but no piutangPayments array
+    let legacyPiutangCash = 0;
+    let legacyPiutangNonCash = 0;
+    if (
+      !isOrderInActiveRange &&
+      t.piutangPaidDate &&
+      isDateInActiveRange(t.piutangPaidDate) &&
+      piutangPaymentsInRange.length === 0
+    ) {
+      const amount = t.amountPaid || t.total;
+      if (t.paymentMethod === 'Tunai') {
+        legacyPiutangCash = amount;
+      } else {
+        legacyPiutangNonCash = amount;
+      }
+    }
+
+    const totalPiutangCash = piutangCashReceived + legacyPiutangCash;
+    const totalPiutangNonCash = piutangNonCashReceived + legacyPiutangNonCash;
+
+    let orderCash = 0;
+    let orderNonCash = 0;
+
+    if (isOrderInActiveRange) {
+      const isPiutang =
+        Boolean(t.remainingAmount && t.remainingAmount > 0) ||
+        t.paymentStatus === 'DP' ||
+        t.paymentStatus === 'PIUTANG';
+
+      if (!isPiutang && (!t.piutangPayments || t.piutangPayments.length === 0)) {
+        if (t.paymentMethod === 'Tunai') {
+          orderCash = t.total;
+        } else {
+          orderNonCash = t.total;
+        }
+      } else {
+        // Initial down payment paid when created
+        const allPiutangSum = (t.piutangPayments || []).reduce((sum, p) => sum + p.amount, 0);
+        const initialPaid = Math.max(0, (t.amountPaid || 0) - allPiutangSum);
+        if (t.paymentMethod === 'Tunai') {
+          orderCash = initialPaid;
+        } else {
+          orderNonCash = initialPaid;
+        }
+      }
+    }
+
+    const totalCash = orderCash + totalPiutangCash;
+    const totalNonCash = orderNonCash + totalPiutangNonCash;
+    const totalCollected = totalCash + totalNonCash;
+
+    return {
+      isOrderInActiveRange,
+      hasPiutangPaymentInRange: totalPiutangCash > 0 || totalPiutangNonCash > 0,
+      piutangCashReceived: totalPiutangCash,
+      piutangNonCashReceived: totalPiutangNonCash,
+      orderCash,
+      orderNonCash,
+      totalCash,
+      totalNonCash,
+      totalCollected,
+      piutangPaymentsInRange
+    };
+  };
+
   // Available Cashiers from transaction history
   const availableCashiers = useMemo(() => {
     const set = new Set<string>();
@@ -303,28 +422,8 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   // Stage 1 Filter: Filter by Date Range, Cashier, Sales, Status, and Search (All except Payment Method)
   const dateFilteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
-      const tDate = getTxDate(t);
-
-      // 1. Date range filter
-      if (datePreset === 'today') {
-        if (!tDate.startsWith(todayIsoStr)) return false;
-      } else if (datePreset === 'yesterday') {
-        if (!tDate.startsWith(yesterdayIsoStr)) return false;
-      } else if (datePreset === '7days') {
-        if (tDate < sevenDaysAgoIsoStr || tDate > todayIsoStr) return false;
-      } else if (datePreset === '30days') {
-        if (tDate < thirtyDaysAgoIsoStr || tDate > todayIsoStr) return false;
-      } else if (datePreset === 'month') {
-        if (!tDate.startsWith(currentMonthPrefix)) return false;
-      } else if (datePreset === 'lastMonth') {
-        if (!tDate.startsWith(lastMonthPrefix)) return false;
-      } else if (datePreset === 'custom') {
-        const minD = startDate <= endDate ? startDate : endDate;
-        const maxD = startDate <= endDate ? endDate : startDate;
-        if (minD && tDate < minD) return false;
-        if (maxD && tDate > maxD) return false;
-      }
-      // 'all' includes every date
+      // 1. Date range filter: include order creation OR piutang payment in range
+      if (!doesTxMatchDateRange(t)) return false;
 
       // 2. Cashier filter
       if (cashierFilter !== 'all' && t.cashierName !== cashierFilter) {
@@ -377,7 +476,10 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   // Performance breakdown by payment method for the active date range (for owner monitoring)
   const paymentMethodStats = useMemo(() => {
     const validTransactions = dateFilteredTransactions.filter((t) => t.status !== 'BATAL');
-    const totalDateRevenue = validTransactions.reduce((acc, t) => acc + t.total, 0);
+    const totalDateRevenue = validTransactions.reduce((acc, t) => {
+      const fin = getTxRangeFinancials(t);
+      return acc + (fin.isOrderInActiveRange ? t.total : fin.totalCollected);
+    }, 0);
 
     const breakdown: Record<string, { total: number; count: number; percent: number }> = {};
     availablePaymentMethods.forEach((m) => {
@@ -388,15 +490,19 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     let nonCashCount = 0;
 
     validTransactions.forEach((t) => {
-      const method = t.paymentMethod || 'Tunai';
-      if (!breakdown[method]) {
-        breakdown[method] = { total: 0, count: 0, percent: 0 };
+      const fin = getTxRangeFinancials(t);
+      if (fin.totalCash > 0) {
+        breakdown['Tunai'].total += fin.totalCash;
+        breakdown['Tunai'].count += 1;
       }
-      breakdown[method].total += t.total;
-      breakdown[method].count += 1;
-
-      if (method !== 'Tunai') {
-        nonCashTotal += t.total;
+      if (fin.totalNonCash > 0) {
+        const nonMethod = t.paymentMethod !== 'Tunai' ? t.paymentMethod : 'Transfer Bank';
+        if (!breakdown[nonMethod]) {
+          breakdown[nonMethod] = { total: 0, count: 0, percent: 0 };
+        }
+        breakdown[nonMethod].total += fin.totalNonCash;
+        breakdown[nonMethod].count += 1;
+        nonCashTotal += fin.totalNonCash;
         nonCashCount += 1;
       }
     });
@@ -417,21 +523,36 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
         percent: nonCashPercent
       }
     };
-  }, [dateFilteredTransactions, availablePaymentMethods]);
+  }, [dateFilteredTransactions, availablePaymentMethods, datePreset, todayIsoStr, yesterdayIsoStr, sevenDaysAgoIsoStr, thirtyDaysAgoIsoStr, currentMonthPrefix, lastMonthPrefix, startDate, endDate]);
 
   // Stage 2 Filter: Final transactions filtered by selected Payment Method
   const filteredTransactions = useMemo(() => {
     if (paymentFilter === 'all') return dateFilteredTransactions;
     if (paymentFilter === 'non_cash') {
-      return dateFilteredTransactions.filter((t) => t.paymentMethod !== 'Tunai');
+      return dateFilteredTransactions.filter((t) => {
+        const fin = getTxRangeFinancials(t);
+        return fin.totalNonCash > 0 || (fin.isOrderInActiveRange && t.paymentMethod !== 'Tunai');
+      });
+    }
+    if (paymentFilter === 'Tunai') {
+      return dateFilteredTransactions.filter((t) => {
+        const fin = getTxRangeFinancials(t);
+        return fin.totalCash > 0 || (fin.isOrderInActiveRange && t.paymentMethod === 'Tunai');
+      });
     }
     return dateFilteredTransactions.filter((t) => t.paymentMethod === paymentFilter);
-  }, [dateFilteredTransactions, paymentFilter]);
+  }, [dateFilteredTransactions, paymentFilter, datePreset, todayIsoStr, yesterdayIsoStr, sevenDaysAgoIsoStr, thirtyDaysAgoIsoStr, currentMonthPrefix, lastMonthPrefix, startDate, endDate]);
 
   // Aggregate Metrics for Filtered Sales
   const totalRevenue = useMemo(() => {
-    return filteredTransactions.reduce((acc, t) => acc + t.total, 0);
-  }, [filteredTransactions]);
+    return filteredTransactions.reduce((acc, t) => {
+      const fin = getTxRangeFinancials(t);
+      if (fin.isOrderInActiveRange) {
+        return acc + t.total;
+      }
+      return acc + fin.totalCollected;
+    }, 0);
+  }, [filteredTransactions, datePreset, todayIsoStr, yesterdayIsoStr, sevenDaysAgoIsoStr, thirtyDaysAgoIsoStr, currentMonthPrefix, lastMonthPrefix, startDate, endDate]);
 
   const totalCost = useMemo(() => {
     return filteredTransactions.reduce((acc, t) => {
@@ -445,12 +566,33 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : '0';
 
   const filteredCash = useMemo(() => {
-    return filteredTransactions
-      .filter((t) => t.paymentMethod === 'Tunai')
-      .reduce((acc, t) => acc + t.total, 0);
-  }, [filteredTransactions]);
+    return filteredTransactions.reduce((acc, t) => {
+      const fin = getTxRangeFinancials(t);
+      return acc + fin.totalCash;
+    }, 0);
+  }, [filteredTransactions, datePreset, todayIsoStr, yesterdayIsoStr, sevenDaysAgoIsoStr, thirtyDaysAgoIsoStr, currentMonthPrefix, lastMonthPrefix, startDate, endDate]);
 
-  const filteredNonCash = totalRevenue - filteredCash;
+  const filteredNonCash = useMemo(() => {
+    return filteredTransactions.reduce((acc, t) => {
+      const fin = getTxRangeFinancials(t);
+      return acc + fin.totalNonCash;
+    }, 0);
+  }, [filteredTransactions, datePreset, todayIsoStr, yesterdayIsoStr, sevenDaysAgoIsoStr, thirtyDaysAgoIsoStr, currentMonthPrefix, lastMonthPrefix, startDate, endDate]);
+
+  // Total cash specifically received from piutang payments on this active date range
+  const totalPiutangCashInPeriod = useMemo(() => {
+    return filteredTransactions.reduce((acc, t) => {
+      const fin = getTxRangeFinancials(t);
+      return acc + fin.piutangCashReceived;
+    }, 0);
+  }, [filteredTransactions, datePreset, todayIsoStr, yesterdayIsoStr, sevenDaysAgoIsoStr, thirtyDaysAgoIsoStr, currentMonthPrefix, lastMonthPrefix, startDate, endDate]);
+
+  // Total remaining piutang across currently filtered transactions
+  const totalRemainingPiutang = useMemo(() => {
+    return filteredTransactions.reduce((acc, t) => {
+      return acc + (t.remainingAmount || 0);
+    }, 0);
+  }, [filteredTransactions]);
 
   // Filtered Cash Flow records (Income & Expense) for the active date range
   const filteredCashFlows = useMemo(() => {
@@ -618,9 +760,6 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
         return 'Semua Penjualan';
     }
   }, [datePreset, startDate, endDate, todayFormattedText, yesterdayFormattedText, monthFormattedText, lastMonthFormattedText]);
-
-  const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
-  const [driveUploadToast, setDriveUploadToast] = useState<{ message: string; link?: string; isError?: boolean } | null>(null);
 
   const handleUploadReportToDrive = async () => {
     setIsUploadingToDrive(true);
@@ -1686,6 +1825,28 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
           </div>
         )}
 
+        {/* Informative Banner: Penerimaan Pembayaran Tunai Piutang pada Tanggal Ini */}
+        {totalPiutangCashInPeriod > 0 && (
+          <div className="mb-3 p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 flex items-center justify-between flex-wrap gap-2 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-emerald-200/80 text-[#00871f] flex items-center justify-center font-bold shrink-0">
+                <Wallet className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-800">
+                  Penerimaan Pembayaran Tunai Piutang pada Periode Ini:
+                </p>
+                <p className="text-[11px] text-emerald-800">
+                  Uang tunai sebesar <strong>{formatCurrency(totalPiutangCashInPeriod)}</strong> dari pembayaran sisa piutang telah otomatis ditambahkan ke Total Penjualan &amp; Kas Tunai Harian.
+                </p>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-white border border-emerald-300 font-black text-[#00871f] text-xs">
+              +{formatCurrency(totalPiutangCashInPeriod)} Kas Tunai
+            </span>
+          </div>
+        )}
+
         {/* Transactions Table */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
           <div className="p-3 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-2">
@@ -1720,7 +1881,9 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                   <th className="py-2.5 px-3">Kasir / Operator</th>
                   <th className="py-2.5 px-3">Item Pesanan</th>
                   <th className="py-2.5 px-3">Metode Bayar</th>
-                  <th className="py-2.5 px-3 text-right">Total</th>
+                  <th className="py-2.5 px-3 text-right">Total Faktur</th>
+                  <th className="py-2.5 px-3 text-right">Sisa Pembayaran Piutang</th>
+                  <th className="py-2.5 px-3 text-center">Tanggal</th>
                   <th className="py-2.5 px-3 text-center">Status</th>
                   <th className="py-2.5 px-3 text-center">Aksi</th>
                 </tr>
@@ -1728,7 +1891,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-10 text-center text-slate-400">
+                    <td colSpan={12} className="py-10 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Filter className="w-8 h-8 text-slate-300 stroke-[1.5]" />
                         <p className="text-xs font-medium text-slate-500">
@@ -1744,120 +1907,202 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2.5 px-3 font-mono font-bold text-[#00871f]">
-                        {t.invoiceNo}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
-                        {t.date}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="font-semibold text-slate-800 block">
-                          {t.dueDate || '-'}
-                        </span>
-                        <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
-                          Target Selesai
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="font-bold text-slate-800 block">{t.customer.name}</span>
-                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-medium mt-0.5">
-                          Sales: {t.orderType}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="font-medium text-slate-700 text-xs block">
-                          {t.cashierName || '-'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 max-w-xs">
-                        <p className="truncate text-slate-800 font-medium">
-                          {t.items.map((i) => `${i.name} (x${i.quantity})`).join(', ')}
-                        </p>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            t.paymentMethod === 'Tunai'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : t.paymentMethod === 'QRIS'
-                              ? 'bg-blue-100 text-blue-800'
-                              : t.paymentMethod === 'Transfer Bank'
-                              ? 'bg-indigo-100 text-indigo-800'
-                              : t.paymentMethod === 'Kartu Debit'
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          {t.paymentMethod}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <span className="font-bold text-slate-900 block">{formatCurrency(t.total)}</span>
-                        {isAdminOrOwner(currentUser) && (
+                  filteredTransactions.map((t) => {
+                    const fin = getTxRangeFinancials(t);
+                    const isPiutang = Boolean(t.remainingAmount && t.remainingAmount > 0);
+                    const hasSettledPiutang = Boolean(
+                      t.piutangPayments &&
+                        t.piutangPayments.length > 0 &&
+                        (!t.remainingAmount || t.remainingAmount <= 0)
+                    );
+
+                    return (
+                      <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2.5 px-3 font-mono font-bold text-[#00871f]">
+                          {t.invoiceNo}
+                          {fin.piutangCashReceived > 0 && (
+                            <span className="block mt-0.5 text-[9px] font-sans font-bold text-emerald-800 bg-emerald-100 px-1 py-0.2 rounded w-fit">
+                              +Bayar Tunai pd Tgl Ini
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
+                          {t.date}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-semibold text-slate-800 block">
+                            {t.dueDate || '-'}
+                          </span>
+                          <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                            Target Selesai
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-bold text-slate-800 block">{t.customer.name}</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-medium mt-0.5">
+                            Sales: {t.orderType}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-medium text-slate-700 text-xs block">
+                            {t.cashierName || '-'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 max-w-xs">
+                          <p className="truncate text-slate-800 font-medium">
+                            {t.items.map((i) => `${i.name} (x${i.quantity})`).join(', ')}
+                          </p>
+                        </td>
+                        <td className="py-2.5 px-3">
                           <span
-                            className="inline-block text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded mt-0.5"
-                            title={`Hasil Keuntungan: Total (${formatCurrency(t.total)}) - [Vendor (${formatCurrency(t.vendorCost || 0)}) + Ongkir (${formatCurrency(t.shippingCost || 0)})]`}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              t.paymentMethod === 'Tunai'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : t.paymentMethod === 'QRIS'
+                                ? 'bg-blue-100 text-blue-800'
+                                : t.paymentMethod === 'Transfer Bank'
+                                ? 'bg-indigo-100 text-indigo-800'
+                                : t.paymentMethod === 'Kartu Debit'
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
                           >
-                            Laba: {formatCurrency(calculateProfit(t.total, t.vendorCost || 0, t.shippingCost || 0))}
+                            {t.paymentMethod}
                           </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {t.status === 'Selesai' ? (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                            Selesai
-                          </span>
-                        ) : t.status === 'Sedang Dikerjakan' ? (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                            Sedang Dikerjakan
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-semibold">
-                            {t.status}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {onReviseInvoice && (
-                            <button
-                              onClick={() => onReviseInvoice(t)}
-                              title="Revisi Faktur / Koreksi Kesalahan Input"
-                              className="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <span className="font-bold text-slate-900 block">{formatCurrency(t.total)}</span>
+                          {isAdminOrOwner(currentUser) && (
+                            <span
+                              className="inline-block text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded mt-0.5"
+                              title={`Hasil Keuntungan: Total (${formatCurrency(t.total)}) - [Vendor (${formatCurrency(t.vendorCost || 0)}) + Ongkir (${formatCurrency(t.shippingCost || 0)})]`}
                             >
-                              <FileEdit className="w-3 h-3 text-amber-600" />
-                              <span>Revisi</span>
-                            </button>
+                              Laba: {formatCurrency(calculateProfit(t.total, t.vendorCost || 0, t.shippingCost || 0))}
+                            </span>
                           )}
-                          <button
-                            onClick={() => onViewReceipt(t)}
-                            title="Lihat Struk / Detail"
-                            className="p-1 hover:text-[#00871f] text-slate-400 transition-colors cursor-pointer"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => downloadTransactionReceiptPDF(t)}
-                            title="Unduh Struk PDF"
-                            className="p-1 hover:text-[#00871f] text-slate-400 transition-colors cursor-pointer"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                          </button>
-                          {isAdmin && onDeleteInvoice && (
+                        </td>
+
+                        {/* Kolom 1: Sisa Pembayaran Piutang */}
+                        <td className="py-2.5 px-3 text-right">
+                          {isPiutang ? (
+                            <div>
+                              <span className="font-black text-rose-600 block text-xs">
+                                {formatCurrency(t.remainingAmount || 0)}
+                              </span>
+                              <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-semibold inline-block">
+                                {t.amountPaid > 0 ? 'DP / Kurang' : 'Belum Bayar'}
+                              </span>
+                            </div>
+                          ) : hasSettledPiutang ? (
+                            <div>
+                              <span className="font-bold text-emerald-700 block text-xs">
+                                Rp 0
+                              </span>
+                              <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-semibold inline-block">
+                                Lunas
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-mono">-</span>
+                          )}
+                        </td>
+
+                        {/* Kolom 2: Tanggal Pembayaran / Pelunasan Piutang */}
+                        <td className="py-2.5 px-3 text-center">
+                          {t.piutangPaidDate || (t.piutangPayments && t.piutangPayments.length > 0) ? (
+                            <div>
+                              <span className="font-mono text-[11px] font-bold text-slate-800 block">
+                                {t.piutangPaidDate || t.piutangPayments![t.piutangPayments!.length - 1].date}
+                              </span>
+                              <span className="inline-flex items-center gap-0.5 text-[9.5px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200 mt-0.5">
+                                <Calendar className="w-2.5 h-2.5 text-[#00871f]" />
+                                {t.piutangPayments?.[t.piutangPayments.length - 1]?.paymentMethod === 'Tunai'
+                                  ? 'Bayar Tunai'
+                                  : (t.piutangPayments?.[t.piutangPayments.length - 1]?.paymentMethod || 'Bayar Piutang')}
+                              </span>
+                            </div>
+                          ) : isPiutang ? (
+                            <div>
+                              <span className="font-mono text-[11px] text-amber-700 font-semibold block">
+                                {t.dueDate || '-'}
+                              </span>
+                              <span className="text-[9.5px] text-amber-600 block">
+                                (Jatuh Tempo)
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-mono">-</span>
+                          )}
+                        </td>
+
+                        <td className="py-2.5 px-3 text-center">
+                          {t.status === 'Selesai' ? (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                              Selesai
+                            </span>
+                          ) : t.status === 'Sedang Dikerjakan' ? (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                              Sedang Dikerjakan
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-semibold">
+                              {t.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <div className="flex items-center justify-center gap-1 flex-wrap">
+                            {/* Tombol Bayar / Pelunasan Piutang jika ada sisa piutang */}
+                            {isPiutang && onPayPiutang && (
+                              <button
+                                type="button"
+                                onClick={() => onPayPiutang(t)}
+                                title="Bayar / Pelunasan Sisa Piutang (Tunai / Non-Tunai)"
+                                className="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-[#00871f] border border-emerald-300 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors shrink-0 shadow-2xs"
+                              >
+                                <Wallet className="w-3 h-3 text-[#00871f]" />
+                                <span>Bayar Piutang</span>
+                              </button>
+                            )}
+
+                            {onReviseInvoice && (
+                              <button
+                                onClick={() => onReviseInvoice(t)}
+                                title="Revisi Faktur / Koreksi Kesalahan Input"
+                                className="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                              >
+                                <FileEdit className="w-3 h-3 text-amber-600" />
+                                <span>Revisi</span>
+                              </button>
+                            )}
                             <button
-                              onClick={() => onDeleteInvoice(t)}
-                              title="Hapus Faktur (Khusus Admin)"
-                              className="p-1 hover:text-rose-600 text-slate-400 transition-colors cursor-pointer"
+                              onClick={() => onViewReceipt(t)}
+                              title="Lihat Struk / Detail"
+                              className="p-1 hover:text-[#00871f] text-slate-400 transition-colors cursor-pointer"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            <button
+                              onClick={() => downloadTransactionReceiptPDF(t)}
+                              title="Unduh Struk PDF"
+                              className="p-1 hover:text-[#00871f] text-slate-400 transition-colors cursor-pointer"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                            {isAdmin && onDeleteInvoice && (
+                              <button
+                                onClick={() => onDeleteInvoice(t)}
+                                title="Hapus Faktur (Khusus Admin)"
+                                className="p-1 hover:text-rose-600 text-slate-400 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
               {filteredTransactions.length > 0 && (
@@ -1881,6 +2126,21 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                       <span className="text-sm font-black text-[#00871f] block">
                         {formatCurrency(totalRevenue)}
                       </span>
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <span className="text-xs font-black text-rose-600 block">
+                        {formatCurrency(totalRemainingPiutang)}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block font-normal">Sisa Piutang</span>
+                    </td>
+                    <td className="py-3 px-3 text-center">
+                      {totalPiutangCashInPeriod > 0 ? (
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
+                          +{formatCurrency(totalPiutangCashInPeriod)} Kas
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">-</span>
+                      )}
                     </td>
                     <td colSpan={2} className="py-3 px-3 text-center text-[10px] text-slate-400 font-medium">
                       Lunas / Terverifikasi
@@ -1950,7 +2210,17 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-2xs">
                   <span className="text-[10px] text-slate-400 font-semibold block uppercase">Tunai (Laci)</span>
-                  <span className="font-bold text-slate-800">{formatCurrency(filteredCash)}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-slate-800">{formatCurrency(filteredCash)}</span>
+                    {totalPiutangCashInPeriod > 0 && (
+                      <span
+                        className="text-[9.5px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold"
+                        title={`Termasuk ${formatCurrency(totalPiutangCashInPeriod)} dari pelunasan piutang tunai pada tanggal ini`}
+                      >
+                        +{formatCurrency(totalPiutangCashInPeriod)} Piutang
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-2xs">
                   <span className="text-[10px] text-slate-400 font-semibold block uppercase">Non-Tunai (Transfer/QRIS)</span>

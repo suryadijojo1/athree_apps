@@ -43,6 +43,9 @@
         "paidAmount": { "type": "number", "description": "Nominal yang dibayarkan konsumen" },
         "change": { "type": "number", "description": "Nominal kembalian" },
         "status": { "type": "string", "description": "Status transaksi (completed, pending, cancelled, debt)" },
+        "remainingAmount": { "type": "number", "description": "Sisa pembayaran piutang yang belum dilunasi" },
+        "piutangPaidDate": { "type": "string", "description": "Tanggal pembayaran sisa piutang" },
+        "piutangPayments": { "type": "array", "description": "Daftar riwayat pembayaran sisa piutang" },
         "dueDate": { "type": "string", "description": "Tanggal jatuh tempo jika bon/utang" },
         "createdAt": { "type": "string", "description": "Timestamp waktu pencatatan" }
       },

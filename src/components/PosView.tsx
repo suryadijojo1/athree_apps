@@ -396,7 +396,7 @@ export const PosView: React.FC<PosViewProps> = ({
       paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType;
 
     const formattedDueDate = dueDate ? dueDate.replace('T', ' ') : '-';
-    const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const nowStr = formatLocalDateTime(new Date()).replace('T', ' ');
 
     const isPartialOrUnpaid = effectiveCash < total;
     const remainingAmount = Math.max(0, total - effectiveCash);
@@ -442,6 +442,7 @@ export const PosView: React.FC<PosViewProps> = ({
       remainingAmount,
       cashierName,
       cashierId,
+      shiftId: shift?.id,
       notes: finalNotes
     });
 
@@ -474,7 +475,7 @@ export const PosView: React.FC<PosViewProps> = ({
       paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType;
 
     const formattedDueDate = dueDate ? dueDate.replace('T', ' ') : '-';
-    const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const nowStr = formatLocalDateTime(new Date()).replace('T', ' ');
 
     const isPartialOrUnpaid = effectiveCash < total;
     const remainingAmount = Math.max(0, total - effectiveCash);
@@ -517,6 +518,7 @@ export const PosView: React.FC<PosViewProps> = ({
       remainingAmount,
       cashierName,
       cashierId,
+      shiftId: shift?.id,
       notes: finalNotes
     });
 

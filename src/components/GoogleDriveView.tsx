@@ -146,6 +146,19 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   const [manualTokenInput, setManualTokenInput] = useState('');
   const [manualTokenEmail, setManualTokenEmail] = useState('');
 
+  const loadFiles = useCallback(async () => {
+    setIsLoadingFiles(true);
+    try {
+      const data = await listDriveFiles({ pageSize: 40 });
+      setFiles(data);
+    } catch (err: any) {
+      console.error('Error loading files:', err);
+      showNotification('error', err.message || 'Gagal memuat file Google Drive');
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  }, []);
+
   // Initialize auth listener & restore auto-connected account
   useEffect(() => {
     // 1. Populate direct input fields from local storage if previously saved
@@ -365,19 +378,6 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       console.error('Logout error:', err);
     }
   };
-
-  const loadFiles = useCallback(async () => {
-    setIsLoadingFiles(true);
-    try {
-      const data = await listDriveFiles({ pageSize: 40 });
-      setFiles(data);
-    } catch (err: any) {
-      console.error('Error loading files:', err);
-      showNotification('error', err.message || 'Gagal memuat file Google Drive');
-    } finally {
-      setIsLoadingFiles(false);
-    }
-  }, []);
 
   // Quick 1-Click Manual App Backup to Drive
   const handleBackupNow = async () => {
