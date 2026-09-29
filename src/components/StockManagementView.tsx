@@ -86,7 +86,7 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
   // Metrics
   const totalProducts = products.length;
   const totalStockUnits = products.reduce((sum, p) => sum + p.stock, 0);
-  const totalAssetValue = products.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
+  const totalStockValue = products.reduce((sum, p) => sum + p.stock * p.price, 0);
   const lowStockItems = products.filter((p) => p.stock > 0 && p.stock <= p.minStock);
   const outOfStockItems = products.filter((p) => p.stock <= 0);
 
@@ -143,7 +143,7 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
     setFormSku(`SKU/00${String(products.length + 1).padStart(3, '0')}`);
     setFormCategory(categories.find((c) => c !== 'Semua' && c !== 'Favorit') || 'JERSEY');
     setFormPrice(100000);
-    setFormCostPrice(65000);
+    setFormCostPrice(0);
     setFormStock(30);
     setFormMinStock(5);
     setFormUnit('Pcs');
@@ -183,7 +183,7 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
         sku: formSku.trim(),
         category: formCategory,
         price: Number(formPrice),
-        costPrice: Number(formCostPrice),
+        costPrice: 0,
         stock: Number(formStock),
         minStock: Number(formMinStock),
         unit: formUnit,
@@ -196,7 +196,7 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
         sku: formSku.trim(),
         category: formCategory,
         price: Number(formPrice),
-        costPrice: Number(formCostPrice),
+        costPrice: 0,
         stock: Number(formStock),
         minStock: Number(formMinStock),
         unit: formUnit,
@@ -336,18 +336,9 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <span className="text-xs text-slate-500 font-medium">Nilai Modal Aset</span>
-            {isAdmin ? (
-              <>
-                <p className="text-lg font-bold text-slate-800 mt-0.5">{formatCurrency(totalAssetValue)}</p>
-                <span className="text-[10px] text-slate-400">Berdasarkan harga modal beli</span>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-slate-400 mt-1">Akses Khusus Admin</p>
-                <span className="text-[10px] text-slate-400">Hanya tampil di akun Admin</span>
-              </>
-            )}
+            <span className="text-xs text-slate-500 font-medium">Total Nilai Inventaris</span>
+            <p className="text-lg font-bold text-slate-800 mt-0.5">{formatCurrency(totalStockValue)}</p>
+            <span className="text-[10px] text-slate-400">Total nilai jual seluruh stok</span>
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
@@ -441,11 +432,9 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <tr>
-                    <th className="py-2.5 px-3">Produk & SKU</th>
+                    <th className="py-2.5 px-3">Produk &amp; SKU</th>
                     <th className="py-2.5 px-3">Kategori</th>
-                    {isAdmin && <th className="py-2.5 px-3 text-right">Harga Modal</th>}
                     <th className="py-2.5 px-3 text-right">Harga Jual</th>
-                    {isAdmin && <th className="py-2.5 px-3 text-right">Margin / Unit</th>}
                     <th className="py-2.5 px-3 text-center">Stok Saat Ini</th>
                     <th className="py-2.5 px-3 text-center">Status</th>
                     <th className="py-2.5 px-3 text-center">Aksi</th>
@@ -453,8 +442,6 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {filteredProducts.map((p) => {
-                    const margin = p.price - p.costPrice;
-                    const marginPercent = ((margin / p.price) * 100).toFixed(0);
                     const isLow = p.stock > 0 && p.stock <= p.minStock;
                     const isOut = p.stock <= 0;
 
@@ -478,21 +465,9 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
                             {p.category}
                           </span>
                         </td>
-                        {isAdmin && (
-                          <td className="py-2.5 px-3 text-right font-medium text-slate-600">
-                            {formatCurrency(p.costPrice)}
-                          </td>
-                        )}
                         <td className="py-2.5 px-3 text-right font-bold text-slate-800">
                           {formatCurrency(p.price)}
                         </td>
-                        {isAdmin && (
-                          <td className="py-2.5 px-3 text-right">
-                            <span className="text-emerald-600 font-semibold">
-                              +{formatCurrency(margin)} ({marginPercent}%)
-                            </span>
-                          </td>
-                        )}
                         <td className="py-2.5 px-3 text-center">
                           <span className="text-sm font-bold text-slate-800">{p.stock}</span>
                           <span className="text-[10px] text-slate-400 ml-1">{p.unit}</span>
@@ -708,31 +683,20 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Harga Modal (Rp) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={formCostPrice}
-                    onChange={(e) => setFormCostPrice(Number(e.target.value))}
-                    className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00871f] focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Harga Jual Kasir (Rp) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={formPrice}
-                    onChange={(e) => setFormPrice(Number(e.target.value))}
-                    className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00871f] focus:outline-none font-bold"
-                  />
-                </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Harga Jual Kasir (Rp) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  step="1000"
+                  value={formPrice}
+                  onChange={(e) => setFormPrice(Number(e.target.value))}
+                  placeholder="Contoh: 150000"
+                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00871f] focus:outline-none font-bold text-slate-800"
+                />
               </div>
 
               <div className="grid grid-cols-3 gap-3">

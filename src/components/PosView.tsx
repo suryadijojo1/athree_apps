@@ -28,7 +28,9 @@ import {
   Layers,
   Palette,
   CheckCircle2,
-  Check
+  Check,
+  TrendingUp,
+  Truck
 } from 'lucide-react';
 import {
   Product,
@@ -42,6 +44,7 @@ import {
   OrderStatus
 } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
+import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
 import { AddSalesModal } from './AddSalesModal';
 import { STANDARD_KAOS_COLORS, STANDARD_KAOS_SIZES } from '../data/mockData';
 import { isSablonKaosProduct, getKaosStockQty } from '../utils/kaosStockUtils';
@@ -146,6 +149,8 @@ export const PosView: React.FC<PosViewProps> = ({
   const [paymentMethodTab, setPaymentMethodTab] = useState<'Tunai' | 'Non Tunai'>('Tunai');
   const [nonCashType, setNonCashType] = useState<'QRIS' | 'Transfer Bank' | 'Kartu Debit'>('QRIS');
   const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [vendorCost, setVendorCost] = useState<number>(0);
+  const [shippingCost, setShippingCost] = useState<number>(0);
   const [cashGiven, setCashGiven] = useState<number>(0);
   const [nonCashGiven, setNonCashGiven] = useState<number>(0);
   const [hasEditedNonCash, setHasEditedNonCash] = useState<boolean>(false);
@@ -183,6 +188,11 @@ export const PosView: React.FC<PosViewProps> = ({
   }, [cartItems]);
 
   const total = Math.max(0, subtotal - discountAmount);
+
+  // Hasil Keuntungan = Total Nilai Faktur - (Biaya Vendor + Biaya Pengiriman)
+  const profit = useMemo(() => {
+    return calculateProfit(total, vendorCost, shippingCost);
+  }, [total, vendorCost, shippingCost]);
 
   // Keep nonCashGiven synced to total unless cashier has manually edited the amount
   useEffect(() => {
@@ -421,6 +431,9 @@ export const PosView: React.FC<PosViewProps> = ({
       discount: discountAmount,
       tax: 0,
       total,
+      vendorCost,
+      shippingCost,
+      profit,
       paymentMethod: finalPaymentMethod,
       amountPaid: effectiveCash,
       change: changeAmount,
@@ -435,6 +448,8 @@ export const PosView: React.FC<PosViewProps> = ({
     // Reset cart
     setCartItems([]);
     setDiscountAmount(0);
+    setVendorCost(0);
+    setShippingCost(0);
     setCashGiven(0);
     setNonCashGiven(0);
     setHasEditedNonCash(false);
@@ -491,6 +506,9 @@ export const PosView: React.FC<PosViewProps> = ({
       discount: discountAmount,
       tax: 0,
       total,
+      vendorCost,
+      shippingCost,
+      profit,
       paymentMethod: finalPaymentMethod,
       amountPaid: effectiveCash,
       change: changeAmount,
@@ -505,6 +523,8 @@ export const PosView: React.FC<PosViewProps> = ({
     alert(`Pesanan berhasil disimpan ke Antrean Produksi dengan Jatuh Tempo: ${formattedDueDate}${remainingAmount > 0 ? ` (Sisa Piutang: ${formatCurrency(remainingAmount)})` : ''}`);
     setCartItems([]);
     setDiscountAmount(0);
+    setVendorCost(0);
+    setShippingCost(0);
     setCashGiven(0);
     setNonCashGiven(0);
     setHasEditedNonCash(false);
@@ -1231,6 +1251,86 @@ export const PosView: React.FC<PosViewProps> = ({
             <span>Total Tagihan</span>
             <span className="text-base text-[#00871f]">{formatCurrency(total)}</span>
           </div>
+        </div>
+
+        {/* Rincian Biaya Vendor & Pengiriman */}
+        <div className="p-3 border-b border-slate-200 bg-slate-50/70 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-slate-700 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+              <Truck className="w-3.5 h-3.5 text-[#00871f]" />
+              Biaya Vendor &amp; Pengiriman
+            </span>
+            <span className="text-[10px] text-slate-400">Rincian Operasional</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-0.5">
+                Biaya Vendor
+              </label>
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded px-1.5 py-0.5 focus-within:border-[#00871f] focus-within:ring-1 focus-within:ring-[#00871f]">
+                <span className="text-slate-400 text-[10px]">Rp</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={vendorCost || ''}
+                  onChange={(e) => setVendorCost(Math.max(0, Number(e.target.value) || 0))}
+                  placeholder="0"
+                  className="w-full text-right text-xs font-semibold text-slate-800 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-0.5">
+                Biaya Pengiriman
+              </label>
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded px-1.5 py-0.5 focus-within:border-[#00871f] focus-within:ring-1 focus-within:ring-[#00871f]">
+                <span className="text-slate-400 text-[10px]">Rp</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={shippingCost || ''}
+                  onChange={(e) => setShippingCost(Math.max(0, Number(e.target.value) || 0))}
+                  placeholder="0"
+                  className="w-full text-right text-xs font-semibold text-slate-800 focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* PREVIEW HASIL KEUNTUNGAN (Hanya Admin / Owner) */}
+          {isAdmin ? (
+            <div className="mt-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200/90 text-emerald-950 space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold flex items-center gap-1 text-emerald-800">
+                  <TrendingUp className="w-3.5 h-3.5 text-[#00871f]" />
+                  Preview Keuntungan (Admin/Owner)
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-900">
+                  Margin: {calculateProfitMargin(profit, total)}%
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline pt-1 border-t border-emerald-200/60">
+                <span className="text-[10px] text-slate-600 truncate mr-2" title={`Total Faktur (${formatCurrency(total)}) - [Biaya Vendor (${formatCurrency(vendorCost)}) + Ongkir (${formatCurrency(shippingCost)})]`}>
+                  Faktur - (Vendor + Kirim)
+                </span>
+                <span className={`text-sm font-black shrink-0 ${profit >= 0 ? 'text-[#00871f]' : 'text-rose-600'}`}>
+                  {formatCurrency(profit)}
+                </span>
+              </div>
+              <p className="text-[9.5px] text-emerald-700 italic">
+                * Keuntungan hanya bisa dilihat oleh Admin/Owner &amp; TIDAK tercetak di struk inv.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-1 px-2 py-1.5 rounded bg-slate-100 border border-slate-200 text-slate-500 text-[10.5px] flex items-center gap-1.5">
+              <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+              <span>Preview hasil keuntungan terkunci (khusus akses Admin/Owner).</span>
+            </div>
+          )}
         </div>
 
         {/* Kasir Checkout Section */}

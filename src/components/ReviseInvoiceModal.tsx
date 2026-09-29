@@ -16,10 +16,14 @@ import {
   UserCheck,
   Shirt,
   Palette,
-  ShieldAlert
+  ShieldAlert,
+  Truck,
+  TrendingUp,
+  Lock
 } from 'lucide-react';
 import { Transaction, OrderItem, PaymentMethod, OrderStatus, OrderType, Product } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
+import { calculateProfit, calculateProfitMargin, isAdminOrOwner } from '../utils/profitUtils';
 import { AddSalesModal } from './AddSalesModal';
 import { STANDARD_KAOS_COLORS, STANDARD_KAOS_SIZES } from '../data/mockData';
 import { isSablonKaosProduct } from '../utils/kaosStockUtils';
@@ -68,6 +72,8 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(transaction.paymentMethod);
   const [status, setStatus] = useState<OrderStatus>(transaction.status);
   const [discount, setDiscount] = useState<number>(transaction.discount || 0);
+  const [vendorCost, setVendorCost] = useState<number>(transaction.vendorCost || 0);
+  const [shippingCost, setShippingCost] = useState<number>(transaction.shippingCost || 0);
   const [amountPaid, setAmountPaid] = useState<number>(transaction.amountPaid ?? transaction.total);
   const [items, setItems] = useState<OrderItem[]>(
     transaction.items.map((it) => ({ ...it }))
@@ -244,6 +250,9 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       subtotal,
       discount,
       total,
+      vendorCost,
+      shippingCost,
+      profit: calculateProfit(total, vendorCost, shippingCost),
       amountPaid,
       change,
       remainingAmount,
@@ -686,6 +695,86 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
               <span>Status Pembayaran: LUNAS (Tidak ada piutang)</span>
             </div>
           )}
+
+          {/* Rincian Biaya Vendor & Pengiriman */}
+          <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/70 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
+                <Truck className="w-3.5 h-3.5 text-[#00871f]" />
+                Rincian Biaya Vendor &amp; Biaya Pengiriman
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Operasional Pesanan</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Biaya Vendor (Rp)
+                </label>
+                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-[#00871f] focus-within:border-transparent">
+                  <span className="text-slate-400 text-xs">Rp</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={vendorCost}
+                    onChange={(e) => setVendorCost(Math.max(0, Number(e.target.value)))}
+                    className="w-full text-xs font-semibold text-slate-800 focus:outline-none"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Biaya Pengiriman / Ongkir (Rp)
+                </label>
+                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-[#00871f] focus-within:border-transparent">
+                  <span className="text-slate-400 text-xs">Rp</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={shippingCost}
+                    onChange={(e) => setShippingCost(Math.max(0, Number(e.target.value)))}
+                    className="w-full text-xs font-semibold text-slate-800 focus:outline-none"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Preview Hasil Keuntungan (Khusus Admin/Owner) */}
+            {isAdminOrOwner(currentUserRole) ? (
+              <div className="p-2.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold flex items-center gap-1.5 text-emerald-800">
+                    <TrendingUp className="w-3.5 h-3.5 text-[#00871f]" />
+                    Preview Hasil Keuntungan (Khusus Admin/Owner)
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-200 text-emerald-900">
+                    Margin: {calculateProfitMargin(calculateProfit(total, vendorCost, shippingCost), total)}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline pt-1 border-t border-emerald-200/70">
+                  <span className="text-xs text-slate-600">
+                    Total Faktur ({formatCurrency(total)}) - [Biaya Vendor ({formatCurrency(vendorCost)}) + Ongkir ({formatCurrency(shippingCost)})]
+                  </span>
+                  <span className={`text-sm font-black ${calculateProfit(total, vendorCost, shippingCost) >= 0 ? 'text-[#00871f]' : 'text-rose-600'}`}>
+                    = {formatCurrency(calculateProfit(total, vendorCost, shippingCost))}
+                  </span>
+                </div>
+                <p className="text-[10px] text-emerald-700 italic">
+                  * Biaya keuntungan hanya bisa dilihat oleh Admin/Owner dan tidak boleh tampil di struk inv.
+                </p>
+              </div>
+            ) : (
+              <div className="p-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Hasil preview keuntungan terkunci (khusus akun Admin/Owner).</span>
+              </div>
+            )}
+          </div>
 
           {/* Revision Reason / Audit Note */}
           <div>

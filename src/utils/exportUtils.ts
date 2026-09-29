@@ -30,24 +30,36 @@ export const formatDate = (dateStr: string): string => {
 export const exportSalesToExcel = (
   transactions: Transaction[],
   title = 'Laporan_Penjualan_Harian',
-  cashFlows?: CashFlowRecord[]
+  cashFlows?: CashFlowRecord[],
+  isAdmin = false
 ) => {
-  const data = transactions.map((t, idx) => ({
-    No: idx + 1,
-    'No Faktur': t.invoiceNo,
-    'Tanggal Transaksi': t.date,
-    'Jatuh Tempo Selesai': t.dueDate || '-',
-    Pelanggan: t.customer.name,
-    'Tipe Order': t.orderType,
-    'Total Item': t.items.reduce((sum, item) => sum + item.quantity, 0),
-    Subtotal: t.subtotal,
-    Diskon: t.discount,
-    'Total Penjualan': t.total,
-    'Metode Bayar': t.paymentMethod,
-    Status: t.status,
-    Kasir: t.cashierName,
-    Catatan: t.notes || '-'
-  }));
+  const data = transactions.map((t, idx) => {
+    const row: Record<string, any> = {
+      No: idx + 1,
+      'No Faktur': t.invoiceNo,
+      'Tanggal Transaksi': t.date,
+      'Jatuh Tempo Selesai': t.dueDate || '-',
+      Pelanggan: t.customer.name,
+      'Tipe Order': t.orderType,
+      'Total Item': t.items.reduce((sum, item) => sum + item.quantity, 0),
+      Subtotal: t.subtotal,
+      Diskon: t.discount,
+      'Total Penjualan': t.total
+    };
+
+    // Rincian biaya dan keuntungan hanya disertakan jika diunduh oleh Admin / Owner
+    if (isAdmin) {
+      row['Biaya Vendor'] = t.vendorCost || 0;
+      row['Biaya Pengiriman'] = t.shippingCost || 0;
+      row['Hasil Keuntungan'] = t.total - ((t.vendorCost || 0) + (t.shippingCost || 0));
+    }
+
+    row['Metode Bayar'] = t.paymentMethod;
+    row['Status'] = t.status;
+    row['Kasir'] = t.cashierName;
+    row['Catatan'] = t.notes || '-';
+    return row;
+  });
 
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
@@ -173,13 +185,12 @@ export const exportStockToExcel = (products: Product[]) => {
     SKU: p.sku,
     'Nama Barang': p.name,
     Kategori: p.category,
-    'Harga Modal': p.costPrice,
     'Harga Jual': p.price,
     'Stok Saat Ini': p.stock,
     'Stok Minimal': p.minStock,
     Satuan: p.unit,
     Status: p.stock <= 0 ? 'Habis' : p.stock <= p.minStock ? 'Menipis' : 'Aman',
-    'Total Aset (Nilai Modal)': p.stock * p.costPrice
+    'Total Nilai Jual Stok': p.stock * p.price
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(data);
@@ -201,10 +212,10 @@ export const exportStockToPDF = (products: Product[]) => {
   doc.setFontSize(10);
   doc.text(`Tanggal Cetak: ${new Date().toLocaleString('id-ID')}`, 14, 22);
 
-  const totalAssets = products.reduce((acc, p) => acc + p.stock * p.costPrice, 0);
+  const totalStockValue = products.reduce((acc, p) => acc + p.stock * p.price, 0);
   const lowStockCount = products.filter((p) => p.stock <= p.minStock).length;
   doc.text(
-    `Total Produk: ${products.length} item | Stok Menipis/Habis: ${lowStockCount} item | Nilai Modal Aset: ${formatCurrency(totalAssets)}`,
+    `Total Produk: ${products.length} item | Stok Menipis/Habis: ${lowStockCount} item | Total Nilai Stok: ${formatCurrency(totalStockValue)}`,
     14,
     28
   );
@@ -214,7 +225,6 @@ export const exportStockToPDF = (products: Product[]) => {
     p.sku,
     p.name,
     p.category,
-    formatCurrency(p.costPrice),
     formatCurrency(p.price),
     `${p.stock} ${p.unit}`,
     p.stock <= 0 ? 'HABIS' : p.stock <= p.minStock ? 'MENIPIS' : 'AMAN'
@@ -222,7 +232,7 @@ export const exportStockToPDF = (products: Product[]) => {
 
   autoTable(doc, {
     startY: 34,
-    head: [['No', 'SKU', 'Nama Barang', 'Kategori', 'Modal', 'Jual', 'Stok', 'Status']],
+    head: [['No', 'SKU', 'Nama Barang', 'Kategori', 'Harga Jual', 'Stok', 'Status']],
     body: tableData,
     theme: 'grid',
     headStyles: {
@@ -472,7 +482,6 @@ export const downloadProductImportTemplate = (format: 'xlsx' | 'csv' = 'xlsx') =
       'Nama Produk': 'JERSEY DRYFIT SUBLIM PREMIUM',
       'Kategori': 'JERSEY',
       'Harga Jual': 135000,
-      'Harga Modal': 85000,
       'Stok': 50,
       'Stok Minimum': 10,
       'Satuan': 'Pcs'
@@ -482,7 +491,6 @@ export const downloadProductImportTemplate = (format: 'xlsx' | 'csv' = 'xlsx') =
       'Nama Produk': 'KAOS POLOS COTTON COMBED 30S',
       'Kategori': 'KAOS POLOS',
       'Harga Jual': 65000,
-      'Harga Modal': 40000,
       'Stok': 120,
       'Stok Minimum': 20,
       'Satuan': 'Pcs'
@@ -492,7 +500,6 @@ export const downloadProductImportTemplate = (format: 'xlsx' | 'csv' = 'xlsx') =
       'Nama Produk': 'SABLON DTF HIGH DEFINITION A3',
       'Kategori': 'SABLON',
       'Harga Jual': 35000,
-      'Harga Modal': 18000,
       'Stok': 200,
       'Stok Minimum': 25,
       'Satuan': 'Lembar'
@@ -502,7 +509,6 @@ export const downloadProductImportTemplate = (format: 'xlsx' | 'csv' = 'xlsx') =
       'Nama Produk': 'STIKER VINYL HOLOGRAM DIE CUT',
       'Kategori': 'AKSESORIS',
       'Harga Jual': 15000,
-      'Harga Modal': 7000,
       'Stok': 150,
       'Stok Minimum': 30,
       'Satuan': 'Pcs'

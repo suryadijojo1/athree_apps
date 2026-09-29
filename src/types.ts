@@ -16,7 +16,7 @@ export interface Product {
   sku: string;
   category: string;
   price: number;
-  costPrice: number;
+  costPrice?: number;
   stock: number;
   minStock: number;
   unit: string;
@@ -31,7 +31,7 @@ export interface OrderItem {
   name: string;
   sku: string;
   price: number;
-  costPrice: number;
+  costPrice?: number;
   quantity: number;
   notes?: string;
   subtotal: number;
@@ -72,6 +72,10 @@ export interface Transaction {
   discount: number;
   tax: number;
   total: number;
+  vendorCost?: number; // Biaya Vendor
+  shippingCost?: number; // Biaya Pengiriman
+  profit?: number; // Hasil Keuntungan = Total Nilai Faktur - (Biaya Vendor + Biaya Pengiriman)
+  vendorNotes?: string; // Catatan Vendor atau Pengiriman
   paymentMethod: PaymentMethod;
   amountPaid: number;
   change: number;

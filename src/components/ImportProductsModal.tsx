@@ -337,7 +337,7 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({
                       Belum memiliki format data yang sesuai?
                     </span>
                     <span className="text-[11px] text-blue-700">
-                      Unduh template contoh dengan kolom: SKU, Nama Produk, Kategori, Harga Jual, Harga Modal, Stok, Satuan.
+                      Unduh template contoh dengan kolom: SKU, Nama Produk, Kategori, Harga Jual, Stok, Satuan.
                     </span>
                   </div>
                 </div>
@@ -555,7 +555,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({
                             <th className="p-2">Nama Produk</th>
                             <th className="p-2">Kategori</th>
                             <th className="p-2 text-right">Harga Jual</th>
-                            <th className="p-2 text-right">Modal</th>
                             <th className="p-2 text-center">Stok</th>
                             <th className="p-2 pr-3 text-center">Satuan</th>
                           </tr>
@@ -590,9 +589,6 @@ export const ImportProductsModal: React.FC<ImportProductsModalProps> = ({
                               </td>
                               <td className="p-2 text-right font-bold text-[#00871f]">
                                 {formatCurrency(row.price)}
-                              </td>
-                              <td className="p-2 text-right text-slate-500">
-                                {formatCurrency(row.costPrice)}
                               </td>
                               <td className="p-2 text-center font-bold text-slate-800">
                                 {row.stock}

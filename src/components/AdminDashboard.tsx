@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { Transaction, CashFlowRecord, CashierShift, User } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
+import { calculateProfit } from '../utils/profitUtils';
 import adminBackdrop from '../assets/images/admin_studio_backdrop_1789623254700.jpg';
 import { UserManagementModal } from './UserManagementModal';
 import { AddSalesModal } from './AddSalesModal';
@@ -224,6 +225,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [filteredCashFlowsForJurnal]);
 
   const jurnalSaldoBersih = jurnalPemasukanKasir + jurnalPendapatanLain - jurnalPengeluaran;
+
+  const jurnalTotalVendor = useMemo(() => {
+    return filteredTxForJurnal.reduce((sum, t) => sum + (t.vendorCost || 0), 0);
+  }, [filteredTxForJurnal]);
+
+  const jurnalTotalOngkir = useMemo(() => {
+    return filteredTxForJurnal.reduce((sum, t) => sum + (t.shippingCost || 0), 0);
+  }, [filteredTxForJurnal]);
+
+  const jurnalTotalKeuntungan = useMemo(() => {
+    return filteredTxForJurnal.reduce(
+      (sum, t) => sum + calculateProfit(t.total, t.vendorCost || 0, t.shippingCost || 0),
+      0
+    );
+  }, [filteredTxForJurnal]);
 
   // Saved / in-progress orders
   const pendingOrders = transactions.filter(
@@ -1099,6 +1115,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p className="text-sm font-extrabold text-emerald-400 mt-0.5">{formatCurrency(jurnalSaldoBersih)}</p>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
                   {jurnalDateFilter === 'all' ? 'Seluruh periode' : `Tgl ${jurnalDateFilter}`}
+                </span>
+              </div>
+            </div>
+
+            {/* Rincian Keuntungan Faktur (Khusus Admin / Owner) */}
+            <div className="bg-emerald-50/70 border border-emerald-300 rounded-xl p-3 my-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-[#00871f] text-white rounded-lg shrink-0">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-emerald-950 uppercase tracking-wider text-[11px] block">
+                    Hasil Keuntungan Faktur Penjualan (Khusus Admin/Owner)
+                  </span>
+                  <span className="text-[10.5px] text-slate-500">
+                    Faktur ({formatCurrency(jurnalPemasukanKasir)}) - [Biaya Vendor ({formatCurrency(jurnalTotalVendor)}) + Biaya Kirim ({formatCurrency(jurnalTotalOngkir)})]
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-right shrink-0">
+                <span className="text-[10px] text-emerald-800 font-bold block uppercase tracking-wider">
+                  Total Keuntungan Faktur
+                </span>
+                <span className={`text-base font-black ${jurnalTotalKeuntungan >= 0 ? 'text-[#00871f]' : 'text-rose-600'}`}>
+                  {formatCurrency(jurnalTotalKeuntungan)}
                 </span>
               </div>
             </div>

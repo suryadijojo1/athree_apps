@@ -43,6 +43,7 @@ import { GoogleDriveView } from './components/GoogleDriveView';
 import { KaosStockManagementView } from './components/KaosStockManagementView';
 import { FirebaseSyncModal } from './components/FirebaseSyncModal';
 import { CloudUpload, CheckCircle2 } from 'lucide-react';
+import { calculateProfit } from './utils/profitUtils';
 import {
   subscribeToAuth,
   testConnection,
@@ -88,10 +89,23 @@ import {
 import { User as FirebaseUser } from 'firebase/auth';
 import {
   isPageRefreshed,
+  clearAllCookies,
   clearAllCachesAndCookies,
   markPageForRefresh,
   clearRefreshMark
 } from './utils/sessionCleaner';
+
+// User Request: Ketika pertama kali buka URL website langsung otomatis hapus cookies & selalu tampilkan form login
+if (typeof window !== 'undefined' && !isPageRefreshed()) {
+  try {
+    clearAllCookies();
+    fetch('/api/clear-session', { method: 'POST' }).catch(() => {});
+    localStorage.removeItem('athree_is_authenticated');
+    sessionStorage.removeItem('athree_session_active');
+  } catch (err) {
+    console.warn('Initial URL cookie clearance notice:', err);
+  }
+}
 
 export default function App() {
   // Persistence via localStorage
@@ -116,21 +130,10 @@ export default function App() {
   // 1 Hour Inactivity / Unopened Timeout (1 Jam = 3.600.000 ms)
   const ONE_HOUR_TIMEOUT_MS = 60 * 60 * 1000;
 
-  // Cek apakah load ini reload (F5) atau baru pertama buka URL website
-  const isReload = isPageRefreshed();
-
-  // User Request: Ketika buka URL website langsung otomatis hapus cookies & langsung tampilkan form login
-  if (!isReload) {
-    clearAllCookies();
-    try {
-      fetch('/api/clear-session', { method: 'POST' }).catch(() => {});
-    } catch {}
-    localStorage.removeItem('athree_is_authenticated');
-    sessionStorage.removeItem('athree_session_active');
-  }
-
-  // Clear refresh mark if present
-  clearRefreshMark();
+  // Clear refresh mark once mounted
+  useEffect(() => {
+    clearRefreshMark();
+  }, []);
 
   const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(() => {
     return localStorage.getItem('athree_timeout_notice') || null;
@@ -1118,6 +1121,7 @@ export default function App() {
     setCurrentUser(user);
     setIsAuthenticated(true);
     localStorage.setItem('athree_is_authenticated', 'true');
+    sessionStorage.setItem('athree_session_active', 'true');
     localStorage.setItem('athree_current_user', JSON.stringify(user));
     localStorage.setItem('athree_last_active_time', String(Date.now()));
     localStorage.removeItem('athree_timeout_notice');
@@ -1793,6 +1797,28 @@ export default function App() {
     );
   };
 
+  // Handler: Update vendor cost & shipping cost (Keuntungan otomatis dihitung ulang)
+  const handleUpdateCosts = (transactionId: string, vendorCost: number, shippingCost: number) => {
+    setTransactions((prev) =>
+      prev.map((t) => {
+        if (t.id === transactionId) {
+          const safeVendor = Math.max(0, Number(vendorCost) || 0);
+          const safeShipping = Math.max(0, Number(shippingCost) || 0);
+          const profit = calculateProfit(t.total, safeVendor, safeShipping);
+          const updated: Transaction = {
+            ...t,
+            vendorCost: safeVendor,
+            shippingCost: safeShipping,
+            profit
+          };
+          saveTransactionToFirestore(updated).catch((err) => console.warn('Sync update costs error:', err));
+          return updated;
+        }
+        return t;
+      })
+    );
+  };
+
   // Handler: Master Product Add/Update/Delete
   const handleAddProduct = (newProductData: Omit<Product, 'id'>) => {
     const newProd: Product = {
@@ -2376,6 +2402,7 @@ export default function App() {
               transactions={transactions}
               onUpdateOrderStatus={handleUpdateOrderStatus}
               onUpdateDueDate={handleUpdateDueDate}
+              onUpdateCosts={handleUpdateCosts}
               onViewReceipt={(tx) => setSuccessTx(tx)}
               onReviseInvoice={(tx) => setRevisingTx(tx)}
               onDeleteInvoice={(tx) => setDeletingTx(tx)}

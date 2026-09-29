@@ -29,7 +29,7 @@ export const CustomProductModal: React.FC<CustomProductModalProps> = ({
       name: name.trim().toUpperCase(),
       sku: 'CUSTOM/ADHOC',
       price: Number(price),
-      costPrice: Math.round(Number(price) * 0.6),
+      costPrice: 0,
       quantity: Number(quantity),
       notes: notes.trim(),
       subtotal: Number(price) * Number(quantity)

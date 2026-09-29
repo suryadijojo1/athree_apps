@@ -141,6 +141,27 @@ async function startServer() {
     });
   });
 
+  // Clear session endpoint to clear server cookies and session data
+  app.post('/api/clear-session', (req, res) => {
+    try {
+      const rawCookies = req.headers.cookie;
+      if (rawCookies) {
+        const cookies = rawCookies.split(';');
+        for (const cookie of cookies) {
+          const eqPos = cookie.indexOf('=');
+          const name = eqPos > -1 ? cookie.slice(0, eqPos).trim() : cookie.trim();
+          if (name) {
+            res.clearCookie(name, { path: '/' });
+          }
+        }
+      }
+      res.setHeader('Clear-Site-Data', '"cookies"');
+      res.json({ success: true, message: 'Cookies and session cleared successfully' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // Central Database Endpoints for Instant Real-Time Cross-Browser Sync
   app.get('/api/database', (req, res) => {
     res.json({

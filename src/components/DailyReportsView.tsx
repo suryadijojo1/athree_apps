@@ -41,6 +41,7 @@ import {
   exportSalesToPDF,
   downloadTransactionReceiptPDF
 } from '../utils/exportUtils';
+import { calculateProfit, isAdminOrOwner } from '../utils/profitUtils';
 import { uploadFileToDrive, getOrCreateBackupFolder } from '../services/googleDriveService';
 import { getAccessToken, googleSignIn } from '../services/googleAuth';
 
@@ -434,8 +435,8 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
 
   const totalCost = useMemo(() => {
     return filteredTransactions.reduce((acc, t) => {
-      const itemsCost = t.items.reduce((s, i) => s + (i.costPrice || 0) * i.quantity, 0);
-      return acc + itemsCost;
+      const vendorAndShipping = (t.vendorCost || 0) + (t.shippingCost || 0);
+      return acc + vendorAndShipping;
     }, 0);
   }, [filteredTransactions]);
 
@@ -700,7 +701,8 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                 exportSalesToExcel(
                   filteredTransactions,
                   `Laporan_Penjualan_${datePreset}_${Date.now()}`,
-                  filteredCashFlows
+                  filteredCashFlows,
+                  isAdminOrOwner(currentUser)
                 )
               }
               className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
@@ -1791,8 +1793,16 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                           {t.paymentMethod}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-slate-900">
-                        {formatCurrency(t.total)}
+                      <td className="py-2.5 px-3 text-right">
+                        <span className="font-bold text-slate-900 block">{formatCurrency(t.total)}</span>
+                        {isAdminOrOwner(currentUser) && (
+                          <span
+                            className="inline-block text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded mt-0.5"
+                            title={`Hasil Keuntungan: Total (${formatCurrency(t.total)}) - [Vendor (${formatCurrency(t.vendorCost || 0)}) + Ongkir (${formatCurrency(t.shippingCost || 0)})]`}
+                          >
+                            Laba: {formatCurrency(calculateProfit(t.total, t.vendorCost || 0, t.shippingCost || 0))}
+                          </span>
+                        )}
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         {t.status === 'Selesai' ? (
@@ -1964,7 +1974,8 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                   exportSalesToExcel(
                     filteredTransactions,
                     `Laporan_Penjualan_${datePreset}_${Date.now()}`,
-                    filteredCashFlows
+                    filteredCashFlows,
+                    isAdminOrOwner(currentUser)
                   )
                 }
                 className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-[#00871f] border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs hover:shadow-xs cursor-pointer active:scale-95"
@@ -2032,7 +2043,8 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                             exportSalesToExcel(
                               filteredTransactions,
                               `Laporan_Penjualan_${datePreset}_${Date.now()}`,
-                              filteredCashFlows
+                              filteredCashFlows,
+                              isAdminOrOwner(currentUser)
                             );
                           }}
                           className="w-full text-left p-2.5 rounded-xl hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 transition-colors flex items-start gap-2.5 cursor-pointer group"

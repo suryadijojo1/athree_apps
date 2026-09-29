@@ -22,15 +22,21 @@ import {
   ShoppingBag,
   Info,
   CalendarDays,
-  FileText
+  FileText,
+  TrendingUp,
+  Truck,
+  Lock,
+  Edit3
 } from 'lucide-react';
 import { Transaction, OrderStatus } from '../types';
 import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUtils';
+import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
 
 interface ProductionOrdersViewProps {
   transactions: Transaction[];
   onUpdateOrderStatus: (transactionId: string, status: OrderStatus) => void;
   onUpdateDueDate: (transactionId: string, newDueDate: string) => void;
+  onUpdateCosts?: (transactionId: string, vendorCost: number, shippingCost: number) => void;
   onViewReceipt: (transaction: Transaction) => void;
   onReviseInvoice?: (transaction: Transaction) => void;
   onDeleteInvoice?: (transaction: Transaction) => void;
@@ -41,6 +47,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   transactions,
   onUpdateOrderStatus,
   onUpdateDueDate,
+  onUpdateCosts,
   onViewReceipt,
   onReviseInvoice,
   onDeleteInvoice,
@@ -59,20 +66,36 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
 
   // Preview Modal state
   const [previewTx, setPreviewTx] = useState<Transaction | null>(null);
+  const [isEditingCosts, setIsEditingCosts] = useState<boolean>(false);
+  const [tempVendorCost, setTempVendorCost] = useState<number>(0);
+  const [tempShippingCost, setTempShippingCost] = useState<number>(0);
 
   useEffect(() => {
     localStorage.setItem('athree_production_view_mode', viewMode);
   }, [viewMode]);
 
-  // Keep previewTx in sync when transactions update
+  // Keep previewTx in sync when transactions update, and sync cost states
   useEffect(() => {
     if (previewTx) {
       const updated = transactions.find((t) => t.id === previewTx.id);
       if (updated) {
         setPreviewTx(updated);
+        if (!isEditingCosts) {
+          setTempVendorCost(updated.vendorCost || 0);
+          setTempShippingCost(updated.shippingCost || 0);
+        }
       }
     }
   }, [transactions]);
+
+  // Reset cost editing when preview modal opens with a new transaction
+  useEffect(() => {
+    if (previewTx) {
+      setTempVendorCost(previewTx.vendorCost || 0);
+      setTempShippingCost(previewTx.shippingCost || 0);
+      setIsEditingCosts(false);
+    }
+  }, [previewTx?.id]);
 
   // Helper to calculate days remaining
   const getDaysDiff = (dueDateStr: string) => {
@@ -427,6 +450,14 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                               </span>
                             )}
                           </div>
+                          {isAdmin && (
+                            <div className="mt-0.5">
+                              <span className="text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded inline-flex items-center gap-0.5" title="Hasil Keuntungan Bersih (Khusus Admin/Owner)">
+                                <TrendingUp className="w-2.5 h-2.5 text-[#00871f]" />
+                                Laba: {formatCurrency(calculateProfit(t.total, t.vendorCost || 0, t.shippingCost || 0))}
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* Status Produksi */}
@@ -976,6 +1007,177 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* 6. Rincian Biaya Vendor, Biaya Pengiriman & Preview Keuntungan */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5 text-[#00871f]" />
+                      Rincian Biaya Vendor &amp; Biaya Pengiriman
+                    </h4>
+                    {isAdmin && onUpdateCosts && !isEditingCosts && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTempVendorCost(previewTx.vendorCost || 0);
+                          setTempShippingCost(previewTx.shippingCost || 0);
+                          setIsEditingCosts(true);
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold text-[#00871f] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        <span>Ubah Biaya</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isEditingCosts ? (
+                    <div className="p-3 bg-white border border-[#00871f]/40 rounded-xl space-y-3 shadow-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            Biaya Vendor (Rp)
+                          </label>
+                          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-[#00871f] focus-within:bg-white">
+                            <span className="text-slate-400 text-xs">Rp</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1000"
+                              value={tempVendorCost}
+                              onChange={(e) => setTempVendorCost(Math.max(0, Number(e.target.value)))}
+                              className="w-full text-xs font-semibold text-slate-800 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            Biaya Pengiriman (Rp)
+                          </label>
+                          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-[#00871f] focus-within:bg-white">
+                            <span className="text-slate-400 text-xs">Rp</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1000"
+                              value={tempShippingCost}
+                              onChange={(e) => setTempShippingCost(Math.max(0, Number(e.target.value)))}
+                              className="w-full text-xs font-semibold text-slate-800 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingCosts(false)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-semibold cursor-pointer"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onUpdateCosts) {
+                              onUpdateCosts(previewTx.id, tempVendorCost, tempShippingCost);
+                              setPreviewTx({
+                                ...previewTx,
+                                vendorCost: tempVendorCost,
+                                shippingCost: tempShippingCost,
+                                profit: calculateProfit(previewTx.total, tempVendorCost, tempShippingCost)
+                              });
+                            }
+                            setIsEditingCosts(false);
+                          }}
+                          className="px-3.5 py-1.5 bg-[#00871f] hover:bg-[#007019] text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Simpan Biaya</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                        <span className="text-[10.5px] font-semibold text-slate-500 block mb-0.5">Biaya Vendor</span>
+                        <span className="text-xs font-bold text-slate-800">
+                          {formatCurrency(previewTx.vendorCost || 0)}
+                        </span>
+                      </div>
+                      <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                        <span className="text-[10.5px] font-semibold text-slate-500 block mb-0.5">Biaya Pengiriman</span>
+                        <span className="text-xs font-bold text-slate-800">
+                          {formatCurrency(previewTx.shippingCost || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PREVIEW HASIL KEUNTUNGAN (HANYA BISA DILIHAT OLEH ADMIN / OWNER) */}
+                  {isAdmin ? (
+                    <div className="p-3.5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50/50 border border-emerald-300 text-emerald-950 space-y-2 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1 bg-[#00871f] text-white rounded-md">
+                            <TrendingUp className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <h5 className="font-extrabold text-xs text-emerald-950">
+                              HASIL KEUNTUNGAN (PROFIT BERSIH)
+                            </h5>
+                            <span className="text-[9.5px] font-bold text-emerald-700">
+                              🔒 Khusus Admin / Owner &bull; Tidak Tampil di Struk
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 border border-emerald-300">
+                          Margin: {calculateProfitMargin(calculateProfit(previewTx.total, previewTx.vendorCost || 0, previewTx.shippingCost || 0), previewTx.total)}%
+                        </span>
+                      </div>
+
+                      <div className="pt-2 border-t border-emerald-200/80 space-y-1 text-xs">
+                        <div className="flex justify-between text-slate-600">
+                          <span>Total Nilai Faktur:</span>
+                          <span className="font-semibold text-slate-900">{formatCurrency(previewTx.total)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>Dikurangi Biaya Vendor:</span>
+                          <span className="font-semibold text-rose-600">- {formatCurrency(previewTx.vendorCost || 0)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>Dikurangi Biaya Pengiriman:</span>
+                          <span className="font-semibold text-rose-600">- {formatCurrency(previewTx.shippingCost || 0)}</span>
+                        </div>
+                        <div className="pt-1.5 border-t border-emerald-300 flex justify-between items-baseline font-black text-sm">
+                          <span className="text-emerald-950">Hasil Keuntungan:</span>
+                          <span className={`text-base ${calculateProfit(previewTx.total, previewTx.vendorCost || 0, previewTx.shippingCost || 0) >= 0 ? 'text-[#00871f]' : 'text-rose-600'}`}>
+                            {formatCurrency(calculateProfit(previewTx.total, previewTx.vendorCost || 0, previewTx.shippingCost || 0))}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-2 rounded-lg bg-emerald-100/50 border border-emerald-200 text-[10px] text-emerald-900 flex items-center gap-1.5">
+                        <Info className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                        <span>
+                          Rumus: <strong>Hasil Keuntungan = Total Nilai Faktur - (Biaya Vendor + Biaya Pengiriman)</strong>. Sesuai ketentuan, biaya keuntungan hanya bisa dilihat oleh Admin/Owner dan tidak boleh tampil di struk inv.
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 text-xs flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div>
+                        <p className="font-bold text-slate-700">Preview Keuntungan Dirahasiakan</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Hanya akun Admin/Owner yang memiliki hak akses untuk melihat hasil preview keuntungan pesanan ini.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
