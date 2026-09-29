@@ -1404,6 +1404,7 @@
       "notes": "Shift Pagi - Siang aktif Kasir Dimas"
     }
   ],
+  "currentShift": null,
   "kaosStocks": [
     {
       "size": "3XL",
@@ -1900,18 +1901,9 @@
     "Admin (DEAZBAR)"
   ],
   "isRealData": true,
-  "lastUpdated": "2026-09-27T07:01:58.623Z",
-  "sourceClient": "client_1790491392213_yobzt",
+  "lastUpdated": "2026-09-29T10:46:17.154Z",
+  "sourceClient": "client_1790678776626_0jont",
   "savedBy": "Kasir",
   "source": "sync",
-  "deletedTransactionIds": [],
-  "currentShift": {
-    "id": "shift-test",
-    "isOpen": false,
-    "startTime": "08:00",
-    "endTime": "17:00",
-    "startingCash": 500000,
-    "actualCash": 1750000,
-    "cashierName": "DIMAS"
-  }
+  "deletedTransactionIds": []
 }

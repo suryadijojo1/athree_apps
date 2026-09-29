@@ -222,8 +222,15 @@ async function startServer() {
         }
       }
 
-      // Safeguard: Preserve existing active shift state if not explicitly specified
-      if (!payload.currentShift && currentDbState?.currentShift) {
+      // Safeguard: Preserve existing active shift state if incoming payload doesn't close it explicitly
+      if (currentDbState?.currentShift?.isOpen === true) {
+        if (!payload.currentShift) {
+          payload.currentShift = currentDbState.currentShift;
+        } else if (payload.currentShift.isOpen === false && !payload.currentShift.endTime) {
+          // Closed without an explicit close timestamp - retain active open shift
+          payload.currentShift = currentDbState.currentShift;
+        }
+      } else if (!payload.currentShift && currentDbState?.currentShift) {
         payload.currentShift = currentDbState.currentShift;
       }
 

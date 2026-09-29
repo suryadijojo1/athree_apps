@@ -98,22 +98,34 @@ import {
   clearRefreshMark
 } from './utils/sessionCleaner';
 
-// User Request: Ketika pertama kali buka URL website langsung otomatis hapus cookies & selalu tampilkan form login
-if (typeof window !== 'undefined' && !isPageRefreshed()) {
-  try {
-    clearAllCookies();
-    fetch('/api/clear-session', { method: 'POST' }).catch(() => {});
-    localStorage.removeItem('athree_is_authenticated');
-    sessionStorage.removeItem('athree_session_active');
-  } catch (err) {
-    console.warn('Initial URL cookie clearance notice:', err);
-  }
-}
-
 // Helper to check if incoming remote shift has real-time changes
+// CRITICAL: Apabila operator kasir/admin belum menutup kasir maka kasir TIDAK tertutup!
 const shouldApplyRemoteShift = (remoteShift: CashierShift, prevShift: CashierShift): boolean => {
   if (!remoteShift) return false;
+  // Ignore dummy test shift from legacy/mock files
+  if (remoteShift.id === 'shift-test') return false;
   if (!prevShift) return true;
+
+  // RULE: If local cashier is currently OPEN (prevShift.isOpen === true),
+  // NEVER close it automatically unless the remote shift has an EXPLICIT closure with endTime
+  if (prevShift.isOpen && !remoteShift.isOpen) {
+    const isExplicitClose = Boolean(remoteShift.endTime) && (
+      remoteShift.id === prevShift.id ||
+      (Boolean(remoteShift.endTimestamp) && Boolean(prevShift.startTimestamp) && Number(remoteShift.endTimestamp) >= Number(prevShift.startTimestamp))
+    );
+    if (!isExplicitClose) {
+      console.log('Real-Time Protection: Ignored remote shift closure because local cashier is still OPEN and operator/admin has not closed it.');
+      return false;
+    }
+  }
+
+  // If local shift is already open, do not overwrite with an older shift
+  if (prevShift.isOpen && remoteShift.isOpen) {
+    if (remoteShift.startTimestamp && prevShift.startTimestamp && remoteShift.startTimestamp < prevShift.startTimestamp) {
+      return false;
+    }
+  }
+
   if (remoteShift.id !== prevShift.id) return true;
   if (remoteShift.isOpen !== prevShift.isOpen) return true;
   if (remoteShift.startTime !== prevShift.startTime) return true;
@@ -172,15 +184,7 @@ export default function App() {
 
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    // 1. Jika bukan reload F5 (misal buka URL awal di tab/browser baru), SELALU langsung tampilkan form login
-    if (!isPageRefreshed()) {
-      return false;
-    }
-
-    // 2. Jika reload F5 dalam tab yang sama, pastikan sesi aktif terverifikasi
-    const isAuth =
-      localStorage.getItem('athree_is_authenticated') === 'true' &&
-      sessionStorage.getItem('athree_session_active') === 'true';
+    const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
     if (!isAuth) return false;
 
     const lastActive = Number(localStorage.getItem('athree_last_active_time') || 0);
@@ -193,6 +197,10 @@ export default function App() {
       clearAllCachesAndCookies().catch(() => {});
       return false;
     }
+    // Set active session marker for current browser session
+    try {
+      sessionStorage.setItem('athree_session_active', 'true');
+    } catch {}
     return true;
   });
 
@@ -289,7 +297,7 @@ export default function App() {
   };
 
   const [shift, setShift] = useState<CashierShift>(() => {
-    const saved = localStorage.getItem('athree_shift');
+    const saved = localStorage.getItem('athree_shift') || localStorage.getItem('athree_shift_active_persistent');
     const todayFormatted = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 
     if (saved) {
@@ -619,6 +627,9 @@ export default function App() {
           });
           localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
           return remoteShift;
+        } else if (prevShift.isOpen && (!remoteShift.isOpen || remoteShift.id !== prevShift.id)) {
+          // Local browser has open cashier, ensure server knows about this active open shift
+          syncShiftToServer(prevShift, `${currentUser.name} (Buka Kasir Aktif)`).catch(() => {});
         }
         return prevShift;
       });
@@ -1053,6 +1064,11 @@ export default function App() {
   const handleUpdateShift = (updatedShift: CashierShift) => {
     setShift(updatedShift);
     localStorage.setItem('athree_shift', JSON.stringify(updatedShift));
+    if (updatedShift.isOpen) {
+      localStorage.setItem('athree_shift_active_persistent', JSON.stringify(updatedShift));
+    } else {
+      localStorage.removeItem('athree_shift_active_persistent');
+    }
     latestStateRef.current.shift = updatedShift;
 
     // 1. Instantly push to Firestore realtime collection so all internet browsers get onSnapshot
