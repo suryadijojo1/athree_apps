@@ -383,24 +383,74 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   const handleBackupNow = async () => {
     setIsBackingUp(true);
     try {
-      const result = await backupAppDataToDrive({
-        transactions,
-        products,
-        cashFlowRecords,
-        shifts,
-        currentStartingCash,
-        kaosStocks,
-        stockMovements,
-        customers,
-        users,
-        salesList,
-        categories
-      });
+      // 1. Ensure active Google token
+      let token = await getAccessToken();
+      if (!token) {
+        showNotification('info', 'Membuka otorisasi akun Google Drive...');
+        const authResult = await googleSignIn();
+        if (!authResult?.accessToken) {
+          throw new Error('Otorisasi Google Drive dibatalkan atau tidak memberikan izin.');
+        }
+        token = authResult.accessToken;
+        setIsConnected(true);
+        setGoogleUser(authResult.user);
+      }
+
+      showNotification('info', 'Menyiapkan cadangan dan mengunggah ke Google Drive...');
+
+      let result: DriveFile;
+      try {
+        result = await backupAppDataToDrive({
+          transactions,
+          products,
+          cashFlowRecords,
+          shifts,
+          currentStartingCash,
+          kaosStocks,
+          stockMovements,
+          customers,
+          users,
+          salesList,
+          categories
+        });
+      } catch (uploadErr: any) {
+        // If token was expired (401), re-authenticate and retry
+        if (
+          uploadErr.message === 'UNAUTHORIZED_TOKEN' ||
+          uploadErr.message?.includes('401') ||
+          uploadErr.message?.includes('Invalid Credentials')
+        ) {
+          showNotification('info', 'Sesi login kedaluwarsa, memperbarui otorisasi...');
+          const reAuth = await googleSignIn();
+          if (!reAuth?.accessToken) {
+            throw uploadErr;
+          }
+          setIsConnected(true);
+          setGoogleUser(reAuth.user);
+          result = await backupAppDataToDrive({
+            transactions,
+            products,
+            cashFlowRecords,
+            shifts,
+            currentStartingCash,
+            kaosStocks,
+            stockMovements,
+            customers,
+            users,
+            salesList,
+            categories
+          });
+        } else {
+          throw uploadErr;
+        }
+      }
+
+      const driveUrl = result.webViewLink || (result.id && !result.id.startsWith('gdrive_backup') ? `https://drive.google.com/file/d/${result.id}/view` : undefined);
 
       showNotification(
         'success',
         `Cadangan database manual berhasil disimpan di Google Drive: ${result.name}`,
-        result.webViewLink
+        driveUrl
       );
       await loadFiles();
     } catch (err: any) {
@@ -908,6 +958,16 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
 
             {/* Quick Connect Buttons */}
             <div className="pt-1 flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={handleBackupNow}
+                disabled={isBackingUp}
+                className="px-5 py-2.5 bg-[#00871f] hover:bg-[#007019] text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <Database className="w-4 h-4" />
+                <span>{isBackingUp ? 'Menyimpan ke Drive...' : 'Simpan Cadangan Manual ke Drive'}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleSignIn}
