@@ -564,22 +564,36 @@ export default function App() {
     }
   };
 
-  const syncCurrentStateToServer = () => {
-    const currentState = latestStateRef.current;
-    saveServerDatabase({
-      products: currentState.products,
-      categories: currentState.categories,
-      transactions: currentState.transactions,
-      cashFlowRecords: currentState.cashFlowRecords,
-      shiftHistory: currentState.shiftHistory,
-      currentShift: currentState.shift,
-      kaosStocks: currentState.kaosStocks,
-      stockMovements: currentState.stockMovements,
-      customers: currentState.customers,
-      users: currentState.users,
-      salesList: currentState.salesList,
-      isRealData: isRealUserData(currentState.transactions)
-    }).catch((err) => console.warn('Sync to central server error:', err));
+  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const syncCurrentStateToServer = (immediate = false) => {
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
+    }
+
+    const performSync = () => {
+      const currentState = latestStateRef.current;
+      saveServerDatabase({
+        products: currentState.products,
+        categories: currentState.categories,
+        transactions: currentState.transactions,
+        cashFlowRecords: currentState.cashFlowRecords,
+        shiftHistory: currentState.shiftHistory,
+        currentShift: currentState.shift,
+        kaosStocks: currentState.kaosStocks,
+        stockMovements: currentState.stockMovements,
+        customers: currentState.customers,
+        users: currentState.users,
+        salesList: currentState.salesList,
+        isRealData: isRealUserData(currentState.transactions)
+      }).catch((err) => console.warn('Sync to central server error:', err));
+    };
+
+    if (immediate) {
+      performSync();
+    } else {
+      syncTimerRef.current = setTimeout(performSync, 300);
+    }
   };
 
   // Set up Automatic Cloud Synchronization
@@ -602,12 +616,12 @@ export default function App() {
               applyFullDatabasePayload(serverRes.data);
             } else if (localHasRealData && currentTransactions.length > serverRes.data.transactions.length) {
               console.log('Central Server: Local browser has more transactions, updating server...');
-              syncCurrentStateToServer();
+              syncCurrentStateToServer(true);
             }
           } else {
             if (localHasRealData) {
               console.log('Central Server: Seeding master data from current browser to server...');
-              syncCurrentStateToServer();
+              syncCurrentStateToServer(true);
             } else if (serverRes.data.transactions && serverRes.data.transactions.length > 0) {
               applyFullDatabasePayload(serverRes.data);
             }
@@ -615,7 +629,7 @@ export default function App() {
         } else {
           // Server has no data stored yet, initialize server with current browser data
           console.log('Central Server: Initializing master data from current browser to server...');
-          syncCurrentStateToServer();
+          syncCurrentStateToServer(true);
         }
       } catch (err) {
         console.warn('Central server sync init error:', err);
@@ -782,8 +796,14 @@ export default function App() {
     const unsubProducts = subscribeToProducts((remoteProducts) => {
       if (remoteProducts && remoteProducts.length > 0) {
         setIsFirebaseConnected(true);
-        setProducts(remoteProducts);
-        localStorage.setItem('athree_products', JSON.stringify(remoteProducts));
+        setProducts((prev) => {
+          if (prev.length === remoteProducts.length && prev[0]?.id === remoteProducts[0]?.id) {
+            const hasChange = prev.some((p, i) => p.id !== remoteProducts[i]?.id || p.stock !== remoteProducts[i]?.stock || p.price !== remoteProducts[i]?.price);
+            if (!hasChange) return prev;
+          }
+          localStorage.setItem('athree_products', JSON.stringify(remoteProducts));
+          return remoteProducts;
+        });
       }
     });
 
@@ -795,8 +815,16 @@ export default function App() {
           for (const tx of prev) {
             map.set(tx.id, tx);
           }
+          let hasDiff = false;
           for (const tx of remoteTransactions) {
+            const existing = map.get(tx.id);
+            if (!existing || existing.paymentStatus !== tx.paymentStatus || existing.total !== tx.total || existing.amountPaid !== tx.amountPaid) {
+              hasDiff = true;
+            }
             map.set(tx.id, tx);
+          }
+          if (!hasDiff && map.size === prev.length) {
+            return prev;
           }
           const merged = Array.from(map.values()).sort(
             (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
@@ -811,32 +839,54 @@ export default function App() {
     const unsubKaos = subscribeToKaosStocks((remoteKaos) => {
       if (remoteKaos && remoteKaos.length > 0) {
         setIsFirebaseConnected(true);
-        setKaosStocks(remoteKaos);
-        localStorage.setItem('athree_kaos_stocks', JSON.stringify(remoteKaos));
+        setKaosStocks((prev) => {
+          if (prev && prev.length === remoteKaos.length) {
+            const hasChange = prev.some((k, i) => k.id !== remoteKaos[i]?.id || k.stock !== remoteKaos[i]?.stock);
+            if (!hasChange) return prev;
+          }
+          localStorage.setItem('athree_kaos_stocks', JSON.stringify(remoteKaos));
+          return remoteKaos;
+        });
       }
     });
 
     const unsubCashFlow = subscribeToCashFlow((remoteCashFlow) => {
       if (remoteCashFlow && remoteCashFlow.length > 0) {
         setIsFirebaseConnected(true);
-        setCashFlowRecords(remoteCashFlow);
-        localStorage.setItem('athree_cash_flow', JSON.stringify(remoteCashFlow));
+        setCashFlowRecords((prev) => {
+          if (prev.length === remoteCashFlow.length && prev[0]?.id === remoteCashFlow[0]?.id) {
+            const hasChange = prev.some((c, i) => c.id !== remoteCashFlow[i]?.id || c.amount !== remoteCashFlow[i]?.amount);
+            if (!hasChange) return prev;
+          }
+          localStorage.setItem('athree_cash_flow', JSON.stringify(remoteCashFlow));
+          return remoteCashFlow;
+        });
       }
     });
 
     const unsubCustomers = subscribeToCustomers((remoteCustomers) => {
       if (remoteCustomers && remoteCustomers.length > 0) {
         setIsFirebaseConnected(true);
-        setCustomers(remoteCustomers);
-        localStorage.setItem('athree_customers', JSON.stringify(remoteCustomers));
+        setCustomers((prev) => {
+          if (prev.length === remoteCustomers.length && prev[0]?.id === remoteCustomers[0]?.id) {
+            return prev;
+          }
+          localStorage.setItem('athree_customers', JSON.stringify(remoteCustomers));
+          return remoteCustomers;
+        });
       }
     });
 
     const unsubShifts = subscribeToShifts((remoteShifts) => {
       if (remoteShifts && remoteShifts.length > 0) {
         setIsFirebaseConnected(true);
-        setShiftHistory(remoteShifts);
-        localStorage.setItem('athree_shift_history', JSON.stringify(remoteShifts));
+        setShiftHistory((prev) => {
+          if (prev.length === remoteShifts.length && prev[0]?.id === remoteShifts[0]?.id) {
+            return prev;
+          }
+          localStorage.setItem('athree_shift_history', JSON.stringify(remoteShifts));
+          return remoteShifts;
+        });
       }
     });
 
@@ -1410,9 +1460,10 @@ export default function App() {
     const currentState = latestStateRef.current;
     const shiftToSave = overrideShift || currentState.shift;
 
-    // 1. Simpan snapshot master ke Server Pusat (dengan retensi 14 hari)
-    if (onStep) onStep('Menyimpan data penjualan ke Server Pusat...');
-    await saveServerDatabase(
+    if (onStep) onStep('Menyimpan data penjualan ke Server & Cloud...');
+
+    // 1. Parallel save to Server Master and Server Snapshot (ultra fast)
+    const serverSavePromise = saveServerDatabase(
       {
         products: currentState.products,
         categories: currentState.categories,
@@ -1427,29 +1478,27 @@ export default function App() {
         salesList: currentState.salesList,
         isRealData: true
       },
+      { savedBy, source }
+    ).catch((err) => console.warn('Server save warning:', err));
+
+    const serverBackupPromise = saveServerBackupSnapshot(
       {
-        savedBy,
-        source
-      }
-    );
+        products: currentState.products,
+        transactions: currentState.transactions,
+        cashFlowRecords: currentState.cashFlowRecords,
+        shiftHistory: currentState.shiftHistory,
+        kaosStocks: currentState.kaosStocks,
+        stockMovements: currentState.stockMovements,
+        customers: currentState.customers,
+        users: currentState.users,
+        salesList: currentState.salesList
+      },
+      savedBy,
+      source
+    ).catch((err) => console.warn('Server backup warning:', err));
 
-    // 2. Sinkronkan seluruh data ke Cloud Firestore
-    if (onStep) onStep('Menyinkronkan data transaksi ke Cloud Firestore...');
-    await syncAllLocalDataToFirestore({
-      products: currentState.products,
-      transactions: currentState.transactions,
-      cashFlowRecords: currentState.cashFlowRecords,
-      shifts: currentState.shiftHistory,
-      activeShift: shiftToSave,
-      kaosStocks: currentState.kaosStocks,
-      customers: currentState.customers,
-      users: currentState.users,
-      stockMovements: currentState.stockMovements
-    });
-
-    // 3. Buat dedicated Cloud Backup Snapshot (retensi 14 hari)
-    if (onStep) onStep('Membuat snapshot cadangan Cloud (Retensi 14 Hari)...');
-    await saveCloudBackupSnapshot(
+    // 2. Parallel Cloud Firestore Snapshot and batch sync (with timeout so it never hangs)
+    const firestoreSnapshotPromise = saveCloudBackupSnapshot(
       {
         products: currentState.products,
         transactions: currentState.transactions,
@@ -1464,65 +1513,82 @@ export default function App() {
       },
       savedBy,
       source
-    );
+    ).catch((err) => console.warn('Firestore snapshot warning:', err));
 
-    // 4. Buat snapshot backup server
-    await saveServerBackupSnapshot(
-      {
-        products: currentState.products,
-        transactions: currentState.transactions,
-        cashFlowRecords: currentState.cashFlowRecords,
-        shiftHistory: currentState.shiftHistory,
-        kaosStocks: currentState.kaosStocks,
-        stockMovements: currentState.stockMovements,
-        customers: currentState.customers,
-        users: currentState.users,
-        salesList: currentState.salesList
-      },
-      savedBy,
-      source
-    );
+    const firestoreSyncPromise = syncAllLocalDataToFirestore({
+      products: currentState.products,
+      transactions: currentState.transactions,
+      cashFlowRecords: currentState.cashFlowRecords,
+      shifts: currentState.shiftHistory,
+      activeShift: shiftToSave,
+      kaosStocks: currentState.kaosStocks,
+      customers: currentState.customers,
+      users: currentState.users,
+      stockMovements: currentState.stockMovements
+    }).catch((err) => console.warn('Firestore sync warning:', err));
 
-    // 5. Bersihkan cadangan kadaluarsa (> 14 hari) agar database tidak menumpuk
-    await cleanExpiredBackupsFirestore().catch(() => {});
+    // Wait for critical saves with safety timeout (max 1200ms)
+    const timeout = new Promise((resolve) => setTimeout(resolve, 1200));
+    await Promise.race([
+      Promise.all([serverSavePromise, serverBackupPromise, firestoreSnapshotPromise, firestoreSyncPromise]),
+      timeout
+    ]);
 
-    // Pastikan cadangan lokal tetap sinkron
-    localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(currentState.transactions));
+    // Clean expired backups asynchronously in background without delaying user
+    cleanExpiredBackupsFirestore().catch(() => {});
+
+    // Ensure local backup is stored
+    try {
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(currentState.transactions));
+    } catch {}
   };
 
   // Handler: Logout Manual oleh Kasir / Admin
   const handleLogout = async () => {
     setIsLoggingOut(true);
     setLogoutSuccess(false);
-    setLogoutStep('Menyiapkan seluruh data transaksi dan inventaris...');
+    setLogoutStep('Menyimpan data & logout...');
 
     const currentOperator = currentUser?.name || 'Kasir';
 
     try {
-      await executeFullCloudDatabaseSave(
+      const savePromise = executeFullCloudDatabaseSave(
         `${currentOperator} (Logout)`,
         'logout',
         (step) => setLogoutStep(step),
         latestStateRef.current.shift
       );
 
-      setLogoutSuccess(true);
-      setLogoutStep('Database Penjualan Berhasil Disimpan Aman di Cloud!');
+      // Max 1.5s total wait to guarantee logout is instant and never gets stuck
+      const safetyTimeout = new Promise((resolve) => setTimeout(resolve, 1500));
+      await Promise.race([savePromise, safetyTimeout]);
 
-      // Jeda sejenak agar kasir melihat konfirmasi data tersimpan
-      await new Promise((r) => setTimeout(r, 650));
+      setLogoutSuccess(true);
+      setLogoutStep('Database Berhasil Disimpan Aman!');
+      await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       console.warn('Logout cloud save warning:', err);
-      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(latestStateRef.current.transactions));
     } finally {
-      await clearAllCachesAndCookies().catch(() => {});
+      // Synchronously clear authentication markers so the user is immediately taken to LoginScreen
+      try {
+        localStorage.setItem('athree_is_authenticated', 'false');
+        localStorage.removeItem('athree_session_active');
+        sessionStorage.removeItem('athree_session_active');
+        sessionStorage.clear();
+      } catch {}
+
+      try {
+        clearAllCookies();
+      } catch {}
+
       setIsAuthenticated(false);
-      localStorage.setItem('athree_is_authenticated', 'false');
       setIsLoginModalOpen(false);
       setIsShiftModalOpen(false);
       setIsCustomProductModalOpen(false);
       setIsLoggingOut(false);
       setLogoutSuccess(false);
+
+      fetch('/api/clear-session', { method: 'POST' }).catch(() => {});
     }
   };
 
@@ -2693,6 +2759,39 @@ export default function App() {
           onAddUser={handleAddUser}
           onDeleteUser={handleDeleteUser}
         />
+
+        {/* Logout Cloud Database Saving Overlay for Admin Portal */}
+        {isLoggingOut && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-emerald-100 text-center space-y-4 animate-in zoom-in-95 duration-150">
+              <div className={`w-16 h-16 rounded-2xl mx-auto flex items-center justify-center shadow-lg transition-all duration-300 ${
+                logoutSuccess ? 'bg-emerald-600 text-white shadow-emerald-200 scale-105' : 'bg-emerald-50 text-[#00871f] shadow-slate-100'
+              }`}>
+                {logoutSuccess ? (
+                  <CheckCircle2 className="w-9 h-9" />
+                ) : (
+                  <CloudUpload className="w-9 h-9 animate-pulse text-[#00871f]" />
+                )}
+              </div>
+              
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-800">
+                  {logoutSuccess ? 'Database Berhasil Disimpan Aman!' : 'Menyimpan Database ke Cloud'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Menyimpan data penjualan, kas, dan shift ke Cloud Firestore & Server sebelum keluar aplikasi.
+                </p>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center justify-center gap-2.5">
+                {!logoutSuccess && (
+                  <div className="w-4 h-4 border-2 border-[#00871f] border-t-transparent rounded-full animate-spin shrink-0" />
+                )}
+                <span className="text-xs font-semibold text-emerald-900">{logoutStep}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

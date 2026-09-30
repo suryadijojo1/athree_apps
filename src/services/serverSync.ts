@@ -240,9 +240,12 @@ export function subscribeToServerEvents(
   // Connect SSE
   connect();
 
-  // Also maintain a periodic 3-second sync heartbeat as fallback
+  // Fallback periodic sync heartbeat when SSE is disconnected or reconnecting
   pollInterval = setInterval(async () => {
     if (isClosed) return;
+    // Skip polling if SSE is active and healthy
+    if (eventSource && eventSource.readyState === 1) return;
+
     const { success, data } = await fetchServerDatabase();
     if (success && data) {
       if (data.sourceClient !== CLIENT_ID) {
@@ -252,7 +255,7 @@ export function subscribeToServerEvents(
         onShiftUpdate(data.currentShift);
       }
     }
-  }, 3000);
+  }, 6000);
 
   return () => {
     isClosed = true;
@@ -263,8 +266,8 @@ export function subscribeToServerEvents(
 }
 
 /**
- * Dedicated ultra-fast live shift synchronizer (1.5-second heartbeat)
- * Guarantees that opening or closing cashier in Browser 1 is instantly detected by Browser 2
+ * Dedicated live shift synchronizer
+ * Guarantees that opening or closing cashier in Browser 1 is detected by Browser 2
  */
 export function startLiveShiftSync(onShiftUpdate: (shift: CashierShift) => void): () => void {
   let isClosed = false;
@@ -295,8 +298,8 @@ export function startLiveShiftSync(onShiftUpdate: (shift: CashierShift) => void)
   // Run immediately
   checkShift();
 
-  // Heartbeat every 1.5 seconds
-  const interval = setInterval(checkShift, 1500);
+  // Heartbeat every 4 seconds (lightweight & avoids network congestion)
+  const interval = setInterval(checkShift, 4000);
 
   return () => {
     isClosed = true;

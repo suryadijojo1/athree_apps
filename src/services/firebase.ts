@@ -627,20 +627,23 @@ export async function syncAllLocalDataToFirestore(data: {
     }
   }
 
-  // Commit in chunks of 200 items (Firestore limit is 500 per batch)
-  const CHUNK_SIZE = 200;
+  // Commit in chunks of 250 items in parallel (Firestore limit is 500 per batch)
+  const CHUNK_SIZE = 250;
+  const chunkPromises: Promise<void>[] = [];
   for (let i = 0; i < writes.length; i += CHUNK_SIZE) {
     const chunk = writes.slice(i, i + CHUNK_SIZE);
     const batch = writeBatch(db);
     for (const w of chunk) {
       batch.set(doc(db, w.col, w.id), w.val);
     }
-    try {
-      await batch.commit();
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `batch-sync-chunk-${i}`);
-    }
+    chunkPromises.push(
+      batch.commit().catch((error) => {
+        handleFirestoreError(error, OperationType.WRITE, `batch-sync-chunk-${i}`);
+      })
+    );
   }
+
+  await Promise.all(chunkPromises);
 
   return {
     productsCount: data.products.length,

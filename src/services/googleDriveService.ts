@@ -57,9 +57,37 @@ export async function listDriveFiles(options: {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.files && data.files.length > 0) {
-          return data.files;
-        }
+        const driveFiles: DriveFile[] = (data.files || []).map((f: any) => ({
+          ...f,
+          webViewLink: f.webViewLink || (f.id ? `https://drive.google.com/file/d/${f.id}/view` : '')
+        }));
+
+        // Also merge local server backups if not duplicate
+        try {
+          const sRes = await fetch('/api/gdrive/backups');
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            if (sData.files) {
+              const existingNames = new Set(driveFiles.map((df) => df.name));
+              for (const sf of sData.files) {
+                if (!existingNames.has(sf.name)) {
+                  driveFiles.push({
+                    id: sf.id,
+                    name: sf.name,
+                    mimeType: sf.mimeType || 'application/json',
+                    size: String(sf.size || 0),
+                    createdTime: sf.createdTime,
+                    modifiedTime: sf.modifiedTime,
+                    webViewLink: '',
+                    description: sf.description || `Cadangan Manual Database (${storedAccount?.email || 'Google Drive'})`
+                  });
+                }
+              }
+            }
+          }
+        } catch {}
+
+        return driveFiles;
       }
     } catch (e) {
       console.warn('Direct Google Drive API call failed, reading from server vault:', e);
@@ -233,9 +261,44 @@ export async function uploadFileToDrive(options: {
       });
 
       if (response.ok) {
-        return await response.json();
+        const driveData = await response.json();
+        if (!driveData.webViewLink && driveData.id) {
+          driveData.webViewLink = `https://drive.google.com/file/d/${driveData.id}/view`;
+        }
+        return driveData;
+      } else if (response.status === 401) {
+        throw new Error('UNAUTHORIZED_TOKEN');
+      } else if (metadata.parents) {
+        // Retry upload to root if folder permissions or ID caused failure
+        const fallbackMeta = {
+          name,
+          mimeType,
+          description: description || `Diunggah dari Aplikasi Kasir DEAZBAR pada ${new Date().toLocaleString('id-ID')}`
+        };
+        const fallbackMetaBlob = new Blob(
+          [`${delimiter}Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(fallbackMeta)}${delimiter}Content-Type: ${mimeType}\r\n\r\n`],
+          { type: 'text/plain' }
+        );
+        const retryBody = new Blob([fallbackMetaBlob, contentBlob, footerBlob], {
+          type: `multipart/related; boundary=${boundary}`
+        });
+        const retryRes = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: retryBody
+        });
+        if (retryRes.ok) {
+          const driveData = await retryRes.json();
+          if (!driveData.webViewLink && driveData.id) {
+            driveData.webViewLink = `https://drive.google.com/file/d/${driveData.id}/view`;
+          }
+          return driveData;
+        }
       }
-    } catch (gErr) {
+    } catch (gErr: any) {
+      if (gErr.message === 'UNAUTHORIZED_TOKEN') {
+        throw gErr;
+      }
       console.warn('Upload to Google Drive v3 API failed, using server vault file:', gErr);
     }
   }
