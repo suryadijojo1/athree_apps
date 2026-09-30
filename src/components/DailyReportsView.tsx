@@ -43,6 +43,7 @@ import {
   downloadTransactionReceiptPDF
 } from '../utils/exportUtils';
 import { PrintReceiptModal } from './PrintReceiptModal';
+import { ReviseCashFlowModal } from './ReviseCashFlowModal';
 import { calculateProfit, isAdminOrOwner } from '../utils/profitUtils';
 import { uploadFileToDrive, getOrCreateBackupFolder } from '../services/googleDriveService';
 import { getAccessToken, googleSignIn } from '../services/googleAuth';
@@ -58,6 +59,8 @@ interface DailyReportsViewProps {
   onUpdateShift?: (shift: CashierShift) => void;
   cashFlowRecords?: CashFlowRecord[];
   onAddCashFlow?: (record: Omit<CashFlowRecord, 'id'>) => void;
+  onUpdateCashFlow?: (record: CashFlowRecord) => void;
+  onDeleteCashFlow?: (recordId: string) => void;
 }
 
 export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
@@ -70,7 +73,9 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   shift,
   onUpdateShift,
   cashFlowRecords = [],
-  onAddCashFlow
+  onAddCashFlow,
+  onUpdateCashFlow,
+  onDeleteCashFlow
 }) => {
   const isAdmin = currentUser.role === 'admin';
 
@@ -164,6 +169,17 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   const [driveUploadToast, setDriveUploadToast] = useState<{ message: string; link?: string; isError?: boolean } | null>(null);
   const [printModalTx, setPrintModalTx] = useState<Transaction | null>(null);
 
+  // States: Revisi & Catat Pendapatan Lain / Pengeluaran Toko
+  const [revisingCashFlow, setRevisingCashFlow] = useState<CashFlowRecord | null>(null);
+  const [showReviseCashFlowModal, setShowReviseCashFlowModal] = useState<boolean>(false);
+  const [showAddIncomeModal, setShowAddIncomeModal] = useState<boolean>(false);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState<boolean>(false);
+  const [cashFlowDateInput, setCashFlowDateInput] = useState<string>(todayIsoStr);
+  const [cashFlowCategoryInput, setCashFlowCategoryInput] = useState<string>('Jasa Desain Tambahan');
+  const [cashFlowAmountInput, setCashFlowAmountInput] = useState<number>(50000);
+  const [cashFlowMethodInput, setCashFlowMethodInput] = useState<'TUNAI' | 'TRANSFER'>('TUNAI');
+  const [cashFlowDescInput, setCashFlowDescInput] = useState<string>('');
+
   const formatSelectedReviewDate = (isoStr: string) => {
     try {
       const [y, m, d] = isoStr.split('-');
@@ -219,15 +235,50 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     return reviewDateIncomeRecords.reduce((s, r) => s + r.amount, 0);
   }, [reviewDateIncomeRecords]);
 
+  // Pendapatan lain Tunai (menambah saldo kas fisik toko per hari tgl saat diinput)
+  const reviewDateCashOtherIncome = useMemo(() => {
+    return reviewDateIncomeRecords
+      .filter((r) => r.paymentMethod !== 'TRANSFER')
+      .reduce((s, r) => s + r.amount, 0);
+  }, [reviewDateIncomeRecords]);
+
+  // Pendapatan lain Transfer (hanya tercatat di daftar transaksi, TIDAK ditambahkan ke kas fisik)
+  const reviewDateTransferOtherIncome = useMemo(() => {
+    return reviewDateIncomeRecords
+      .filter((r) => r.paymentMethod === 'TRANSFER')
+      .reduce((s, r) => s + r.amount, 0);
+  }, [reviewDateIncomeRecords]);
+
   const reviewDateExpense = useMemo(() => {
     return reviewDateExpenseRecords.reduce((s, r) => s + r.amount, 0);
   }, [reviewDateExpenseRecords]);
 
-  // Kas di laci tanggal tersebut dikurangi pengeluaran toko dan ditambah pendapatan lain
+  // Pendapatan lain Tunai yang belum masuk ke reviewDateTransactions (mencegah hitung ganda jika tx sudah dibuat)
+  const reviewDateStandaloneCashIncome = useMemo(() => {
+    return reviewDateIncomeRecords
+      .filter(
+        (r) =>
+          r.paymentMethod !== 'TRANSFER' &&
+          (!r.transactionId || !reviewDateTransactions.some((t) => t.id === r.transactionId))
+      )
+      .reduce((s, r) => s + r.amount, 0);
+  }, [reviewDateIncomeRecords, reviewDateTransactions]);
+
+  // Kas di laci tanggal tersebut dikurangi pengeluaran toko dan ditambah pendapatan lain Tunai:
   const reviewDateKasDiLaci =
-    currentStartingCash + reviewDateCashSales + reviewDateOtherIncome - reviewDateExpense;
+    currentStartingCash + reviewDateCashSales + reviewDateStandaloneCashIncome - reviewDateExpense;
+
+  const reviewDateStandaloneOtherIncome = useMemo(() => {
+    return reviewDateIncomeRecords
+      .filter(
+        (r) => !r.transactionId || !reviewDateTransactions.some((t) => t.id === r.transactionId)
+      )
+      .reduce((s, r) => s + r.amount, 0);
+  }, [reviewDateIncomeRecords, reviewDateTransactions]);
+
   const reviewDateTotalSales = reviewDateCashSales + reviewDateNonCashSales;
-  const reviewDateNetRevenue = reviewDateTotalSales + reviewDateOtherIncome - reviewDateExpense;
+  const reviewDateNetRevenue =
+    reviewDateTotalSales + reviewDateStandaloneOtherIncome - reviewDateExpense;
 
   const handleFilterToReviewDate = (dateStr: string) => {
     setDatePreset('custom');
@@ -1005,9 +1056,15 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
               </div>
               {/* Dampak Pendapatan Lain & Pengeluaran Toko untuk tanggal ini */}
               <div className="flex justify-between items-center text-[11px] text-emerald-700 bg-emerald-50/70 px-1.5 py-0.5 rounded">
-                <span className="font-medium">(+) Pendapatan Lain:</span>
-                <span className="font-bold">+{reviewDateOtherIncome.toLocaleString('id-ID')}</span>
+                <span className="font-medium">(+) Pendapatan Lain (Tunai):</span>
+                <span className="font-bold">+{reviewDateCashOtherIncome.toLocaleString('id-ID')}</span>
               </div>
+              {reviewDateTransferOtherIncome > 0 && (
+                <div className="flex justify-between items-center text-[10.5px] text-blue-700 bg-blue-50/70 px-1.5 py-0.5 rounded">
+                  <span className="font-medium">ℹ️ Pendapatan (Transfer):</span>
+                  <span className="font-bold">{reviewDateTransferOtherIncome.toLocaleString('id-ID')} (Non-Kas)</span>
+                </div>
+              )}
               <div className="flex justify-between items-center text-[11px] text-rose-700 bg-rose-50/70 px-1.5 py-0.5 rounded">
                 <span className="font-medium">(-) Pengeluaran Toko:</span>
                 <span className="font-bold">-{reviewDateExpense.toLocaleString('id-ID')}</span>
@@ -1941,8 +1998,8 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                         </td>
                         <td className="py-2.5 px-3">
                           <span className="font-bold text-slate-800 block">{t.customer.name}</span>
-                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-medium mt-0.5">
-                            Sales: {t.orderType}
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-bold mt-0.5">
+                            {t.orderType === 'Pendapatan Lain' ? '⭐ Pendapatan Lain' : `Sales: ${t.orderType}`}
                           </span>
                         </td>
                         <td className="py-2.5 px-3">
@@ -2067,7 +2124,38 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                               </button>
                             )}
 
-                            {onReviseInvoice && (
+                            {/* Tombol Revisi: Khusus Pendapatan Lain vs Faktur Biasa */}
+                            {t.orderType === 'Pendapatan Lain' || t.invoiceNo.startsWith('PL-') ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cf = cashFlowRecords.find(
+                                    (c) => c.transactionId === t.id || c.id === t.id
+                                  );
+                                  if (cf) {
+                                    setRevisingCashFlow(cf);
+                                  } else {
+                                    setRevisingCashFlow({
+                                      id: `cf-${t.id}`,
+                                      transactionId: t.id,
+                                      type: 'INCOME',
+                                      category: t.items[0]?.name || 'Pendapatan Lain',
+                                      amount: t.total,
+                                      description: t.notes || '',
+                                      date: t.date,
+                                      recordedBy: t.cashierName,
+                                      paymentMethod: t.paymentMethod === 'Tunai' ? 'TUNAI' : 'TRANSFER'
+                                    });
+                                  }
+                                  setShowReviseCashFlowModal(true);
+                                }}
+                                title="Revisi Pendapatan Lain"
+                                className="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-[#00871f] border border-emerald-300 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                              >
+                                <FileEdit className="w-3 h-3 text-[#00871f]" />
+                                <span>Revisi</span>
+                              </button>
+                            ) : onReviseInvoice && (
                               <button
                                 onClick={() => onReviseInvoice(t)}
                                 title="Revisi Faktur / Koreksi Kesalahan Input"
@@ -2429,7 +2517,41 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              {onAddCashFlow && (
+                <div className="flex items-center gap-1.5 mr-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCashFlowDateInput(todayIsoStr);
+                      setCashFlowCategoryInput('Jasa Desain Tambahan');
+                      setCashFlowAmountInput(50000);
+                      setCashFlowMethodInput('TUNAI');
+                      setCashFlowDescInput('');
+                      setShowAddIncomeModal(true);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-[#00871f] hover:bg-[#007019] text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>+ Pendapatan Lain</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCashFlowDateInput(todayIsoStr);
+                      setCashFlowCategoryInput('Bahan Baku & Tinta');
+                      setCashFlowAmountInput(50000);
+                      setCashFlowDescInput('');
+                      setShowAddExpenseModal(true);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all"
+                  >
+                    <MinusCircle className="w-3.5 h-3.5" />
+                    <span>- Pengeluaran Toko</span>
+                  </button>
+                </div>
+              )}
+
               <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5">
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
                 <span>+ {formatCurrency(filteredIncomeTotal)}</span>
@@ -2459,9 +2581,11 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                     <th className="py-2.5 px-3">Tanggal</th>
                     <th className="py-2.5 px-3">Jenis Mutasi</th>
                     <th className="py-2.5 px-3">Kategori</th>
+                    <th className="py-2.5 px-3">Metode Kas</th>
                     <th className="py-2.5 px-3">Keterangan</th>
                     <th className="py-2.5 px-3 text-right">Nominal</th>
                     <th className="py-2.5 px-3 text-center">Dicatat Oleh</th>
+                    <th className="py-2.5 px-3 text-center">Aksi Revisi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -2493,10 +2617,30 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                             )}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 text-slate-800 font-medium">
+                        <td className="py-2.5 px-3 text-slate-800 font-medium whitespace-nowrap">
                           {record.category}
                         </td>
-                        <td className="py-2.5 px-3 text-slate-600">
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {isIncome ? (
+                            record.paymentMethod === 'TRANSFER' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                <CreditCard className="w-3 h-3 text-blue-600" />
+                                Transfer (Rekening)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <Coins className="w-3 h-3 text-emerald-600" />
+                                Tunai (Kas Toko)
+                              </span>
+                            )
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                              <Coins className="w-3 h-3 text-rose-600" />
+                              Kas Toko
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate">
                           {record.description || '-'}
                         </td>
                         <td
@@ -2508,6 +2652,42 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                         </td>
                         <td className="py-2.5 px-3 text-center text-slate-500 font-medium whitespace-nowrap">
                           {record.recordedBy || 'Admin'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRevisingCashFlow(record);
+                                setShowReviseCashFlowModal(true);
+                              }}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-[#00871f] font-bold text-[10.5px] rounded-lg transition-colors cursor-pointer flex items-center gap-1 border border-emerald-200 shadow-2xs"
+                              title="Revisi / Edit Data Ini"
+                            >
+                              <FileEdit className="w-3 h-3" />
+                              <span>Revisi</span>
+                            </button>
+                            {onDeleteCashFlow && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (
+                                    confirm(
+                                      `Yakin ingin menghapus catatan ${
+                                        record.type === 'INCOME' ? 'pendapatan' : 'pengeluaran'
+                                      } sebesar ${formatCurrency(record.amount)}?`
+                                    )
+                                  ) {
+                                    onDeleteCashFlow(record.id);
+                                  }
+                                }}
+                                className="p-1 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                title="Hapus Catatan"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -2643,6 +2823,302 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
         isOpen={Boolean(printModalTx)}
         onClose={() => setPrintModalTx(null)}
       />
+
+      {/* Modal: Revisi Pendapatan Lain / Pengeluaran Toko */}
+      <ReviseCashFlowModal
+        isOpen={showReviseCashFlowModal}
+        onClose={() => {
+          setShowReviseCashFlowModal(false);
+          setRevisingCashFlow(null);
+        }}
+        record={revisingCashFlow}
+        onSaveRevision={(updated) => {
+          if (onUpdateCashFlow) {
+            onUpdateCashFlow(updated);
+          }
+        }}
+        onDeleteRecord={(recId) => {
+          if (onDeleteCashFlow) {
+            onDeleteCashFlow(recId);
+          }
+        }}
+        currentUser={currentUser}
+      />
+
+      {/* Modal: Tambah Pendapatan Lain (Langsung dari Laporan) */}
+      {showAddIncomeModal && onAddCashFlow && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-100">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 text-slate-800">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+                Catat Pendapatan Lain
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddIncomeModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (cashFlowAmountInput <= 0) return;
+                const nowTime = new Date().toTimeString().slice(0, 5);
+                const fullDate = `${cashFlowDateInput} ${nowTime}`;
+                onAddCashFlow({
+                  type: 'INCOME',
+                  category: cashFlowCategoryInput,
+                  amount: Number(cashFlowAmountInput),
+                  description: cashFlowDescInput.trim() || 'Pendapatan lain-lain',
+                  date: fullDate,
+                  paymentMethod: cashFlowMethodInput,
+                  recordedBy: currentUser.name
+                });
+                setShowAddIncomeModal(false);
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Tanggal Pendapatan *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={cashFlowDateInput}
+                  onChange={(e) => setCashFlowDateInput(e.target.value)}
+                  className="w-full text-xs font-bold text-emerald-800 bg-emerald-50/50 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Kategori Pendapatan
+                </label>
+                <select
+                  value={cashFlowCategoryInput}
+                  onChange={(e) => setCashFlowCategoryInput(e.target.value)}
+                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white cursor-pointer"
+                >
+                  <option value="Jasa Desain Tambahan">Jasa Desain Tambahan</option>
+                  <option value="Ongkos Kirim / Ekspedisi">Ongkos Kirim / Ekspedisi</option>
+                  <option value="Jasa Maklon Cetak">Jasa Maklon Cetak</option>
+                  <option value="Pendapatan Sewa / Lainnya">Pendapatan Sewa / Lainnya</option>
+                </select>
+              </div>
+
+              {/* Opsi Penerimaan: Transfer / Tunai */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Opsi Penerimaan Pembayaran *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCashFlowMethodInput('TUNAI')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      cashFlowMethodInput === 'TUNAI'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
+                        : 'border-slate-200 bg-slate-50/50 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <Coins className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>💵 Tunai</span>
+                    </div>
+                    <p className="text-[9.5px] text-slate-500 mt-1 leading-tight">
+                      Ditambahkan ke kas toko per hari tgl input &amp; masuk daftar transaksi
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCashFlowMethodInput('TRANSFER')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      cashFlowMethodInput === 'TRANSFER'
+                        ? 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-500/20 shadow-xs'
+                        : 'border-slate-200 bg-slate-50/50 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                      <span>💳 Transfer</span>
+                    </div>
+                    <p className="text-[9.5px] text-slate-500 mt-1 leading-tight">
+                      Tercatat di daftar transaksi, TIDAK ditambahkan ke kas fisik
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Nominal (Rp) *
+                </label>
+                <input
+                  type="number"
+                  min="1000"
+                  step="1000"
+                  required
+                  value={cashFlowAmountInput}
+                  onChange={(e) => setCashFlowAmountInput(Number(e.target.value))}
+                  className="w-full text-sm font-bold px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Keterangan Singkat
+                </label>
+                <input
+                  type="text"
+                  value={cashFlowDescInput}
+                  onChange={(e) => setCashFlowDescInput(e.target.value)}
+                  placeholder="Misal: Biaya vector logo manual"
+                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddIncomeModal(false)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-[#00871f] hover:bg-[#007019] text-white rounded-lg shadow-sm cursor-pointer"
+                >
+                  Simpan Pendapatan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Tambah Pengeluaran Toko (Langsung dari Laporan) */}
+      {showAddExpenseModal && onAddCashFlow && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-100">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 text-slate-800">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <MinusCircle className="w-4 h-4 text-rose-600" />
+                Catat Pengeluaran Toko
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddExpenseModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (cashFlowAmountInput <= 0) return;
+                const nowTime = new Date().toTimeString().slice(0, 5);
+                const fullDate = `${cashFlowDateInput} ${nowTime}`;
+                onAddCashFlow({
+                  type: 'EXPENSE',
+                  category: cashFlowCategoryInput || 'Bahan Baku & Tinta',
+                  amount: Number(cashFlowAmountInput),
+                  description: cashFlowDescInput.trim() || 'Operasional / Pengeluaran toko',
+                  date: fullDate,
+                  recordedBy: currentUser.name
+                });
+                setShowAddExpenseModal(false);
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Tanggal Pengeluaran *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={cashFlowDateInput}
+                  onChange={(e) => setCashFlowDateInput(e.target.value)}
+                  className="w-full text-xs font-bold text-rose-800 bg-rose-50/50 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none cursor-pointer"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Otomatis memotong saldo kas toko tanggal transaksi ini
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Kategori Biaya
+                </label>
+                <select
+                  value={cashFlowCategoryInput}
+                  onChange={(e) => setCashFlowCategoryInput(e.target.value)}
+                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none bg-white cursor-pointer"
+                >
+                  <option value="Bahan Baku & Tinta">Bahan Baku &amp; Tinta Sablon</option>
+                  <option value="Listrik & Operasional">Listrik &amp; Operasional</option>
+                  <option value="Gaji / Uang Makan Staf">Gaji / Uang Makan Staf</option>
+                  <option value="Maintenance Mesin Sablon">Maintenance Mesin Sablon</option>
+                  <option value="Pengeluaran Lainnya">Pengeluaran Lainnya</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Nominal Pengeluaran (Rp) *
+                </label>
+                <input
+                  type="number"
+                  min="1000"
+                  step="1000"
+                  required
+                  value={cashFlowAmountInput}
+                  onChange={(e) => setCashFlowAmountInput(Number(e.target.value))}
+                  className="w-full text-sm font-bold px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Keterangan Pembelian / Pengeluaran
+                </label>
+                <input
+                  type="text"
+                  value={cashFlowDescInput}
+                  onChange={(e) => setCashFlowDescInput(e.target.value)}
+                  placeholder="Misal: Beli tinta plastisol hitam 1kg"
+                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddExpenseModal(false)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm cursor-pointer"
+                >
+                  Simpan Pengeluaran
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

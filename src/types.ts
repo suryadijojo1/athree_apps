@@ -169,8 +169,12 @@ export interface CashFlowRecord {
   description: string;
   date: string;
   recordedBy: string;
+  paymentMethod?: 'TUNAI' | 'TRANSFER' | string;
+  transactionId?: string;
   createdAt?: string;
   shiftId?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface DriveFile {

@@ -289,6 +289,15 @@ export async function saveCashFlowToFirestore(record: CashFlowRecord): Promise<v
   }
 }
 
+export async function deleteCashFlowFromFirestore(recordId: string): Promise<void> {
+  const path = `cashFlowRecords/${recordId}`;
+  try {
+    await deleteDoc(doc(db, 'cashFlowRecords', recordId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 export async function saveShiftToFirestore(shift: CashierShift): Promise<void> {
   const path = `shifts/${shift.id}`;
   try {

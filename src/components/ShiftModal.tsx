@@ -253,8 +253,15 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     const unpaidAmount = unpaidOrders.reduce((sum, t) => sum + (t.remainingAmount || 0), 0);
 
     // Cash flow additions (other income & operational expense) in this shift
+    // Hanya pendapatan lain Tunai yang belum masuk ke shiftTransactions yang dihitung di cashIncome
+    // Jika pendapatan lain metode TRANSFER, TIDAK ditambahkan ke kas laci
     const cashIncome = shiftCashFlows
-      .filter((c) => c.type === 'INCOME')
+      .filter(
+        (c) =>
+          c.type === 'INCOME' &&
+          c.paymentMethod !== 'TRANSFER' &&
+          (!c.transactionId || !shiftTransactions.some((t) => t.id === c.transactionId))
+      )
       .reduce((sum, c) => sum + c.amount, 0);
     const cashExpense = shiftCashFlows
       .filter((c) => c.type === 'EXPENSE')

@@ -63,6 +63,7 @@ import {
   saveTransactionToFirestore,
   deleteTransactionFromFirestore,
   saveCashFlowToFirestore,
+  deleteCashFlowFromFirestore,
   saveShiftToFirestore,
   subscribeToActiveShift,
   saveActiveShiftToFirestore,
@@ -1169,14 +1170,210 @@ export default function App() {
 
   // Handler: Add cash flow (income / expense)
   const handleAddCashFlow = (newRecord: Omit<CashFlowRecord, 'id'>) => {
+    const cfId = `cf-${Date.now()}`;
+    let linkedTxId: string | undefined = undefined;
+
+    // Untuk Pendapatan Lain (INCOME):
+    // Dicatat di daftar transaksi penjualan.
+    // Jika Transfer: tercatat di daftar transaksi penjualan & omset, tapi TIDAK ditambahkan ke kas laci.
+    // Jika Tunai: ditambahkan ke saldo kas toko per hari tgl input & tercatat di daftar transaksi penjualan.
+    if (newRecord.type === 'INCOME') {
+      const isTransfer = newRecord.paymentMethod === 'TRANSFER';
+      const txId = `tx-pl-${Date.now()}`;
+      linkedTxId = txId;
+      const datePart = newRecord.date
+        ? newRecord.date.replace(/[^0-9]/g, '').slice(2, 8)
+        : new Date().toISOString().slice(2, 10).replace(/-/g, '');
+      const invoiceNo = `PL-${datePart}-${Math.floor(100 + Math.random() * 900)}`;
+
+      const newTx: Transaction = {
+        id: txId,
+        invoiceNo,
+        date: newRecord.date || new Date().toISOString().slice(0, 16).replace('T', ' '),
+        dueDate: newRecord.date ? newRecord.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        customer: {
+          id: `cust-pl-${Date.now()}`,
+          name: `Pendapatan Lain (${newRecord.category})`,
+          phone: '-'
+        },
+        orderType: 'Pendapatan Lain',
+        items: [
+          {
+            productId: `prod-pl-${Date.now()}`,
+            name: `${newRecord.category}${newRecord.description ? ' - ' + newRecord.description : ''}`,
+            sku: 'PL',
+            price: newRecord.amount,
+            quantity: 1,
+            subtotal: newRecord.amount
+          }
+        ],
+        subtotal: newRecord.amount,
+        discount: 0,
+        tax: 0,
+        total: newRecord.amount,
+        amountPaid: newRecord.amount,
+        change: 0,
+        paymentMethod: isTransfer ? 'Transfer Bank' : 'Tunai',
+        status: 'Selesai',
+        paymentStatus: 'LUNAS',
+        cashierName: newRecord.recordedBy || currentUser.name,
+        cashierId: currentUser.id,
+        notes: `[Pendapatan Lain] ${newRecord.category}: ${newRecord.description || '-'}`,
+        createdAt: new Date().toISOString(),
+        shiftId: shift?.id
+      };
+
+      setTransactions((prev) => [newTx, ...prev]);
+      saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync tx error:', err));
+    }
+
     const rec: CashFlowRecord = {
       ...newRecord,
-      id: `cf-${Date.now()}`,
+      id: cfId,
+      transactionId: linkedTxId,
       shiftId: shift?.id,
       createdAt: new Date().toISOString()
     };
     setCashFlowRecords((prev) => [rec, ...prev]);
     saveCashFlowToFirestore(rec).catch((err) => console.warn('Sync cashflow error:', err));
+    syncCurrentStateToServer();
+  };
+
+  // Handler: Update / Revisi cash flow (income / expense)
+  const handleUpdateCashFlow = (updatedRecord: CashFlowRecord) => {
+    setCashFlowRecords((prev) =>
+      prev.map((c) =>
+        c.id === updatedRecord.id
+          ? {
+              ...updatedRecord,
+              updatedAt: new Date().toISOString(),
+              updatedBy: currentUser.name
+            }
+          : c
+      )
+    );
+    saveCashFlowToFirestore(updatedRecord).catch((err) =>
+      console.warn('Sync cashflow update error:', err)
+    );
+
+    // If it's an INCOME record, sync changes with linked transaction
+    if (updatedRecord.type === 'INCOME') {
+      const isTransfer = updatedRecord.paymentMethod === 'TRANSFER';
+      if (updatedRecord.transactionId) {
+        setTransactions((prev) =>
+          prev.map((tx) => {
+            if (tx.id === updatedRecord.transactionId) {
+              const updatedTx: Transaction = {
+                ...tx,
+                date: updatedRecord.date || tx.date,
+                dueDate: updatedRecord.date ? updatedRecord.date.slice(0, 10) : tx.dueDate,
+                customer: {
+                  ...tx.customer,
+                  name: `Pendapatan Lain (${updatedRecord.category})`
+                },
+                items: [
+                  {
+                    ...(tx.items[0] || { productId: 'prod-pl', sku: 'PL', quantity: 1 }),
+                    name: `${updatedRecord.category}${
+                      updatedRecord.description ? ' - ' + updatedRecord.description : ''
+                    }`,
+                    price: updatedRecord.amount,
+                    subtotal: updatedRecord.amount
+                  }
+                ],
+                subtotal: updatedRecord.amount,
+                total: updatedRecord.amount,
+                amountPaid: updatedRecord.amount,
+                paymentMethod: isTransfer ? 'Transfer Bank' : 'Tunai',
+                notes: `[Pendapatan Lain] ${updatedRecord.category}: ${
+                  updatedRecord.description || '-'
+                }`
+              };
+              saveTransactionToFirestore(updatedTx).catch((err) =>
+                console.warn('Sync updated tx error:', err)
+              );
+              return updatedTx;
+            }
+            return tx;
+          })
+        );
+      } else {
+        // Create new linked transaction if legacy record lacked one
+        const txId = `tx-pl-${Date.now()}`;
+        const datePart = updatedRecord.date
+          ? updatedRecord.date.replace(/[^0-9]/g, '').slice(2, 8)
+          : new Date().toISOString().slice(2, 10).replace(/-/g, '');
+        const invoiceNo = `PL-${datePart}-${Math.floor(100 + Math.random() * 900)}`;
+
+        const newTx: Transaction = {
+          id: txId,
+          invoiceNo,
+          date: updatedRecord.date || new Date().toISOString().slice(0, 16).replace('T', ' '),
+          dueDate: updatedRecord.date ? updatedRecord.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
+          customer: {
+            id: `cust-pl-${Date.now()}`,
+            name: `Pendapatan Lain (${updatedRecord.category})`,
+            phone: '-'
+          },
+          orderType: 'Pendapatan Lain',
+          items: [
+            {
+              productId: `prod-pl-${Date.now()}`,
+              name: `${updatedRecord.category}${
+                updatedRecord.description ? ' - ' + updatedRecord.description : ''
+              }`,
+              sku: 'PL',
+              price: updatedRecord.amount,
+              quantity: 1,
+              subtotal: updatedRecord.amount
+            }
+          ],
+          subtotal: updatedRecord.amount,
+          discount: 0,
+          tax: 0,
+          total: updatedRecord.amount,
+          amountPaid: updatedRecord.amount,
+          change: 0,
+          paymentMethod: isTransfer ? 'Transfer Bank' : 'Tunai',
+          status: 'Selesai',
+          paymentStatus: 'LUNAS',
+          cashierName: updatedRecord.recordedBy || currentUser.name,
+          cashierId: currentUser.id,
+          notes: `[Pendapatan Lain] ${updatedRecord.category}: ${
+            updatedRecord.description || '-'
+          }`,
+          createdAt: new Date().toISOString(),
+          shiftId: shift?.id
+        };
+
+        updatedRecord.transactionId = txId;
+        setTransactions((prev) => [newTx, ...prev]);
+        saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync tx error:', err));
+        saveCashFlowToFirestore(updatedRecord).catch((err) => console.warn('Sync cf error:', err));
+      }
+    }
+
+    syncCurrentStateToServer();
+  };
+
+  // Handler: Hapus cash flow record (income / expense)
+  const handleDeleteCashFlow = (id: string) => {
+    const target = cashFlowRecords.find((c) => c.id === id);
+    if (!target) return;
+
+    setCashFlowRecords((prev) => prev.filter((c) => c.id !== id));
+    deleteCashFlowFromFirestore(id).catch((err) =>
+      console.warn('Delete cashflow error:', err)
+    );
+
+    if (target.transactionId) {
+      setTransactions((prev) => prev.filter((t) => t.id !== target.transactionId));
+      deleteTransactionFromFirestore(target.transactionId).catch((err) =>
+        console.warn('Delete linked tx error:', err)
+      );
+    }
+
+    syncCurrentStateToServer();
   };
 
   // Handler: Full Login (from LoginScreen)
@@ -2406,6 +2603,8 @@ export default function App() {
           shift={shift}
           cashFlowRecords={cashFlowRecords}
           onAddCashFlow={handleAddCashFlow}
+          onUpdateCashFlow={handleUpdateCashFlow}
+          onDeleteCashFlow={handleDeleteCashFlow}
           onViewReceipt={(tx) => setSuccessTx(tx)}
           onUpdateShift={handleUpdateShift}
           onOpenShiftModal={handleOpenShiftModal}
@@ -2586,6 +2785,8 @@ export default function App() {
               onUpdateShift={handleUpdateShift}
               cashFlowRecords={cashFlowRecords}
               onAddCashFlow={handleAddCashFlow}
+              onUpdateCashFlow={handleUpdateCashFlow}
+              onDeleteCashFlow={handleDeleteCashFlow}
             />
           )}
 

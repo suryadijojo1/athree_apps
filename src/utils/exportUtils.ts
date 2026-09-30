@@ -81,6 +81,7 @@ export const exportSalesToExcel = (
       Tanggal: c.date,
       Tipe: c.type === 'INCOME' ? 'PENDAPATAN LAIN (+)' : 'PENGELUARAN TOKO (-)',
       Kategori: c.category,
+      'Metode Kas': c.type === 'INCOME' ? (c.paymentMethod === 'TRANSFER' ? 'Transfer Bank (Non-Kas)' : 'Tunai (Kas)') : 'Tunai Kas Toko',
       Keterangan: c.description,
       'Nominal (Rp)': c.type === 'INCOME' ? c.amount : -c.amount,
       'Dicatat Oleh': c.recordedBy
