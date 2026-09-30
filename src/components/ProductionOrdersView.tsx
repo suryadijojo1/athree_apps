@@ -27,10 +27,15 @@ import {
   Truck,
   Lock,
   Edit3,
-  Wallet
+  Wallet,
+  SlidersHorizontal,
+  RotateCcw,
+  Download
 } from 'lucide-react';
 import { Transaction, OrderStatus } from '../types';
 import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUtils';
+import { printTransactionDirectly } from '../utils/printUtils';
+import { PrintReceiptModal } from './PrintReceiptModal';
 import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
 
 interface ProductionOrdersViewProps {
@@ -60,6 +65,19 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [editingDueDateTx, setEditingDueDateTx] = useState<Transaction | null>(null);
   const [tempDueDate, setTempDueDate] = useState('');
+
+  // Comprehensive Filter Menu states for Admin/Owner
+  const [showFilterPanel, setShowFilterPanel] = useState<boolean>(false);
+  const [filterDueDateWindow, setFilterDueDateWindow] = useState<'ALL' | 'OVERDUE' | 'TODAY' | 'TOMORROW' | 'NEXT_3_DAYS' | 'THIS_WEEK' | 'THIS_MONTH'>('ALL');
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState<'ALL' | 'LUNAS' | 'PIUTANG'>('ALL');
+  const [filterSales, setFilterSales] = useState<string>('ALL');
+  const [filterDateRange, setFilterDateRange] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'LAST_7_DAYS' | 'THIS_MONTH' | 'CUSTOM'>('ALL');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'DUE_DATE_ASC' | 'DUE_DATE_DESC' | 'DATE_DESC' | 'TOTAL_DESC' | 'PIUTANG_DESC'>('DUE_DATE_ASC');
+
+  // Direct Printer Modal State
+  const [printModalTx, setPrintModalTx] = useState<Transaction | null>(null);
   
   // View mode: Grid vs List (default to list as requested)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
@@ -104,38 +122,173 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   const getDaysDiff = (dueDateStr: string) => {
     if (!dueDateStr) return null;
     const now = new Date();
-    const due = new Date(dueDateStr);
-    const diffTime = due.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dueParts = dueDateStr.split(' ')[0].split('-');
+    if (dueParts.length < 3) return null;
+    const dueZero = new Date(parseInt(dueParts[0], 10), parseInt(dueParts[1], 10) - 1, parseInt(dueParts[2], 10));
+    const diffTime = dueZero.getTime() - todayZero.getTime();
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  // Filter transactions
+  // Distinct sales / pic list from transactions
+  const availableSales = useMemo(() => {
+    const set = new Set<string>();
+    transactions.forEach((t) => {
+      if (t.orderType) set.add(t.orderType);
+      if (t.cashierName) set.add(t.cashierName);
+    });
+    return Array.from(set).filter(Boolean).sort();
+  }, [transactions]);
+
+  // Count active custom filters
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterStatus !== 'ALL') count++;
+    if (filterDueDateWindow !== 'ALL') count++;
+    if (filterPaymentStatus !== 'ALL') count++;
+    if (filterSales !== 'ALL') count++;
+    if (filterDateRange !== 'ALL') count++;
+    if (sortBy !== 'DUE_DATE_ASC') count++;
+    return count;
+  }, [filterStatus, filterDueDateWindow, filterPaymentStatus, filterSales, filterDateRange, sortBy]);
+
+  const handleResetFilters = () => {
+    setFilterStatus('ALL');
+    setFilterDueDateWindow('ALL');
+    setFilterPaymentStatus('ALL');
+    setFilterSales('ALL');
+    setFilterDateRange('ALL');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setSortBy('DUE_DATE_ASC');
+    setSearchQuery('');
+  };
+
+  // Filter and sort transactions
   const filteredList = useMemo(() => {
-    return transactions.filter((t) => {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
+    const yest = new Date(now);
+    yest.setDate(yest.getDate() - 1);
+    const yestStr = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
+
+    const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const d7Time = d7.getTime();
+
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const list = transactions.filter((t) => {
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !q ||
         t.invoiceNo.toLowerCase().includes(q) ||
         t.customer.name.toLowerCase().includes(q) ||
-        t.items.some((i) => i.name.toLowerCase().includes(q));
+        (t.customer.phone && t.customer.phone.toLowerCase().includes(q)) ||
+        (t.notes && t.notes.toLowerCase().includes(q)) ||
+        t.items.some((i) => i.name.toLowerCase().includes(q) || (i.notes && i.notes.toLowerCase().includes(q)));
 
       if (!matchesSearch) return false;
 
       const days = getDaysDiff(t.dueDate);
 
+      // Status filter
       if (filterStatus === 'IN_PROGRESS') {
-        return t.status === 'Sedang Dikerjakan' || t.status === 'Menunggu';
+        if (t.status !== 'Sedang Dikerjakan' && t.status !== 'Menunggu') return false;
+      } else if (filterStatus === 'COMPLETED') {
+        if (t.status !== 'Selesai') return false;
+      } else if (filterStatus === 'OVERDUE') {
+        if (t.status === 'Selesai' || days === null || days >= 0) return false;
       }
-      if (filterStatus === 'COMPLETED') {
-        return t.status === 'Selesai';
+
+      // Due Date Window filter
+      if (filterDueDateWindow === 'OVERDUE') {
+        if (t.status === 'Selesai' || days === null || days >= 0) return false;
+      } else if (filterDueDateWindow === 'TODAY') {
+        if (days === null || days !== 0) return false;
+      } else if (filterDueDateWindow === 'TOMORROW') {
+        if (days === null || days !== 1) return false;
+      } else if (filterDueDateWindow === 'NEXT_3_DAYS') {
+        if (days === null || days < 0 || days > 3) return false;
+      } else if (filterDueDateWindow === 'THIS_WEEK') {
+        if (days === null || days < 0 || days > 7) return false;
+      } else if (filterDueDateWindow === 'THIS_MONTH') {
+        const dDate = t.dueDate ? t.dueDate.split(' ')[0] : '';
+        if (!dDate.startsWith(currentMonthPrefix)) return false;
       }
-      if (filterStatus === 'OVERDUE') {
-        return t.status !== 'Selesai' && days !== null && days < 0;
+
+      // Payment Status filter
+      const isPiutang = Boolean((t.remainingAmount && t.remainingAmount > 0) || t.paymentStatus === 'PIUTANG' || t.paymentStatus === 'DP');
+      if (filterPaymentStatus === 'LUNAS') {
+        if (isPiutang) return false;
+      } else if (filterPaymentStatus === 'PIUTANG') {
+        if (!isPiutang) return false;
       }
+
+      // Sales / Penanggung Jawab filter
+      if (filterSales !== 'ALL') {
+        const matchesSales = t.orderType === filterSales || t.cashierName === filterSales;
+        if (!matchesSales) return false;
+      }
+
+      // Order Entry Date filter
+      const txDate = t.date ? t.date.split(' ')[0] : (t.createdAt ? t.createdAt.slice(0, 10) : '');
+      if (filterDateRange === 'TODAY') {
+        if (!txDate.startsWith(todayStr)) return false;
+      } else if (filterDateRange === 'YESTERDAY') {
+        if (!txDate.startsWith(yestStr)) return false;
+      } else if (filterDateRange === 'LAST_7_DAYS') {
+        const tTime = new Date(txDate).getTime();
+        if (isNaN(tTime) || tTime < d7Time) return false;
+      } else if (filterDateRange === 'THIS_MONTH') {
+        if (!txDate.startsWith(currentMonthPrefix)) return false;
+      } else if (filterDateRange === 'CUSTOM') {
+        if (customStartDate && txDate < customStartDate) return false;
+        if (customEndDate && txDate > customEndDate) return false;
+      }
+
       return true;
     });
-  }, [transactions, filterStatus, searchQuery]);
+
+    // Sorting
+    list.sort((a, b) => {
+      if (sortBy === 'DUE_DATE_ASC') {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      }
+      if (sortBy === 'DUE_DATE_DESC') {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
+      }
+      if (sortBy === 'DATE_DESC') {
+        const timeA = new Date(a.createdAt || a.date).getTime();
+        const timeB = new Date(b.createdAt || b.date).getTime();
+        return timeB - timeA;
+      }
+      if (sortBy === 'TOTAL_DESC') {
+        return b.total - a.total;
+      }
+      if (sortBy === 'PIUTANG_DESC') {
+        return (b.remainingAmount || 0) - (a.remainingAmount || 0);
+      }
+      return 0;
+    });
+
+    return list;
+  }, [
+    transactions,
+    filterStatus,
+    filterDueDateWindow,
+    filterPaymentStatus,
+    filterSales,
+    filterDateRange,
+    customStartDate,
+    customEndDate,
+    sortBy,
+    searchQuery
+  ]);
 
   // Urgent / Overdue count
   const overdueCount = transactions.filter((t) => {
@@ -256,8 +409,28 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
             </button>
           </div>
 
-          {/* Right controls: View Mode Switcher & Search Bar */}
+          {/* Right controls: Filter Toggle, View Mode Switcher & Search Bar */}
           <div className="flex items-center gap-2">
+            {/* Filter Drawer Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowFilterPanel(!showFilterPanel)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                showFilterPanel || activeFiltersCount > 0
+                  ? 'bg-emerald-50 text-[#00871f] border-emerald-300 ring-2 ring-emerald-500/20 shadow-xs'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Menu Filter & Pencarian Pekerjaan"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-[#00871f]" />
+              <span>Filter Pekerjaan</span>
+              {activeFiltersCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-[#00871f] text-white text-[10px] flex items-center justify-center font-bold">
+                  {activeFiltersCount}
+                </span>
+              )}
+            </button>
+
             {/* View Mode Toggle: Grid vs List */}
             <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 shrink-0">
               <button
@@ -301,6 +474,232 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Expandable Filter Menu for Admin & Owner */}
+        {showFilterPanel && (
+          <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-150 text-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div className="flex items-center gap-2 font-bold text-slate-800">
+                <Filter className="w-4 h-4 text-[#00871f]" />
+                <span>Menu Filter &amp; Pencarian Pekerjaan Produksi</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {activeFiltersCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Filter ({activeFiltersCount})</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowFilterPanel(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+              {/* 1. Status Pekerjaan */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Status Pekerjaan:
+                </label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#00871f] focus:outline-none"
+                >
+                  <option value="ALL">Semua Status ({transactions.length})</option>
+                  <option value="IN_PROGRESS">Dalam Antrean / Dikerjakan ({inProgressCount})</option>
+                  <option value="OVERDUE">Lewat Deadline / Urgent ({overdueCount})</option>
+                  <option value="COMPLETED">Selesai Diambil ({completedCount})</option>
+                </select>
+              </div>
+
+              {/* 2. Target Jatuh Tempo */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Target Jatuh Tempo:
+                </label>
+                <select
+                  value={filterDueDateWindow}
+                  onChange={(e) => setFilterDueDateWindow(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#00871f] focus:outline-none"
+                >
+                  <option value="ALL">Semua Deadline</option>
+                  <option value="OVERDUE">Lewat Deadline (Urgent!)</option>
+                  <option value="TODAY">Jatuh Tempo Hari Ini</option>
+                  <option value="TOMORROW">Jatuh Tempo Besok</option>
+                  <option value="NEXT_3_DAYS">3 Hari Ke Depan</option>
+                  <option value="THIS_WEEK">Minggu Ini (7 Hari)</option>
+                  <option value="THIS_MONTH">Bulan Ini</option>
+                </select>
+              </div>
+
+              {/* 3. Status Pembayaran */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Status Pembayaran:
+                </label>
+                <select
+                  value={filterPaymentStatus}
+                  onChange={(e) => setFilterPaymentStatus(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#00871f] focus:outline-none"
+                >
+                  <option value="ALL">Semua Pembayaran</option>
+                  <option value="LUNAS">Lunas</option>
+                  <option value="PIUTANG">Ada Piutang / Belum Lunas</option>
+                </select>
+              </div>
+
+              {/* 4. Sales / Penanggung Jawab */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Sales / PIC:
+                </label>
+                <select
+                  value={filterSales}
+                  onChange={(e) => setFilterSales(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#00871f] focus:outline-none"
+                >
+                  <option value="ALL">Semua Sales / Kasir</option>
+                  {availableSales.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 5. Tanggal Pesanan Masuk */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Tanggal Masuk Order:
+                </label>
+                <select
+                  value={filterDateRange}
+                  onChange={(e) => setFilterDateRange(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#00871f] focus:outline-none"
+                >
+                  <option value="ALL">Semua Waktu</option>
+                  <option value="TODAY">Hari Ini</option>
+                  <option value="YESTERDAY">Kemarin</option>
+                  <option value="LAST_7_DAYS">7 Hari Terakhir</option>
+                  <option value="THIS_MONTH">Bulan Ini</option>
+                  <option value="CUSTOM">Rentang Tanggal Kustom...</option>
+                </select>
+              </div>
+
+              {/* 6. Urutkan (Sort By) */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Urutkan Berdasarkan:
+                </label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#00871f] focus:outline-none"
+                >
+                  <option value="DUE_DATE_ASC">Deadline Terdekat (Mendesak)</option>
+                  <option value="DUE_DATE_DESC">Deadline Terjauh</option>
+                  <option value="DATE_DESC">Pesanan Masuk Terbaru</option>
+                  <option value="TOTAL_DESC">Total Nilai Terbesar</option>
+                  <option value="PIUTANG_DESC">Sisa Piutang Terbesar</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Custom Date Inputs if selected */}
+            {filterDateRange === 'CUSTOM' && (
+              <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-3">
+                <span className="text-xs font-bold text-slate-600">Rentang Tanggal:</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                  />
+                  <span className="text-slate-400">s/d</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Active Filters Badges Strip */}
+        {activeFiltersCount > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-100 text-xs">
+            <span className="text-[11px] font-bold text-slate-500 mr-1 flex items-center gap-1">
+              <Filter className="w-3 h-3 text-[#00871f]" />
+              <span>Filter Aktif ({filteredList.length} ditemukan):</span>
+            </span>
+
+            {filterStatus !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-[#00871f] border border-emerald-200 rounded-md text-[11px] font-medium">
+                <span>Status: {filterStatus}</span>
+                <button type="button" onClick={() => setFilterStatus('ALL')} className="hover:text-emerald-900 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {filterDueDateWindow !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-md text-[11px] font-medium">
+                <span>Deadline: {filterDueDateWindow}</span>
+                <button type="button" onClick={() => setFilterDueDateWindow('ALL')} className="hover:text-amber-950 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {filterPaymentStatus !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-[11px] font-medium">
+                <span>Bayar: {filterPaymentStatus}</span>
+                <button type="button" onClick={() => setFilterPaymentStatus('ALL')} className="hover:text-blue-900 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {filterSales !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md text-[11px] font-medium">
+                <span>PIC: {filterSales}</span>
+                <button type="button" onClick={() => setFilterSales('ALL')} className="hover:text-purple-900 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {filterDateRange !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-[11px] font-medium">
+                <span>Waktu: {filterDateRange}</span>
+                <button type="button" onClick={() => setFilterDateRange('ALL')} className="hover:text-indigo-900 cursor-pointer">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="text-[11px] text-rose-600 hover:text-rose-800 font-bold ml-auto cursor-pointer flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Hapus Semua Filter</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Content Area */}
@@ -526,12 +925,15 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                               </button>
                             )}
 
-                            {/* Tombol Cetak SPK */}
+                            {/* Tombol Cetak SPK ke Printer */}
                             <button
                               type="button"
-                              onClick={() => downloadTransactionReceiptPDF(t)}
-                              className="p-1 text-slate-400 hover:text-emerald-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                              title="Unduh SPK / Struk PDF"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPrintModalTx(t);
+                              }}
+                              className="p-1 text-slate-400 hover:text-[#00871f] hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+                              title="Cetak SPK / Struk Langsung ke Printer"
                             >
                               <Printer className="w-3.5 h-3.5" />
                             </button>
@@ -748,9 +1150,9 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         </button>
                       )}
                       <button
-                        onClick={() => downloadTransactionReceiptPDF(t)}
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-100 cursor-pointer"
-                        title="Unduh Struk / SPK Cetak"
+                        onClick={() => setPrintModalTx(t)}
+                        className="p-1.5 text-slate-400 hover:text-[#00871f] rounded-lg hover:bg-slate-100 cursor-pointer"
+                        title="Cetak SPK / Struk Langsung ke Printer"
                       >
                         <Printer className="w-4 h-4" />
                       </button>
@@ -1250,14 +1652,26 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                     </button>
                   )}
 
+                  {/* Cetak SPK Langsung ke Printer */}
+                  <button
+                    type="button"
+                    onClick={() => setPrintModalTx(previewTx)}
+                    className="px-3.5 py-2 bg-[#00871f] hover:bg-[#007019] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                    title="Cetak SPK / Struk langsung ke printer (tampilkan dialog printer)"
+                  >
+                    <Printer className="w-4 h-4 text-white" />
+                    <span>Cetak ke Printer</span>
+                  </button>
+
                   {/* Unduh SPK / PDF */}
                   <button
                     type="button"
                     onClick={() => downloadTransactionReceiptPDF(previewTx)}
-                    className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Unduh file PDF ke komputer"
                   >
-                    <Printer className="w-4 h-4 text-emerald-600" />
-                    <span>Unduh SPK (PDF)</span>
+                    <Download className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Unduh PDF</span>
                   </button>
 
                   {/* Buka Struk Resmi */}
@@ -1329,6 +1743,13 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Cetak Langsung ke Printer */}
+      <PrintReceiptModal
+        transaction={printModalTx}
+        isOpen={Boolean(printModalTx)}
+        onClose={() => setPrintModalTx(null)}
+      />
     </div>
   );
 };

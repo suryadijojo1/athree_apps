@@ -85,6 +85,7 @@ import {
   saveServerDatabase,
   saveServerBackupSnapshot,
   subscribeToServerEvents,
+  startLiveShiftSync,
   syncShiftToServer,
   isRealUserData,
   AppDatabasePayload
@@ -106,7 +107,14 @@ const shouldApplyRemoteShift = (remoteShift: CashierShift, prevShift: CashierShi
   if (remoteShift.id === 'shift-test') return false;
   if (!prevShift) return true;
 
-  // RULE: If local cashier is currently OPEN (prevShift.isOpen === true),
+  // RULE 1: If remote shift is OPEN and local shift is NOT open,
+  // ALWAYS apply it immediately! The cashier has been opened in another browser.
+  if (remoteShift.isOpen && !prevShift.isOpen) {
+    console.log('Real-Time Sync: Remote shift is OPEN, transitioning local cashier to OPEN');
+    return true;
+  }
+
+  // RULE 2: If local cashier is currently OPEN (prevShift.isOpen === true),
   // NEVER close it automatically unless the remote shift has an EXPLICIT closure with endTime
   if (prevShift.isOpen && !remoteShift.isOpen) {
     const isExplicitClose = Boolean(remoteShift.endTime) && (
@@ -615,17 +623,23 @@ export default function App() {
 
     checkAndSyncCentralServer();
 
-    // Fast-fetch active live shift from central server for instant cross-browser agreement
-    fetchCurrentShiftFromServer().then((remoteShift) => {
+    // Reusable handler to apply remote shift changes across all sync mechanisms
+    const applyShiftUpdate = (remoteShift: CashierShift) => {
       if (!isSubscribed || !remoteShift) return;
       setShift((prevShift) => {
         if (shouldApplyRemoteShift(remoteShift, prevShift)) {
-          console.log('Real-Time Sync: Initial active shift synced from server:', {
+          console.log('Real-Time Live Shift: Syncing active shift from central server:', {
             isOpen: remoteShift.isOpen,
             startTime: remoteShift.startTime,
             cashierName: remoteShift.cashierName
           });
           localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
+          if (remoteShift.isOpen) {
+            localStorage.setItem('athree_shift_active_persistent', JSON.stringify(remoteShift));
+          } else {
+            localStorage.removeItem('athree_shift_active_persistent');
+          }
+          latestStateRef.current.shift = remoteShift;
           return remoteShift;
         } else if (prevShift.isOpen && (!remoteShift.isOpen || remoteShift.id !== prevShift.id)) {
           // Local browser has open cashier, ensure server knows about this active open shift
@@ -633,31 +647,50 @@ export default function App() {
         }
         return prevShift;
       });
+    };
+
+    // Fast-fetch active live shift from central server for instant cross-browser agreement
+    fetchCurrentShiftFromServer().then((remoteShift) => {
+      if (remoteShift) applyShiftUpdate(remoteShift);
     }).catch(() => {});
 
-    const unsubServer = subscribeToServerEvents((remoteData) => {
-      if (!isSubscribed) return;
-      console.log('Central Server: Received real-time live update from another browser');
-      applyFullDatabasePayload(remoteData);
+    // Ultra-fast dedicated live shift synchronizer (1.5s heartbeat)
+    const unsubLiveShift = startLiveShiftSync((liveShift) => {
+      applyShiftUpdate(liveShift);
     });
+
+    const unsubServer = subscribeToServerEvents(
+      (remoteData) => {
+        if (!isSubscribed) return;
+        applyFullDatabasePayload(remoteData);
+      },
+      (liveShift) => {
+        applyShiftUpdate(liveShift);
+      }
+    );
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkAndSyncCentralServer();
         fetchCurrentShiftFromServer().then((remoteShift) => {
-          if (!isSubscribed || !remoteShift) return;
-          setShift((prevShift) => {
-            if (shouldApplyRemoteShift(remoteShift, prevShift)) {
-              localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
-              return remoteShift;
-            }
-            return prevShift;
-          });
+          if (remoteShift) applyShiftUpdate(remoteShift);
         }).catch(() => {});
       }
     };
     window.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', checkAndSyncCentralServer);
+
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'athree_shift' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed && typeof parsed.isOpen === 'boolean') {
+            applyShiftUpdate(parsed);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
 
     let bc: BroadcastChannel | null = null;
     try {
@@ -857,9 +890,11 @@ export default function App() {
 
     return () => {
       isSubscribed = false;
+      unsubLiveShift();
       unsubServer();
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', checkAndSyncCentralServer);
+      window.removeEventListener('storage', handleStorageEvent);
       if (bc) bc.close();
       unsubProducts();
       unsubTransactions();

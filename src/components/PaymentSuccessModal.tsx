@@ -1,7 +1,9 @@
-import React from 'react';
-import { CheckCircle2, Printer, Download, Share2, X, Clock, Calendar, FileEdit, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckCircle2, Printer, Download, Share2, X, Clock, Calendar, FileEdit, Trash2, Settings2 } from 'lucide-react';
 import { Transaction } from '../types';
 import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUtils';
+import { printTransactionDirectly } from '../utils/printUtils';
+import { PrintReceiptModal } from './PrintReceiptModal';
 
 interface PaymentSuccessModalProps {
   transaction: Transaction | null;
@@ -18,9 +20,18 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
   onDelete,
   isAdmin = false
 }) => {
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [isPrintingDirect, setIsPrintingDirect] = useState(false);
+
   if (!transaction) return null;
 
   const isPiutang = Boolean(transaction.remainingAmount && transaction.remainingAmount > 0);
+
+  const handleDirectPrint = async () => {
+    setIsPrintingDirect(true);
+    await printTransactionDirectly(transaction, { format: 'thermal80' });
+    setIsPrintingDirect(false);
+  };
 
   const handleShareWA = () => {
     const piutangInfo = isPiutang
@@ -112,13 +123,30 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
 
         {/* Action Buttons */}
         <div className="space-y-2">
-          <button
-            onClick={() => downloadTransactionReceiptPDF(transaction)}
-            className="w-full py-2.5 bg-[#00871f] hover:bg-[#007019] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-emerald-200 transition-all cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Cetak / Unduh Struk (PDF)</span>
-          </button>
+          {/* Main Direct Print to Printer */}
+          <div className="flex gap-2">
+            <button
+              onClick={handleDirectPrint}
+              disabled={isPrintingDirect}
+              className="flex-1 py-2.5 bg-[#00871f] hover:bg-[#007019] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-emerald-200 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+              title="Kirim struk langsung ke printer (tampilkan pilihan printer)"
+            >
+              <Printer className="w-4 h-4" />
+              <span>{isPrintingDirect ? 'Mengirim ke Printer...' : 'Cetak Langsung ke Printer'}</span>
+            </button>
+            <button
+              onClick={() => setShowPrintModal(true)}
+              className="px-3 py-2.5 bg-emerald-100 hover:bg-emerald-200 text-[#00871f] rounded-xl flex items-center justify-center transition-colors cursor-pointer"
+              title="Opsi Printer & Ukuran Kertas (Thermal 80mm/58mm/SPK)"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="text-[10px] text-center text-slate-500 font-medium flex items-center justify-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00871f]" />
+            <span>Tujuan Printer: Langsung ke dialog cetak printer (Bukan Download)</span>
+          </div>
 
           {onRevise && (
             <button
@@ -162,6 +190,13 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Dedicated Print to Printer Modal */}
+      <PrintReceiptModal
+        transaction={transaction}
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+      />
     </div>
   );
 };

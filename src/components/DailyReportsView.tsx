@@ -42,6 +42,7 @@ import {
   exportSalesToPDF,
   downloadTransactionReceiptPDF
 } from '../utils/exportUtils';
+import { PrintReceiptModal } from './PrintReceiptModal';
 import { calculateProfit, isAdminOrOwner } from '../utils/profitUtils';
 import { uploadFileToDrive, getOrCreateBackupFolder } from '../services/googleDriveService';
 import { getAccessToken, googleSignIn } from '../services/googleAuth';
@@ -161,6 +162,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
   const [driveUploadToast, setDriveUploadToast] = useState<{ message: string; link?: string; isError?: boolean } | null>(null);
+  const [printModalTx, setPrintModalTx] = useState<Transaction | null>(null);
 
   const formatSelectedReviewDate = (isoStr: string) => {
     try {
@@ -2083,8 +2085,8 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                               <Eye className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => downloadTransactionReceiptPDF(t)}
-                              title="Unduh Struk PDF"
+                              onClick={() => setPrintModalTx(t)}
+                              title="Cetak Struk Langsung ke Printer"
                               className="p-1 hover:text-[#00871f] text-slate-400 transition-colors cursor-pointer"
                             >
                               <Printer className="w-3.5 h-3.5" />
@@ -2634,6 +2636,13 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Direct Printer Modal */}
+      <PrintReceiptModal
+        transaction={printModalTx}
+        isOpen={Boolean(printModalTx)}
+        onClose={() => setPrintModalTx(null)}
+      />
     </div>
   );
 };

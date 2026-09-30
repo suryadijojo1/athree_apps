@@ -126,6 +126,19 @@ async function startServer() {
     for (const client of sseClients) {
       try {
         client.write(`data: ${data}\n\n`);
+        (client as any).flush?.();
+      } catch {
+        sseClients.delete(client);
+      }
+    }
+  }
+
+  function broadcastShiftUpdate(shift: any) {
+    const data = JSON.stringify({ type: 'shift', shift, timestamp: Date.now() });
+    for (const client of sseClients) {
+      try {
+        client.write(`data: ${data}\n\n`);
+        (client as any).flush?.();
       } catch {
         sseClients.delete(client);
       }
@@ -226,9 +239,17 @@ async function startServer() {
       if (currentDbState?.currentShift?.isOpen === true) {
         if (!payload.currentShift) {
           payload.currentShift = currentDbState.currentShift;
-        } else if (payload.currentShift.isOpen === false && !payload.currentShift.endTime) {
-          // Closed without an explicit close timestamp - retain active open shift
-          payload.currentShift = currentDbState.currentShift;
+        } else if (payload.currentShift.isOpen === false) {
+          // Check if this is an explicit valid closure of the current open shift
+          const isExplicitClose = Boolean(payload.currentShift.endTime) && (
+            payload.currentShift.id === currentDbState.currentShift.id ||
+            (Boolean(payload.currentShift.endTimestamp) && Boolean(currentDbState.currentShift.startTimestamp) &&
+             Number(payload.currentShift.endTimestamp) >= Number(currentDbState.currentShift.startTimestamp))
+          );
+          if (!isExplicitClose) {
+            // Incoming payload has an old or unrelated closed shift - preserve the active OPEN shift!
+            payload.currentShift = currentDbState.currentShift;
+          }
         }
       } else if (!payload.currentShift && currentDbState?.currentShift) {
         payload.currentShift = currentDbState.currentShift;
@@ -394,8 +415,9 @@ async function startServer() {
 
   app.get('/api/database/events', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
     sseClients.add(res);
@@ -403,16 +425,18 @@ async function startServer() {
     // Send initial snapshot if available
     if (currentDbState) {
       res.write(`data: ${JSON.stringify({ type: 'initial', data: currentDbState })}\n\n`);
+      (res as any).flush?.();
     }
 
     const pingInterval = setInterval(() => {
       try {
         res.write(': keep-alive ping\n\n');
+        (res as any).flush?.();
       } catch {
         clearInterval(pingInterval);
         sseClients.delete(res);
       }
-    }, 20000);
+    }, 15000);
 
     req.on('close', () => {
       clearInterval(pingInterval);
@@ -423,9 +447,11 @@ async function startServer() {
   // Live Active Shift Endpoints for Instant Real-Time Cross-Browser Integration
   app.get('/api/shift/current', (req, res) => {
     try {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.json({
         success: true,
-        shift: currentDbState?.currentShift || null
+        shift: currentDbState?.currentShift || null,
+        timestamp: Date.now()
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -473,7 +499,8 @@ async function startServer() {
       }
       fs.writeFileSync(DB_FILE_PATH, JSON.stringify(currentDbState, null, 2), 'utf-8');
 
-      // Immediately broadcast database update containing updated shift to all SSE clients
+      // Immediately broadcast both dedicated shift event and database update to all SSE clients
+      broadcastShiftUpdate(currentDbState.currentShift);
       broadcastDatabaseUpdate(currentDbState);
 
       res.json({

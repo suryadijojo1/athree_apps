@@ -189,7 +189,8 @@ export async function restoreServerBackup(backupId: string): Promise<boolean> {
  * Subscribe to real-time updates broadcasted by the central server via Server-Sent Events (SSE)
  */
 export function subscribeToServerEvents(
-  onUpdate: (payload: AppDatabasePayload) => void
+  onUpdate: (payload: AppDatabasePayload) => void,
+  onShiftUpdate?: (shift: CashierShift) => void
 ): () => void {
   let isClosed = false;
   let eventSource: EventSource | null = null;
@@ -204,10 +205,16 @@ export function subscribeToServerEvents(
       eventSource.onmessage = (e) => {
         try {
           const parsed = JSON.parse(e.data);
-          if (parsed && parsed.data) {
-            // If the update came from this tab itself, ignore to avoid redundant state thrashing
-            if (parsed.data.sourceClient === CLIENT_ID) return;
-            onUpdate(parsed.data);
+          if (parsed) {
+            if (parsed.type === 'shift' && parsed.shift) {
+              if (onShiftUpdate) onShiftUpdate(parsed.shift);
+            } else if (parsed.data) {
+              if (parsed.data.sourceClient === CLIENT_ID) return;
+              onUpdate(parsed.data);
+              if (parsed.data.currentShift && onShiftUpdate) {
+                onShiftUpdate(parsed.data.currentShift);
+              }
+            }
           }
         } catch (err) {
           console.warn('Error parsing SSE database event:', err);
@@ -220,12 +227,12 @@ export function subscribeToServerEvents(
           eventSource = null;
         }
         if (!isClosed) {
-          reconnectTimeout = setTimeout(connect, 3000);
+          reconnectTimeout = setTimeout(connect, 2000);
         }
       };
     } catch (err) {
       if (!isClosed) {
-        reconnectTimeout = setTimeout(connect, 5000);
+        reconnectTimeout = setTimeout(connect, 3000);
       }
     }
   }
@@ -233,20 +240,67 @@ export function subscribeToServerEvents(
   // Connect SSE
   connect();
 
-  // Also maintain a periodic 10-second sync heartbeat as fallback
+  // Also maintain a periodic 3-second sync heartbeat as fallback
   pollInterval = setInterval(async () => {
     if (isClosed) return;
     const { success, data } = await fetchServerDatabase();
-    if (success && data && data.sourceClient !== CLIENT_ID) {
-      onUpdate(data);
+    if (success && data) {
+      if (data.sourceClient !== CLIENT_ID) {
+        onUpdate(data);
+      }
+      if (data.currentShift && onShiftUpdate) {
+        onShiftUpdate(data.currentShift);
+      }
     }
-  }, 10000);
+  }, 3000);
 
   return () => {
     isClosed = true;
     if (eventSource) eventSource.close();
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
     if (pollInterval) clearInterval(pollInterval);
+  };
+}
+
+/**
+ * Dedicated ultra-fast live shift synchronizer (1.5-second heartbeat)
+ * Guarantees that opening or closing cashier in Browser 1 is instantly detected by Browser 2
+ */
+export function startLiveShiftSync(onShiftUpdate: (shift: CashierShift) => void): () => void {
+  let isClosed = false;
+  let lastShiftJson = '';
+
+  const checkShift = async () => {
+    if (isClosed) return;
+    try {
+      const shift = await fetchCurrentShiftFromServer();
+      if (isClosed || !shift) return;
+      const currentJson = JSON.stringify({
+        id: shift.id,
+        isOpen: shift.isOpen,
+        startTime: shift.startTime,
+        startTimestamp: shift.startTimestamp,
+        startingCash: shift.startingCash,
+        cashierName: shift.cashierName,
+        endTime: shift.endTime,
+        actualCash: shift.actualCash
+      });
+      if (currentJson !== lastShiftJson) {
+        lastShiftJson = currentJson;
+        onShiftUpdate(shift);
+      }
+    } catch {}
+  };
+
+  // Run immediately
+  checkShift();
+
+  // Heartbeat every 1.5 seconds
+  const interval = setInterval(checkShift, 1500);
+
+  return () => {
+    isClosed = true;
+    clearInterval(interval);
   };
 }
 
@@ -279,7 +333,13 @@ export async function syncShiftToServer(
  */
 export async function fetchCurrentShiftFromServer(): Promise<CashierShift | null> {
   try {
-    const res = await fetch('/api/shift/current', { cache: 'no-store' });
+    const res = await fetch(`/api/shift/current?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    });
     if (!res.ok) return null;
     const json = await res.json();
     return json.shift || null;
