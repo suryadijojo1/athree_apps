@@ -47,6 +47,7 @@ import {
   getOrCreateBackupFolder,
   BACKUP_FOLDER_NAME
 } from '../services/googleDriveService';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { DriveFile, Transaction, Product, CashFlowRecord, CashierShift, User, KaosStockItem, Customer, StockMovement } from '../types';
 
 interface GoogleDriveViewProps {
@@ -354,7 +355,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         const host = err.hostname || (typeof window !== 'undefined' ? window.location.hostname : '');
         setUnauthorizedDomainInfo({
           hostname: host,
-          projectId: err.projectId || 'gen-lang-client-0253908527'
+          projectId: err.projectId || firebaseConfig.projectId
         });
         setAuthError(`Domain "${host}" belum diizinkan di Firebase Authentication.`);
         showNotification('error', `Domain "${host}" belum diotorisasi di Firebase Authentication.`);
