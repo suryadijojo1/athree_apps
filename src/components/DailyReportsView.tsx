@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   BarChart3,
   FileSpreadsheet,
@@ -34,7 +34,8 @@ import {
   Cloud,
   Check,
   Wallet,
-  Building2
+  Building2,
+  Lock
 } from 'lucide-react';
 import { Transaction, User, CashierShift, CashFlowRecord } from '../types';
 import {
@@ -48,6 +49,7 @@ import { ReviseCashFlowModal } from './ReviseCashFlowModal';
 import { calculateProfit, isAdminOrOwner } from '../utils/profitUtils';
 import { uploadFileToDrive, getOrCreateBackupFolder } from '../services/googleDriveService';
 import { getAccessToken, googleSignIn } from '../services/googleAuth';
+import { SalesProfitReportView } from './SalesProfitReportView';
 
 interface DailyReportsViewProps {
   transactions: Transaction[];
@@ -62,6 +64,8 @@ interface DailyReportsViewProps {
   onAddCashFlow?: (record: Omit<CashFlowRecord, 'id'>) => void;
   onUpdateCashFlow?: (record: CashFlowRecord) => void;
   onDeleteCashFlow?: (recordId: string) => void;
+  salesList?: string[];
+  initialSubTab?: 'daily_sales' | 'sales_profit';
 }
 
 export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
@@ -76,9 +80,18 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   cashFlowRecords = [],
   onAddCashFlow,
   onUpdateCashFlow,
-  onDeleteCashFlow
+  onDeleteCashFlow,
+  salesList = ['Kasir (Dimas)', 'Admin (DEAZBAR)'],
+  initialSubTab = 'daily_sales'
 }) => {
   const isAdmin = currentUser.role === 'admin';
+  const [subTab, setSubTab] = useState<'daily_sales' | 'sales_profit'>(initialSubTab);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
 
   // Dynamic calendar dates
   const todayObj = useMemo(() => new Date(), []);
@@ -870,8 +883,94 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     }
   };
 
+  // If Admin chose to view Sales Profit Report sub-feature
+  if (subTab === 'sales_profit' && isAdmin) {
+    return (
+      <div className="flex-1 flex flex-col h-full bg-slate-100 overflow-hidden">
+        {/* Sub-tab Navigation */}
+        <div className="bg-slate-900 px-4 py-2.5 flex items-center justify-between border-b border-slate-800 text-xs shrink-0 select-none shadow-sm">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSubTab('daily_sales')}
+              className="px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer text-slate-300 hover:text-white hover:bg-slate-800"
+            >
+              <BarChart3 className="w-4 h-4 text-slate-400" />
+              <span>1. Laporan Transaksi &amp; Arus Kas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSubTab('sales_profit')}
+              className="px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-[#00871f] text-white shadow-xs"
+            >
+              <TrendingUp className="w-4 h-4 text-emerald-200" />
+              <span>2. Laporan Keuntungan Seluruh Sales</span>
+              <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-white/20 text-white">
+                Khusus Admin
+              </span>
+            </button>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Lock className="w-3 h-3 text-emerald-400" />
+            <span>Mode Akses: <strong className="text-emerald-400">Admin / Owner</strong></span>
+          </div>
+        </div>
+
+        <SalesProfitReportView
+          transactions={transactions}
+          currentUser={currentUser}
+          salesList={salesList}
+          onViewReceipt={onViewReceipt}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-100 overflow-hidden">
+      {/* Sub-tab Navigation (Khusus Admin) */}
+      {isAdmin && (
+        <div className="bg-slate-900 px-4 py-2.5 flex items-center justify-between border-b border-slate-800 text-xs shrink-0 select-none shadow-sm">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSubTab('daily_sales')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                subTab === 'daily_sales'
+                  ? 'bg-[#00871f] text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 text-slate-200" />
+              <span>1. Laporan Transaksi &amp; Arus Kas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSubTab('sales_profit')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                subTab === 'sales_profit'
+                  ? 'bg-[#00871f] text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <span>2. Laporan Keuntungan Seluruh Sales</span>
+              <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-500/30 text-emerald-300 border border-emerald-400/40">
+                Khusus Admin
+              </span>
+            </button>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Lock className="w-3 h-3 text-emerald-400" />
+            <span>Mode Akses: <strong className="text-emerald-400">Admin / Owner</strong></span>
+          </div>
+        </div>
+      )}
+
       {/* Top Header & Export Bar */}
       <div className="bg-white border-b border-slate-200 p-4 shrink-0">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

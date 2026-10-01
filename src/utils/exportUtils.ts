@@ -581,3 +581,199 @@ export const downloadKaosStockAdjustmentTemplate = (
   }
 };
 
+export interface SalesProfitSummaryItem {
+  salesName: string;
+  orderCount: number;
+  totalInvoice: number;
+  vendorCost: number;
+  shippingCost: number;
+  profit: number;
+  marginPercent: string;
+}
+
+/**
+ * Export Sales Profit Report to Excel (.xlsx) with 2 sheets:
+ * Sheet 1: Rekap Per Sales
+ * Sheet 2: Rincian Faktur Penjualan
+ */
+export const exportSalesProfitToExcel = (
+  summaryData: SalesProfitSummaryItem[],
+  transactions: Transaction[],
+  periodLabel: string
+) => {
+  // Sheet 1: Rekap Keuntungan Per Sales
+  const summaryRows = summaryData.map((s, idx) => ({
+    'No': idx + 1,
+    'Petugas Sales': s.salesName,
+    'Jumlah Faktur': s.orderCount,
+    'Total Nilai Faktur (Rp)': s.totalInvoice,
+    'Biaya Vendor (Rp)': s.vendorCost,
+    'Biaya Pengiriman (Rp)': s.shippingCost,
+    'Hasil Keuntungan (Rp)': s.profit,
+    'Margin Keuntungan (%)': s.marginPercent + '%'
+  }));
+
+  // Add Grand Total row to Sheet 1
+  const grandTotalInvoice = summaryData.reduce((acc, s) => acc + s.totalInvoice, 0);
+  const grandVendorCost = summaryData.reduce((acc, s) => acc + s.vendorCost, 0);
+  const grandShippingCost = summaryData.reduce((acc, s) => acc + s.shippingCost, 0);
+  const grandProfit = grandTotalInvoice - (grandVendorCost + grandShippingCost);
+  const grandMargin = grandTotalInvoice > 0 ? ((grandProfit / grandTotalInvoice) * 100).toFixed(1) : '0';
+
+  summaryRows.push({
+    'No': 'TOTAL' as any,
+    'Petugas Sales': 'SEMUA SALES TERPILIH',
+    'Jumlah Faktur': summaryData.reduce((acc, s) => acc + s.orderCount, 0),
+    'Total Nilai Faktur (Rp)': grandTotalInvoice,
+    'Biaya Vendor (Rp)': grandVendorCost,
+    'Biaya Pengiriman (Rp)': grandShippingCost,
+    'Hasil Keuntungan (Rp)': grandProfit,
+    'Margin Keuntungan (%)': grandMargin + '%'
+  });
+
+  // Sheet 2: Rincian Faktur Transaksi
+  const detailRows = transactions.map((t, idx) => {
+    const vCost = t.vendorCost || 0;
+    const sCost = t.shippingCost || 0;
+    const profit = t.total - (vCost + sCost);
+    const margin = t.total > 0 ? ((profit / t.total) * 100).toFixed(1) : '0';
+    return {
+      'No': idx + 1,
+      'No Faktur': t.invoiceNo,
+      'Tanggal': t.date,
+      'Petugas Sales': t.orderType,
+      'Pelanggan': t.customer.name,
+      'Nama Vendor': t.vendorName || '-',
+      'Total Nilai Faktur (Rp)': t.total,
+      'Biaya Vendor (Rp)': vCost,
+      'Biaya Pengiriman (Rp)': sCost,
+      'Hasil Keuntungan (Rp)': profit,
+      'Margin (%)': margin + '%',
+      'Metode Bayar': t.paymentMethod,
+      'Status': t.status
+    };
+  });
+
+  const workbook = XLSX.utils.book_new();
+  const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+  const detailSheet = XLSX.utils.json_to_sheet(detailRows);
+
+  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Rekap Keuntungan Sales');
+  XLSX.utils.book_append_sheet(workbook, detailSheet, 'Rincian Faktur');
+
+  const cleanPeriod = periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_');
+  XLSX.writeFile(workbook, `Laporan_Keuntungan_Sales_${cleanPeriod}_${Date.now()}.xlsx`);
+};
+
+/**
+ * Export Sales Profit Report to PDF with Business Header & AutoTable
+ */
+export const exportSalesProfitToPDF = (
+  summaryData: SalesProfitSummaryItem[],
+  transactions: Transaction[],
+  periodLabel: string,
+  totalMetrics: {
+    totalInvoice: number;
+    vendorCost: number;
+    shippingCost: number;
+    profit: number;
+    marginPercent: string;
+  }
+) => {
+  const doc = new jsPDF('landscape');
+
+  // Header
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42);
+  doc.text('ATHREE STUDIO JAYAPURA', 14, 15);
+
+  doc.setFontSize(12);
+  doc.setTextColor(0, 135, 31);
+  doc.text(`LAPORAN HASIL KEUNTUNGAN (PROFIT BERSIH) SELURUH SALES`, 14, 22);
+
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Periode: ${periodLabel} | Dicetak: ${new Date().toLocaleString('id-ID')} | Khusus Akses Admin/Owner`, 14, 27);
+
+  // Summary Metrics Box (matching the green card in screenshot)
+  doc.setFillColor(240, 253, 244);
+  doc.setDrawColor(187, 247, 208);
+  doc.roundedRect(14, 30, 268, 18, 2, 2, 'FD');
+
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Total Nilai Faktur: ${formatCurrency(totalMetrics.totalInvoice)}`, 18, 37);
+  doc.setTextColor(225, 29, 72);
+  doc.text(`Biaya Vendor: - ${formatCurrency(totalMetrics.vendorCost)}`, 85, 37);
+  doc.text(`Biaya Kirim: - ${formatCurrency(totalMetrics.shippingCost)}`, 145, 37);
+  doc.setTextColor(0, 135, 31);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Hasil Keuntungan: ${formatCurrency(totalMetrics.profit)} (Margin: ${totalMetrics.marginPercent}%)`, 200, 37);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`* Rumus: Hasil Keuntungan = Total Nilai Faktur - (Biaya Vendor + Biaya Pengiriman). Sesuai ketentuan, hanya untuk Admin/Owner.`, 18, 44);
+
+  // Table 1: Rekap Per Sales
+  const summaryTableData = summaryData.map((s, idx) => [
+    idx + 1,
+    s.salesName,
+    s.orderCount,
+    formatCurrency(s.totalInvoice),
+    formatCurrency(s.vendorCost),
+    formatCurrency(s.shippingCost),
+    formatCurrency(s.profit),
+    `${s.marginPercent}%`
+  ]);
+
+  autoTable(doc, {
+    startY: 52,
+    head: [
+      [
+        'No',
+        'Petugas Sales',
+        'Jml Faktur',
+        'Total Nilai Faktur',
+        'Biaya Vendor',
+        'Biaya Kirim',
+        'Hasil Keuntungan',
+        'Margin'
+      ]
+    ],
+    body: summaryTableData,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [0, 135, 31],
+      textColor: 255,
+      fontSize: 8.5,
+      fontStyle: 'bold'
+    },
+    styles: {
+      fontSize: 8,
+      cellPadding: 2
+    },
+    foot: [
+      [
+        'Total',
+        'Semua Sales Terpilih',
+        summaryData.reduce((acc, s) => acc + s.orderCount, 0),
+        formatCurrency(totalMetrics.totalInvoice),
+        formatCurrency(totalMetrics.vendorCost),
+        formatCurrency(totalMetrics.shippingCost),
+        formatCurrency(totalMetrics.profit),
+        `${totalMetrics.marginPercent}%`
+      ]
+    ],
+    footStyles: {
+      fillColor: [241, 245, 249],
+      textColor: [15, 23, 42],
+      fontStyle: 'bold',
+      fontSize: 8
+    }
+  });
+
+  const dateTag = new Date().toISOString().slice(0, 10);
+  doc.save(`Laporan_Keuntungan_Sales_${dateTag}.pdf`);
+};
+

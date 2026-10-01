@@ -53,7 +53,7 @@ interface AdminDashboardProps {
   onUpdateUser: (user: User) => void;
   onAddUser?: (user: User) => void;
   onDeleteUser?: (userId: string) => void;
-  onNavigate: (view: 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'kaos-stock' | 'drive') => void;
+  onNavigate: (view: 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'kaos-stock' | 'drive', subTab?: 'daily_sales' | 'sales_profit') => void;
   onSwitchUser: () => void;
   onLogout?: () => void;
   onOpenFirebaseModal?: () => void;
@@ -650,6 +650,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <span>Kelola Sales</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => onNavigate('reports', 'sales_profit')}
+              className="bg-white hover:bg-slate-50 text-[#3b49df] px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm shadow-lg hover:shadow-xl transition-all active:scale-95 border border-slate-100 flex items-center gap-1.5 cursor-pointer"
+              title="Laporan Keuntungan Seluruh Sales (Harian, Bulanan, Tahunan)"
+            >
+              <TrendingUp className="w-4 h-4 text-[#00871f]" />
+              <span>Laporan Keuntungan Sales</span>
+            </button>
             {shift.isOpen ? (
               <button
                 type="button"
@@ -1219,13 +1228,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              <div className="text-right shrink-0">
-                <span className="text-[10px] text-emerald-800 font-bold block uppercase tracking-wider">
-                  Total Keuntungan Faktur
-                </span>
-                <span className={`text-base font-black ${jurnalTotalKeuntungan >= 0 ? 'text-[#00871f]' : 'text-rose-600'}`}>
-                  {formatCurrency(jurnalTotalKeuntungan)}
-                </span>
+              <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3 shrink-0">
+                <div className="text-right">
+                  <span className="text-[10px] text-emerald-800 font-bold block uppercase tracking-wider">
+                    Total Keuntungan Faktur
+                  </span>
+                  <span className={`text-base font-black ${jurnalTotalKeuntungan >= 0 ? 'text-[#00871f]' : 'text-rose-600'}`}>
+                    {formatCurrency(jurnalTotalKeuntungan)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowJurnalModal(false);
+                    onNavigate('reports', 'sales_profit');
+                  }}
+                  className="px-3 py-1.5 bg-[#00871f] hover:bg-[#007019] text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-all active:scale-95"
+                  title="Lihat Laporan Keuntungan Seluruh Sales lengkap per Sales, Harian, Bulanan, Tahunan"
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>Rincian Per Sales &rarr;</span>
+                </button>
               </div>
             </div>
 

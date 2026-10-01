@@ -390,6 +390,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     return currentUser.role === 'admin' ? 'dashboard' : 'pos';
   });
+  const [reportsSubTab, setReportsSubTab] = useState<'daily_sales' | 'sales_profit'>('daily_sales');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Role permissions: Allow cashier access to Google Drive
@@ -2663,7 +2664,10 @@ export default function App() {
           onUpdateUser={handleUpdateUser}
           onAddUser={handleAddUser}
           onDeleteUser={handleDeleteUser}
-          onNavigate={(tab) => setActiveTab(tab)}
+          onNavigate={(tab, subTab) => {
+            setActiveTab(tab);
+            if (subTab) setReportsSubTab(subTab);
+          }}
           onSwitchUser={() => setIsLoginModalOpen(true)}
           onLogout={handleLogout}
           transactions={transactions}
@@ -2874,6 +2878,7 @@ export default function App() {
               onDeleteInvoice={(tx) => setDeletingTx(tx)}
               onPayPiutang={(tx) => setPayingPiutangTx(tx)}
               isAdmin={currentUser.role === 'admin'}
+              currentUser={currentUser}
             />
           )}
 
@@ -2891,6 +2896,8 @@ export default function App() {
               onAddCashFlow={handleAddCashFlow}
               onUpdateCashFlow={handleUpdateCashFlow}
               onDeleteCashFlow={handleDeleteCashFlow}
+              salesList={salesList}
+              initialSubTab={reportsSubTab}
             />
           )}
 

@@ -33,7 +33,7 @@ import {
   Download,
   Building2
 } from 'lucide-react';
-import { Transaction, OrderStatus } from '../types';
+import type { Transaction, OrderStatus, User as UserType } from '../types';
 import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUtils';
 import { printTransactionDirectly } from '../utils/printUtils';
 import { PrintReceiptModal } from './PrintReceiptModal';
@@ -49,6 +49,8 @@ interface ProductionOrdersViewProps {
   onDeleteInvoice?: (transaction: Transaction) => void;
   onPayPiutang?: (transaction: Transaction) => void;
   isAdmin?: boolean;
+  currentUser?: UserType;
+  canViewVendor?: boolean;
 }
 
 export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
@@ -60,8 +62,12 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   onReviseInvoice,
   onDeleteInvoice,
   onPayPiutang,
-  isAdmin = false
+  isAdmin = false,
+  currentUser,
+  canViewVendor
 }) => {
+  const canViewVendorResolved = canViewVendor ?? (isAdmin || currentUser?.role === 'kasir' || currentUser?.role === 'admin');
+
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [editingDueDateTx, setEditingDueDateTx] = useState<Transaction | null>(null);
@@ -784,7 +790,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                             <span className="text-slate-300">&bull;</span>
                             <span className="text-slate-600 font-medium">Sales: {t.orderType}</span>
                           </div>
-                          {t.vendorName && (
+                          {t.vendorName && canViewVendorResolved && (
                             <div className="mt-1">
                               <span
                                 className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
@@ -1013,7 +1019,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                       {t.customer.phone !== '-' ? t.customer.phone : 'Pelanggan Umum'} &bull;{' '}
                       <span className="font-semibold text-slate-700">Sales: {t.orderType}</span>
                     </p>
-                    {t.vendorName && (
+                    {t.vendorName && canViewVendorResolved && (
                       <div className="mb-2">
                         <span
                           className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded"
@@ -1580,22 +1586,24 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                   ) : (
                     <div>
                       {/* Preview Nama Vendor - Khusus Admin & Kasir */}
-                      <div className="p-3 bg-white border border-slate-200 rounded-xl mb-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10.5px] font-semibold text-slate-500 block mb-0.5">
-                            Nama Vendor (Preview Admin &amp; Kasir)
-                          </span>
-                          <span className="text-[9.5px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                            Tidak Ditampilkan Saat Print
-                          </span>
+                      {canViewVendorResolved && (
+                        <div className="p-3 bg-white border border-slate-200 rounded-xl mb-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10.5px] font-semibold text-slate-500 block mb-0.5">
+                              Nama Vendor (Preview Admin &amp; Kasir)
+                            </span>
+                            <span className="text-[9.5px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                              Tidak Ditampilkan Saat Print
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Building2 className="w-4 h-4 text-[#00871f]" />
+                            <span className="text-xs font-bold text-slate-800">
+                              {previewTx.vendorName || <span className="text-slate-400 font-normal italic">Tidak Ada Vendor</span>}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Building2 className="w-4 h-4 text-[#00871f]" />
-                          <span className="text-xs font-bold text-slate-800">
-                            {previewTx.vendorName || <span className="text-slate-400 font-normal italic">Tidak Ada Vendor</span>}
-                          </span>
-                        </div>
-                      </div>
+                      )}
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="p-3 bg-white border border-slate-200 rounded-xl">
