@@ -72,6 +72,7 @@ export interface Transaction {
   discount: number;
   tax: number;
   total: number;
+  vendorName?: string; // Nama Vendor (Di-input saat pembuatan inv / SPK, khusus preview internal Admin & Kasir, tidak tampil di print struk)
   vendorCost?: number; // Biaya Vendor
   shippingCost?: number; // Biaya Pengiriman
   profit?: number; // Hasil Keuntungan = Total Nilai Faktur - (Biaya Vendor + Biaya Pengiriman)

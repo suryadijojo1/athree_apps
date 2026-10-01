@@ -2216,7 +2216,7 @@ export default function App() {
   };
 
   // Handler: Update vendor cost & shipping cost (Keuntungan otomatis dihitung ulang)
-  const handleUpdateCosts = (transactionId: string, vendorCost: number, shippingCost: number) => {
+  const handleUpdateCosts = (transactionId: string, vendorCost: number, shippingCost: number, vendorName?: string) => {
     setTransactions((prev) =>
       prev.map((t) => {
         if (t.id === transactionId) {
@@ -2227,6 +2227,7 @@ export default function App() {
             ...t,
             vendorCost: safeVendor,
             shippingCost: safeShipping,
+            vendorName: vendorName !== undefined ? (vendorName.trim() || undefined) : t.vendorName,
             profit
           };
           saveTransactionToFirestore(updated).catch((err) => console.warn('Sync update costs error:', err));
@@ -2718,6 +2719,8 @@ export default function App() {
           onRevise={(tx) => setRevisingTx(tx)}
           onDelete={(tx) => setDeletingTx(tx)}
           isAdmin={currentUser.role === 'admin'}
+          currentUser={currentUser}
+          userRole={currentUser.role}
         />
 
         <ReviseInvoiceModal
@@ -2853,6 +2856,8 @@ export default function App() {
               onAddSales={handleAddSales}
               onDeleteSales={handleDeleteSales}
               isAdmin={currentUser.role === 'admin'}
+              currentUser={currentUser}
+              userRole={currentUser.role}
               shift={shift}
               onOpenShiftModal={handleOpenShiftModal}
             />
@@ -3006,6 +3011,8 @@ export default function App() {
         onRevise={(tx) => setRevisingTx(tx)}
         onDelete={(tx) => setDeletingTx(tx)}
         isAdmin={currentUser.role === 'admin'}
+        currentUser={currentUser}
+        userRole={currentUser.role}
       />
 
       <ReviseInvoiceModal

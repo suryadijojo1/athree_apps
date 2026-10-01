@@ -30,9 +30,11 @@ import {
   CheckCircle2,
   Check,
   TrendingUp,
-  Truck
+  Truck,
+  Building2,
+  Eye
 } from 'lucide-react';
-import {
+import type {
   Product,
   OrderItem,
   OrderType,
@@ -41,7 +43,9 @@ import {
   Transaction,
   CashierShift,
   KaosStockItem,
-  OrderStatus
+  OrderStatus,
+  User as AppUser,
+  UserRole
 } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
 import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
@@ -67,6 +71,8 @@ interface PosViewProps {
   onAddSales?: (newSalesName: string) => void;
   onDeleteSales?: (salesName: string) => void;
   isAdmin?: boolean;
+  currentUser?: AppUser;
+  userRole?: UserRole;
   shift?: CashierShift;
   onOpenShiftModal?: (mode?: 'overview' | 'reconcile' | 'closed_summary' | 'open_shift' | 'history') => void;
 }
@@ -89,11 +95,15 @@ export const PosView: React.FC<PosViewProps> = ({
   onAddSales,
   onDeleteSales,
   isAdmin = false,
+  currentUser,
+  userRole,
   shift,
   onOpenShiftModal
 }) => {
   // Modal state for selecting an invoice to revise
   const [showSelectInvoiceModal, setShowSelectInvoiceModal] = useState<boolean>(false);
+  // Modal state for draft invoice preview (Khusus Admin & Kasir)
+  const [showDraftPreviewModal, setShowDraftPreviewModal] = useState<boolean>(false);
   // Catalog View Mode: 'grid' | 'list'
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
@@ -149,6 +159,7 @@ export const PosView: React.FC<PosViewProps> = ({
   const [paymentMethodTab, setPaymentMethodTab] = useState<'Tunai' | 'Non Tunai'>('Tunai');
   const [nonCashType, setNonCashType] = useState<'QRIS' | 'Transfer Bank' | 'Kartu Debit'>('QRIS');
   const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [vendorName, setVendorName] = useState<string>('');
   const [vendorCost, setVendorCost] = useState<number>(0);
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [cashGiven, setCashGiven] = useState<number>(0);
@@ -431,6 +442,7 @@ export const PosView: React.FC<PosViewProps> = ({
       discount: discountAmount,
       tax: 0,
       total,
+      vendorName: vendorName.trim() || undefined,
       vendorCost,
       shippingCost,
       profit,
@@ -449,6 +461,7 @@ export const PosView: React.FC<PosViewProps> = ({
     // Reset cart
     setCartItems([]);
     setDiscountAmount(0);
+    setVendorName('');
     setVendorCost(0);
     setShippingCost(0);
     setCashGiven(0);
@@ -507,6 +520,7 @@ export const PosView: React.FC<PosViewProps> = ({
       discount: discountAmount,
       tax: 0,
       total,
+      vendorName: vendorName.trim() || undefined,
       vendorCost,
       shippingCost,
       profit,
@@ -525,6 +539,7 @@ export const PosView: React.FC<PosViewProps> = ({
     alert(`Pesanan berhasil disimpan ke Antrean Produksi dengan Jatuh Tempo: ${formattedDueDate}${remainingAmount > 0 ? ` (Sisa Piutang: ${formatCurrency(remainingAmount)})` : ''}`);
     setCartItems([]);
     setDiscountAmount(0);
+    setVendorName('');
     setVendorCost(0);
     setShippingCost(0);
     setCashGiven(0);
@@ -1260,9 +1275,49 @@ export const PosView: React.FC<PosViewProps> = ({
           <div className="flex items-center justify-between">
             <span className="font-bold text-slate-700 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
               <Truck className="w-3.5 h-3.5 text-[#00871f]" />
-              Biaya Vendor &amp; Pengiriman
+              Data Vendor &amp; Pengiriman
             </span>
             <span className="text-[10px] text-slate-400">Rincian Operasional</span>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-slate-600 block mb-0.5">
+              Nama Vendor (Opsional)
+            </label>
+            <input
+              type="text"
+              value={vendorName}
+              onChange={(e) => setVendorName(e.target.value)}
+              placeholder="Contoh: Vendor Sablon / Bordir..."
+              className="w-full text-xs font-semibold text-slate-800 bg-white border border-slate-200 rounded px-2 py-1 focus:border-[#00871f] focus:ring-1 focus:ring-[#00871f] focus:outline-none placeholder:text-slate-400 placeholder:font-normal"
+            />
+            <span className="text-[9.5px] text-slate-400 block mt-0.5 italic">
+              * Khusus preview Admin &amp; Kasir (tidak tampil saat print struk)
+            </span>
+
+            {/* Live Preview Nama Vendor saat pembuatan invoice (Khusus Admin & Kasir) */}
+            {vendorName.trim() && (
+              <div className="mt-1.5 p-2 bg-emerald-50/90 border border-emerald-200 rounded-lg text-xs space-y-1 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 text-[#00871f]" />
+                    Preview Nama Vendor (Admin &amp; Kasir)
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.2 rounded">
+                    Tidak Tampil Saat Cetak
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-800 pt-0.5 border-t border-emerald-200/60">
+                  <span className="text-[11px] text-slate-600">Vendor Terinput:</span>
+                  <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-emerald-300">
+                    {vendorName.trim()}
+                  </span>
+                </div>
+                <p className="text-[9.5px] text-slate-500 italic">
+                  * Nama vendor ini disimpan dalam database dan hanya dapat dilihat oleh Admin &amp; Kasir di preview sistem (tidak akan dicetak saat print struk fisik/PDF).
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -1554,6 +1609,18 @@ export const PosView: React.FC<PosViewProps> = ({
             </div>
           </div>
 
+          {/* Tombol Preview Faktur & Vendor (Khusus Admin & Kasir) */}
+          <button
+            type="button"
+            onClick={() => setShowDraftPreviewModal(true)}
+            disabled={cartItems.length === 0}
+            className="w-full py-2 px-3 bg-emerald-50/90 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-800 border border-emerald-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+            title="Buka preview faktur dan nama vendor (Khusus internal Admin & Kasir)"
+          >
+            <Eye className="w-3.5 h-3.5 text-[#00871f]" />
+            <span>Preview Faktur &amp; Vendor (Admin &amp; Kasir)</span>
+          </button>
+
           {/* Bottom Actions: Bayar & Simpan ke Pesanan (matching screenshot) */}
           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
             <button
@@ -1763,6 +1830,167 @@ export const PosView: React.FC<PosViewProps> = ({
           onSelectSales={(name) => setSelectedSales(name)}
         />
       )}
+
+      {/* =========================================================================
+          MODAL: Preview Faktur Draft & Vendor (Khusus Admin & Kasir)
+      ========================================================================= */}
+      {showDraftPreviewModal && (() => {
+        const activeCustomer = customers.find((c) => c.id === selectedCustomerId) || customers[0];
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 text-slate-800 max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#00871f] flex items-center justify-center">
+                    <Eye className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-800">Preview Faktur (Draft)</h3>
+                    <p className="text-[11px] text-slate-500">Khusus internal Admin &amp; Kasir</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDraftPreviewModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto py-3 space-y-3 flex-1 text-xs">
+                {/* Store & Customer Info */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Pelanggan:</span>
+                    <span className="font-bold text-slate-800">{activeCustomer ? activeCustomer.name : 'Pelanggan Umum'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">No. WhatsApp / HP:</span>
+                    <span className="font-semibold text-slate-700">{activeCustomer?.phone || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Sales / Kasir:</span>
+                    <span className="font-semibold text-slate-700">{selectedSales || cashierName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Jatuh Tempo:</span>
+                    <span className="font-bold text-rose-600">{dueDate ? dueDate.replace('T', ' ') : 'Langsung Selesai'}</span>
+                  </div>
+                </div>
+
+                {/* Items List */}
+                <div className="border border-slate-200 rounded-xl p-3 bg-white space-y-2">
+                  <div className="font-bold text-slate-700 border-b border-slate-100 pb-1 flex justify-between">
+                    <span>Rincian Pesanan ({cartItems.length} item)</span>
+                    <span>Subtotal</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {cartItems.map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-start text-[11.5px] border-b border-dashed border-slate-100 pb-1 last:border-b-0">
+                        <div>
+                          <span className="font-semibold text-slate-800">{item.name}</span>
+                          <div className="text-[10px] text-slate-500">
+                            {item.quantity} x {formatCurrency(item.price)}
+                            {(item.kaosColor || item.kaosSize) && (
+                              <span className="ml-1 text-purple-700 font-medium">
+                                [{item.kaosColor || '-'} / {item.kaosSize || '-'}]
+                              </span>
+                            )}
+                            {item.notes && <span className="ml-1 italic text-slate-400">({item.notes})</span>}
+                          </div>
+                        </div>
+                        <span className="font-bold text-slate-800">{formatCurrency(item.subtotal)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Totals Box */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Subtotal Belanja:</span>
+                    <span className="font-semibold text-slate-800">{formatCurrency(subtotal)}</span>
+                  </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-rose-600">
+                      <span>Diskon:</span>
+                      <span className="font-semibold">-{formatCurrency(discountAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-sm text-slate-900 pt-1 border-t border-slate-200">
+                    <span>Total Tagihan:</span>
+                    <span className="text-[#00871f]">{formatCurrency(total)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Metode &amp; Pembayaran:</span>
+                    <span className="font-semibold">{paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType} ({formatCurrency(effectiveCash)})</span>
+                  </div>
+                  {remainingBill > 0 ? (
+                    <div className="flex justify-between font-bold text-rose-600 bg-rose-50 p-1.5 rounded">
+                      <span>Sisa Piutang:</span>
+                      <span>{formatCurrency(remainingBill)}</span>
+                    </div>
+                  ) : changeAmount > 0 ? (
+                    <div className="flex justify-between font-bold text-emerald-600 bg-emerald-50 p-1.5 rounded">
+                      <span>Kembalian:</span>
+                      <span>{formatCurrency(changeAmount)}</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* KOTAK PREVIEW NAMA VENDOR (KHUSUS ADMIN & KASIR - TIDAK TAMPIL SAAT CETAK) */}
+                <div className="bg-emerald-50/90 border border-emerald-300 rounded-xl p-3 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-950 text-xs">
+                      <Building2 className="w-4 h-4 text-[#00871f] shrink-0" />
+                      <span>Preview Nama Vendor (Admin &amp; Kasir)</span>
+                    </div>
+                    <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                      Tidak Ditampilkan Saat Print
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t border-emerald-200/70">
+                    <span className="text-slate-600 font-medium">Vendor Terdaftar:</span>
+                    <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-emerald-300">
+                      {vendorName.trim() || <span className="text-slate-400 font-normal italic">Belum Ada Vendor / Tanpa Vendor</span>}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] text-slate-600">
+                    <span>Biaya Vendor:</span>
+                    <span className="font-semibold text-slate-800">{formatCurrency(vendorCost)}</span>
+                  </div>
+                  <p className="text-[9.5px] text-emerald-700 italic">
+                    * Nama vendor tersimpan dalam faktur khusus untuk catatan operasional internal Admin &amp; Kasir. Saat struk dicetak atau dibagikan ke pelanggan, nama vendor ini secara otomatis dirahasiakan dan tidak akan tercetak.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowDraftPreviewModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+                >
+                  Tutup Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDraftPreviewModal(false);
+                    handlePay();
+                  }}
+                  disabled={!isCashierOpen}
+                  className="px-4 py-2 bg-[#00871f] hover:bg-[#007019] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-200"
+                >
+                  <FileCheck className="w-4 h-4" />
+                  <span>Lanjut Bayar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -33,7 +33,8 @@ import {
   HardDrive,
   Cloud,
   Check,
-  Wallet
+  Wallet,
+  Building2
 } from 'lucide-react';
 import { Transaction, User, CashierShift, CashFlowRecord } from '../types';
 import {
@@ -1998,9 +1999,20 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                         </td>
                         <td className="py-2.5 px-3">
                           <span className="font-bold text-slate-800 block">{t.customer.name}</span>
-                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-bold mt-0.5">
-                            {t.orderType === 'Pendapatan Lain' ? '⭐ Pendapatan Lain' : `Sales: ${t.orderType}`}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-bold">
+                              {t.orderType === 'Pendapatan Lain' ? '⭐ Pendapatan Lain' : `Sales: ${t.orderType}`}
+                            </span>
+                            {t.vendorName && (isAdminOrOwner(currentUser) || currentUser.role === 'kasir') && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
+                                title="Preview Nama Vendor (Khusus Admin & Kasir - Tidak Dicetak)"
+                              >
+                                <Building2 className="w-2.5 h-2.5 text-[#00871f]" />
+                                Vendor: {t.vendorName}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2.5 px-3">
                           <span className="font-medium text-slate-700 text-xs block">

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Printer, X, FileText, Check, Download, AlertCircle, Copy } from 'lucide-react';
+import { Printer, X, FileText, Check, Download, AlertCircle, Copy, Building2 } from 'lucide-react';
 import { Transaction } from '../types';
 import { printTransactionDirectly, PrintFormat } from '../utils/printUtils';
 import { downloadTransactionReceiptPDF } from '../utils/exportUtils';
@@ -8,12 +8,14 @@ interface PrintReceiptModalProps {
   transaction: Transaction | null;
   isOpen: boolean;
   onClose: () => void;
+  canViewVendor?: boolean;
 }
 
 export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
   transaction,
   isOpen,
-  onClose
+  onClose,
+  canViewVendor = true
 }) => {
   const [format, setFormat] = useState<PrintFormat>('thermal80');
   const [isPrinting, setIsPrinting] = useState(false);
@@ -145,6 +147,17 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
               <span>Jatuh Tempo:</span>
               <span className="font-semibold text-rose-600">{transaction.dueDate || 'Langsung Selesai'}</span>
             </div>
+            {canViewVendor && transaction.vendorName && (
+              <div className="my-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[10.5px] text-emerald-950 flex items-center justify-between font-sans">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-[#00871f] shrink-0" />
+                  <span><strong>Nama Vendor:</strong> {transaction.vendorName}</span>
+                </div>
+                <span className="text-[9px] font-bold bg-white text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded shrink-0">
+                  Preview Internal (Tidak Dicetak)
+                </span>
+              </div>
+            )}
             <div className="border-t border-dashed border-slate-300 my-1.5" />
             <div className="space-y-1">
               {transaction.items.map((it, idx) => (

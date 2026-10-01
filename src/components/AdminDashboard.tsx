@@ -36,9 +36,10 @@ import {
   Shirt,
   Bell,
   AlertTriangle,
-  CreditCard
+  CreditCard,
+  Building2
 } from 'lucide-react';
-import { Transaction, CashFlowRecord, CashierShift, User } from '../types';
+import type { Transaction, CashFlowRecord, CashierShift, User } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
 import { calculateProfit } from '../utils/profitUtils';
 import adminBackdrop from '../assets/images/admin_studio_backdrop_1789623254700.jpg';
@@ -1027,6 +1028,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <p className="text-[10px] text-slate-400 truncate max-w-sm mt-0.5">
                         {order.items.map((i) => `${i.name} (x${i.quantity})`).join(', ')}
                       </p>
+                      {order.vendorName && (
+                        <div className="mt-1">
+                          <span
+                            className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
+                            title="Preview Nama Vendor (Khusus Admin & Kasir - Tidak Dicetak)"
+                          >
+                            <Building2 className="w-2.5 h-2.5 text-[#00871f]" />
+                            Vendor: {order.vendorName}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-right flex items-center gap-3">
@@ -1546,6 +1558,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </span>
                           ) : null}
                           <span>Jatuh Tempo: <strong className="text-slate-700">{order.dueDate}</strong></span>
+                          {order.vendorName && (
+                            <span
+                              className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded"
+                              title="Preview Nama Vendor (Khusus Admin & Kasir - Tidak Dicetak)"
+                            >
+                              <Building2 className="w-2.5 h-2.5 text-[#00871f]" />
+                              Vendor: {order.vendorName}
+                            </span>
+                          )}
                         </div>
                       </div>
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Printer, Download, Share2, X, Clock, Calendar, FileEdit, Trash2, Settings2 } from 'lucide-react';
-import { Transaction } from '../types';
+import { CheckCircle2, Printer, Download, Share2, X, Clock, Calendar, FileEdit, Trash2, Settings2, Building2 } from 'lucide-react';
+import type { Transaction, User, UserRole } from '../types';
 import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUtils';
 import { printTransactionDirectly } from '../utils/printUtils';
 import { PrintReceiptModal } from './PrintReceiptModal';
@@ -11,6 +11,8 @@ interface PaymentSuccessModalProps {
   onRevise?: (transaction: Transaction) => void;
   onDelete?: (transaction: Transaction) => void;
   isAdmin?: boolean;
+  userRole?: UserRole;
+  currentUser?: User;
 }
 
 export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
@@ -18,7 +20,9 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
   onClose,
   onRevise,
   onDelete,
-  isAdmin = false
+  isAdmin = false,
+  userRole,
+  currentUser
 }) => {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isPrintingDirect, setIsPrintingDirect] = useState(false);
@@ -26,6 +30,14 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
   if (!transaction) return null;
 
   const isPiutang = Boolean(transaction.remainingAmount && transaction.remainingAmount > 0);
+  // Preview nama vendor hanya untuk admin dan kasir
+  const canViewVendor =
+    isAdmin ||
+    userRole === 'admin' ||
+    userRole === 'kasir' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'kasir' ||
+    (!userRole && !currentUser);
 
   const handleDirectPrint = async () => {
     setIsPrintingDirect(true);
@@ -121,6 +133,30 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
           )}
         </div>
 
+        {/* Preview Nama Vendor - Khusus Admin & Kasir (TIDAK Ditampilkan Saat Print Struk) */}
+        {canViewVendor && (
+          <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-xl p-3 mb-4 text-xs space-y-1.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-950">
+                <Building2 className="w-4 h-4 text-[#00871f] shrink-0" />
+                <span>Preview Nama Vendor</span>
+              </div>
+              <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                Khusus Admin &amp; Kasir
+              </span>
+            </div>
+            <div className="flex justify-between items-center pt-1 border-t border-emerald-200/70">
+              <span className="text-slate-600 font-medium">Vendor Terdaftar:</span>
+              <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                {transaction.vendorName || <span className="text-slate-400 font-normal italic">Tidak Ada Vendor</span>}
+              </span>
+            </div>
+            <p className="text-[9.5px] text-emerald-700 italic">
+              * Hanya Admin dan Kasir yang dapat melihat preview ini. Nama vendor tidak akan dicetak saat print struk fisik/PDF pelanggan.
+            </p>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="space-y-2">
           {/* Main Direct Print to Printer */}
@@ -196,6 +232,7 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
         transaction={transaction}
         isOpen={showPrintModal}
         onClose={() => setShowPrintModal(false)}
+        canViewVendor={canViewVendor}
       />
     </div>
   );

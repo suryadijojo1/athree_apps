@@ -19,7 +19,8 @@ import {
   ShieldAlert,
   Truck,
   TrendingUp,
-  Lock
+  Lock,
+  Building2
 } from 'lucide-react';
 import { Transaction, OrderItem, PaymentMethod, OrderStatus, OrderType, Product } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -70,6 +71,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(transaction?.paymentMethod || 'Tunai');
   const [status, setStatus] = useState<OrderStatus>(transaction?.status || 'Sedang Dikerjakan');
   const [discount, setDiscount] = useState<number>(transaction?.discount || 0);
+  const [vendorName, setVendorName] = useState<string>(transaction?.vendorName || '');
   const [vendorCost, setVendorCost] = useState<number>(transaction?.vendorCost || 0);
   const [shippingCost, setShippingCost] = useState<number>(transaction?.shippingCost || 0);
   const [amountPaid, setAmountPaid] = useState<number>(transaction?.amountPaid ?? (transaction?.total || 0));
@@ -93,6 +95,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       setPaymentMethod(transaction.paymentMethod || 'Tunai');
       setStatus(transaction.status || 'Sedang Dikerjakan');
       setDiscount(transaction.discount || 0);
+      setVendorName(transaction.vendorName || '');
       setVendorCost(transaction.vendorCost || 0);
       setShippingCost(transaction.shippingCost || 0);
       setAmountPaid(transaction.amountPaid ?? transaction.total);
@@ -270,6 +273,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       subtotal,
       discount,
       total,
+      vendorName: vendorName.trim() || undefined,
       vendorCost,
       shippingCost,
       profit: calculateProfit(total, vendorCost, shippingCost),
@@ -728,9 +732,49 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
                 <Truck className="w-3.5 h-3.5 text-[#00871f]" />
-                Rincian Biaya Vendor &amp; Biaya Pengiriman
+                Rincian Data Vendor &amp; Biaya Pengiriman
               </span>
               <span className="text-[10px] text-slate-400 font-medium">Operasional Pesanan</span>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Nama Vendor (Opsional)
+              </label>
+              <input
+                type="text"
+                value={vendorName}
+                onChange={(e) => setVendorName(e.target.value)}
+                placeholder="Contoh: Vendor Sablon / Bordir..."
+                className="w-full text-xs font-semibold text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-[#00871f] focus:outline-none placeholder:font-normal placeholder:text-slate-400"
+              />
+              <span className="text-[9.5px] text-slate-400 block mt-0.5 italic">
+                * Khusus preview internal Admin &amp; Kasir (tidak ditampilkan pada struk cetak)
+              </span>
+
+              {/* Live Preview Nama Vendor (Khusus Admin & Kasir) */}
+              {vendorName.trim() && (
+                <div className="mt-1.5 p-2 bg-emerald-50/90 border border-emerald-200 rounded-lg text-xs space-y-1 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5 text-[#00871f]" />
+                      Preview Nama Vendor (Admin &amp; Kasir)
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.2 rounded">
+                      Tidak Tampil Saat Cetak
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-800 pt-0.5 border-t border-emerald-200/60">
+                    <span className="text-[11px] text-slate-600">Vendor Terinput:</span>
+                    <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-emerald-300">
+                      {vendorName.trim()}
+                    </span>
+                  </div>
+                  <p className="text-[9.5px] text-slate-500 italic">
+                    * Nama vendor ini khusus untuk internal Admin &amp; Kasir dan dirahasiakan dari struk yang dicetak.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
