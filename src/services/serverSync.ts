@@ -96,39 +96,66 @@ export async function fetchServerDatabase(): Promise<{
 /**
  * Save full database payload to the central Express server
  */
+export interface SaveDatabaseResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  snapshotId?: string;
+  transactionsCount?: number;
+}
+
 export async function saveServerDatabase(
   payload: Omit<AppDatabasePayload, 'lastUpdated' | 'sourceClient'>,
   options?: { savedBy?: string; source?: string; deletedTransactionIds?: string[] }
-): Promise<boolean> {
+): Promise<SaveDatabaseResult> {
+  const fullPayload: AppDatabasePayload = {
+    ...payload,
+    lastUpdated: new Date().toISOString(),
+    sourceClient: CLIENT_ID,
+    isRealData: true,
+    savedBy: options?.savedBy || payload.savedBy || 'Kasir',
+    source: options?.source || payload.source || 'sync',
+    deletedTransactionIds: options?.deletedTransactionIds || payload.deletedTransactionIds || []
+  };
+
   try {
-    const fullPayload: AppDatabasePayload = {
-      ...payload,
-      lastUpdated: new Date().toISOString(),
-      sourceClient: CLIENT_ID,
-      isRealData: true,
-      savedBy: options?.savedBy || payload.savedBy || 'Kasir',
-      source: options?.source || payload.source || 'sync',
-      deletedTransactionIds: options?.deletedTransactionIds || payload.deletedTransactionIds || []
-    };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     const res = await fetch('/api/database/save-all', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Client-Id': CLIENT_ID,
-        'X-Saved-By': fullPayload.savedBy || 'Kasir',
-        'X-Save-Source': fullPayload.source || 'sync'
+        'X-Client-Id': CLIENT_ID
       },
-      body: JSON.stringify(fullPayload)
+      body: JSON.stringify(fullPayload),
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
+
     if (!res.ok) {
-      throw new Error(`Server responded with ${res.status}`);
+      let errorMsg = `Server error ${res.status}`;
+      try {
+        const errJson = await res.json();
+        if (errJson?.error) errorMsg = errJson.error;
+      } catch {}
+      return { success: false, error: errorMsg };
     }
-    return true;
-  } catch (err) {
+
+    const json = await res.json();
+    return {
+      success: true,
+      message: 'Berhasil disimpan ke Cloud SQL & Server',
+      snapshotId: json?.snapshotId,
+      transactionsCount: json?.transactionsCount
+    };
+  } catch (err: any) {
     console.warn('Failed to save to central server database:', err);
-    return false;
+    return {
+      success: false,
+      error: err.name === 'AbortError' ? 'Koneksi server timeout (12 detik)' : (err.message || 'Koneksi ke server gagal')
+    };
   }
 }
 

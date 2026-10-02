@@ -160,7 +160,11 @@ async function startServer() {
     try {
       if (process.env.SQL_HOST) {
         const pool = createPool();
-        const client = await pool.connect();
+        const connectPromise = pool.connect();
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 1500)
+        );
+        const client = await Promise.race([connectPromise, timeoutPromise]);
         try {
           const testRes = await client.query('SELECT NOW()');
           sqlDirectConnected = Boolean(testRes?.rows?.length);
@@ -220,9 +224,14 @@ async function startServer() {
 
   app.post('/api/database/save-all', (req, res) => {
     try {
-      const payload = req.body;
-      if (!payload || !Array.isArray(payload.transactions)) {
-        return res.status(400).json({ error: 'Invalid payload' });
+      let payload = req.body?.data || req.body;
+      if (!payload || typeof payload !== 'object') {
+        return res.status(400).json({ error: 'Payload data is required' });
+      }
+
+      // Default transactions to array if omitted or empty
+      if (!Array.isArray(payload.transactions)) {
+        payload.transactions = currentDbState?.transactions || [];
       }
 
       // Explicitly deleted transaction IDs (if any)

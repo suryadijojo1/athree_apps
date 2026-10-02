@@ -84,11 +84,11 @@ export const CloudSqlSyncModal: React.FC<CloudSqlSyncModalProps> = ({
     setStatusMessage({ text: 'Sedang menyinkronkan seluruh database ke Cloud SQL...' });
 
     try {
-      const success = await pushToCloudSql({
-        products,
-        transactions,
-        cashFlowRecords,
-        shiftHistory: shifts,
+      const result = await pushToCloudSql({
+        products: products || [],
+        transactions: transactions || [],
+        cashFlowRecords: cashFlowRecords || [],
+        shiftHistory: shifts || [],
         currentShift,
         kaosStocks: kaosStocks || [],
         stockMovements: stockMovements || [],
@@ -98,13 +98,16 @@ export const CloudSqlSyncModal: React.FC<CloudSqlSyncModalProps> = ({
         isRealData: true
       }, 'Sinkronisasi Manual Cloud SQL');
 
-      if (success) {
+      if (result.success) {
         setStatusMessage({ text: 'Berhasil! Seluruh data disinkronkan ke Cloud SQL & disiarkan secara real-time.' });
         onManualSyncSuccess();
         const updatedStatus = await checkCloudSqlStatus();
         setDbStatus(updatedStatus);
       } else {
-        setStatusMessage({ text: 'Gagal menyinkronkan data ke Cloud SQL. Cek koneksi server.', isError: true });
+        setStatusMessage({
+          text: result.error ? `Gagal menyinkronkan: ${result.error}` : 'Gagal menyinkronkan data ke Cloud SQL. Cek koneksi server.',
+          isError: true
+        });
       }
     } catch (err: any) {
       setStatusMessage({ text: `Terjadi kesalahan: ${err.message}`, isError: true });

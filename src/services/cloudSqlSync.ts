@@ -86,17 +86,28 @@ export async function checkCloudSqlStatus(): Promise<CloudSqlStatus> {
   };
 }
 
+export interface PushToCloudSqlResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
 /**
  * Trigger immediate manual push of local database to Cloud SQL Real-Time Central Engine
  */
 export async function pushToCloudSql(
   payload: Omit<AppDatabasePayload, 'lastUpdated' | 'sourceClient'>,
   savedBy: string = 'Kasir'
-): Promise<boolean> {
-  return await saveServerDatabase(payload, {
+): Promise<PushToCloudSqlResult> {
+  const res = await saveServerDatabase(payload, {
     savedBy,
     source: 'cloudsql-manual-sync'
   });
+  return {
+    success: res.success,
+    message: res.message,
+    error: res.error
+  };
 }
 
 /**
