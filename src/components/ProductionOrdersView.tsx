@@ -18,7 +18,7 @@ import {
   List,
   X,
   MessageCircle,
-  User,
+  User as UserIcon,
   ShoppingBag,
   Info,
   CalendarDays,
@@ -1262,7 +1262,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-start gap-3">
                     <div className="p-2 bg-emerald-100 text-[#00871f] rounded-lg mt-0.5">
-                      <User className="w-4 h-4" />
+                      <UserIcon className="w-4 h-4" />
                     </div>
                     <div>
                       <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Pemesan</p>

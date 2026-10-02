@@ -45,6 +45,7 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { GoogleDriveView } from './components/GoogleDriveView';
 import { KaosStockManagementView } from './components/KaosStockManagementView';
 import { FirebaseSyncModal } from './components/FirebaseSyncModal';
+import { DataSyncInspectorModal } from './components/DataSyncInspectorModal';
 import { CloudUpload, CheckCircle2 } from 'lucide-react';
 import { calculateProfit } from './utils/profitUtils';
 import {
@@ -436,6 +437,8 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isDataSyncModalOpen, setIsDataSyncModalOpen] = useState(false);
+  const [liveSyncToast, setLiveSyncToast] = useState<string | null>(null);
 
   // Maintain latest state reference to avoid stale closures during sync
   const latestStateRef = useRef({
@@ -679,6 +682,8 @@ export default function App() {
       (remoteData) => {
         if (!isSubscribed) return;
         applyFullDatabasePayload(remoteData);
+        setLiveSyncToast('Live Synced 🟢: Data otomatis disinkronkan secara real-time dari browser lain');
+        setTimeout(() => setLiveSyncToast(null), 4000);
       },
       (liveShift) => {
         applyShiftUpdate(liveShift);
@@ -710,23 +715,27 @@ export default function App() {
 
     let bc: BroadcastChannel | null = null;
     try {
-      bc = new BroadcastChannel('athree_cross_tab_sync');
-      bc.onmessage = (event) => {
-        if (!isSubscribed) return;
-        if (event.data && event.data.payload) {
-          applyFullDatabasePayload(event.data.payload);
-        }
-        if (event.data && event.data.currentShift) {
-          const remoteShift = event.data.currentShift;
-          setShift((prevShift) => {
-            if (shouldApplyRemoteShift(remoteShift, prevShift)) {
-              localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
-              return remoteShift;
-            }
-            return prevShift;
-          });
-        }
-      };
+      if (typeof window !== 'undefined' && typeof (window as any).BroadcastChannel === 'function') {
+        bc = new BroadcastChannel('athree_cross_tab_sync');
+        bc.onmessage = (event) => {
+          if (!isSubscribed) return;
+          if (event.data && event.data.payload) {
+            applyFullDatabasePayload(event.data.payload);
+            setLiveSyncToast('Live Synced 🟢: Data otomatis disinkronkan dari tab browser lain');
+            setTimeout(() => setLiveSyncToast(null), 4000);
+          }
+          if (event.data && event.data.currentShift) {
+            const remoteShift = event.data.currentShift;
+            setShift((prevShift) => {
+              if (shouldApplyRemoteShift(remoteShift, prevShift)) {
+                localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
+                return remoteShift;
+              }
+              return prevShift;
+            });
+          }
+        };
+      }
     } catch {}
 
     // 1. Initial Connection & Seed Check
@@ -975,25 +984,27 @@ export default function App() {
       syncCurrentStateToServer();
       localStorage.setItem('athree_last_save_time', String(Date.now()));
       try {
-        const bc = new BroadcastChannel('athree_cross_tab_sync');
-        bc.postMessage({
-          payload: {
-            products,
-            categories,
-            transactions,
-            cashFlowRecords,
-            shiftHistory,
-            currentShift: shift,
-            kaosStocks,
-            stockMovements,
-            customers,
-            users,
-            salesList,
-            lastUpdated: new Date().toISOString(),
-            isRealData: isRealUserData(transactions)
-          }
-        });
-        bc.close();
+        if (typeof window !== 'undefined' && typeof (window as any).BroadcastChannel === 'function') {
+          const bc = new BroadcastChannel('athree_cross_tab_sync');
+          bc.postMessage({
+            payload: {
+              products,
+              categories,
+              transactions,
+              cashFlowRecords,
+              shiftHistory,
+              currentShift: shift,
+              kaosStocks,
+              stockMovements,
+              customers,
+              users,
+              salesList,
+              lastUpdated: new Date().toISOString(),
+              isRealData: isRealUserData(transactions)
+            }
+          });
+          bc.close();
+        }
       } catch {}
     }, 400);
     return () => clearTimeout(timer);
@@ -1194,13 +1205,15 @@ export default function App() {
 
     // 4. Instantly broadcast to other tabs on the same device
     try {
-      const bc = new BroadcastChannel('athree_cross_tab_sync');
-      bc.postMessage({
-        type: 'SHIFT_UPDATE',
-        currentShift: updatedShift,
-        sender: 'shift-handler'
-      });
-      bc.close();
+      if (typeof window !== 'undefined' && typeof (window as any).BroadcastChannel === 'function') {
+        const bc = new BroadcastChannel('athree_cross_tab_sync');
+        bc.postMessage({
+          type: 'SHIFT_UPDATE',
+          currentShift: updatedShift,
+          sender: 'shift-handler'
+        });
+        bc.close();
+      }
     } catch {}
   };
 
@@ -2686,6 +2699,7 @@ export default function App() {
           onDeleteSales={handleDeleteSales}
           allowCashierDrive={allowCashierDrive}
           onToggleAllowCashierDrive={handleToggleAllowCashierDrive}
+          onOpenDataSyncModal={() => setIsDataSyncModalOpen(true)}
         />
 
         {/* Modals accessible from Admin Portal */}
@@ -2799,6 +2813,30 @@ export default function App() {
             </div>
           </div>
         )}
+        {/* Live Sync Toast Notification */}
+        {liveSyncToast && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-none">
+            <div className="bg-slate-900/95 backdrop-blur-md text-white border border-emerald-500/60 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-semibold">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <span className="text-emerald-400 font-bold">{liveSyncToast}</span>
+            </div>
+          </div>
+        )}
+
+        <DataSyncInspectorModal
+          isOpen={isDataSyncModalOpen}
+          onClose={() => setIsDataSyncModalOpen(false)}
+          products={products}
+          transactions={transactions}
+          cashFlowRecords={cashFlowRecords}
+          onTriggerLiveSyncNotification={(msg) => {
+            setLiveSyncToast(msg);
+            setTimeout(() => setLiveSyncToast(null), 4000);
+          }}
+        />
       </div>
     );
   }
@@ -2838,6 +2876,7 @@ export default function App() {
           onOpenFirebaseModal={() => setIsFirebaseModalOpen(true)}
           isFirebaseConnected={isFirebaseConnected}
           firebaseUser={firebaseUser}
+          onOpenDataSyncModal={() => setIsDataSyncModalOpen(true)}
         />
 
         {/* Dynamic Views */}
@@ -3115,6 +3154,31 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Real-Time Live Sync Multi-Browser Toast Banner */}
+      {liveSyncToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-none">
+          <div className="bg-slate-900/95 backdrop-blur-md text-white border border-emerald-500/60 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-semibold">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span className="text-emerald-400 font-bold">{liveSyncToast}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Data Analysis, Cloud SQL Upsert & Live Sync Inspector Modal */}
+      <DataSyncInspectorModal
+        isOpen={isDataSyncModalOpen}
+        onClose={() => setIsDataSyncModalOpen(false)}
+        products={products}
+        transactions={transactions}
+        cashFlowRecords={cashFlowRecords}
+        onTriggerLiveSyncNotification={(msg) => {
+          setLiveSyncToast(msg);
+          setTimeout(() => setLiveSyncToast(null), 4000);
+        }}
+      />
     </div>
   );
 }

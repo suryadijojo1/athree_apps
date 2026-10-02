@@ -12,7 +12,7 @@ import {
   CreditCard,
   Calendar,
   Clock,
-  User,
+  User as UserIcon,
   PlusCircle,
   FileCheck,
   AlertCircle,
@@ -783,7 +783,7 @@ export const PosView: React.FC<PosViewProps> = ({
           <div className="flex items-center gap-2">
             <div className="flex-1 relative">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 mb-0.5">
-                <User className="w-3 h-3 text-slate-400" />
+                <UserIcon className="w-3 h-3 text-slate-400" />
                 Pelanggan
               </span>
               <select
@@ -1675,7 +1675,7 @@ export const PosView: React.FC<PosViewProps> = ({
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100">
             <h3 className="text-base font-bold text-slate-800 mb-3 flex items-center gap-2">
-              <User className="w-4 h-4 text-[#00871f]" />
+              <UserIcon className="w-4 h-4 text-[#00871f]" />
               Tambah Data Pelanggan
             </h3>
             <form onSubmit={handleSaveCustomer} className="space-y-3">

@@ -200,36 +200,38 @@ export function subscribeToServerEvents(
   function connect() {
     if (isClosed) return;
     try {
-      eventSource = new EventSource('/api/database/events');
+      if (typeof window !== 'undefined' && typeof (window as any).EventSource === 'function') {
+        eventSource = new EventSource('/api/database/events');
 
-      eventSource.onmessage = (e) => {
-        try {
-          const parsed = JSON.parse(e.data);
-          if (parsed) {
-            if (parsed.type === 'shift' && parsed.shift) {
-              if (onShiftUpdate) onShiftUpdate(parsed.shift);
-            } else if (parsed.data) {
-              if (parsed.data.sourceClient === CLIENT_ID) return;
-              onUpdate(parsed.data);
-              if (parsed.data.currentShift && onShiftUpdate) {
-                onShiftUpdate(parsed.data.currentShift);
+        eventSource.onmessage = (e) => {
+          try {
+            const parsed = JSON.parse(e.data);
+            if (parsed) {
+              if (parsed.type === 'shift' && parsed.shift) {
+                if (onShiftUpdate) onShiftUpdate(parsed.shift);
+              } else if (parsed.data) {
+                if (parsed.data.sourceClient === CLIENT_ID) return;
+                onUpdate(parsed.data);
+                if (parsed.data.currentShift && onShiftUpdate) {
+                  onShiftUpdate(parsed.data.currentShift);
+                }
               }
             }
+          } catch (err) {
+            console.warn('Error parsing SSE database event:', err);
           }
-        } catch (err) {
-          console.warn('Error parsing SSE database event:', err);
-        }
-      };
+        };
 
-      eventSource.onerror = () => {
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
-        }
-        if (!isClosed) {
-          reconnectTimeout = setTimeout(connect, 2000);
-        }
-      };
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (!isClosed) {
+            reconnectTimeout = setTimeout(connect, 2000);
+          }
+        };
+      }
     } catch (err) {
       if (!isClosed) {
         reconnectTimeout = setTimeout(connect, 3000);
@@ -351,4 +353,70 @@ export async function fetchCurrentShiftFromServer(): Promise<CashierShift | null
     return null;
   }
 }
+
+/**
+ * Calls backend to analyze data: Insert vs Update, validate #ORD/xxxx format, and conflict detection
+ */
+export async function analyzeDataViaServer(payload: {
+  products?: Product[];
+  transactions?: Transaction[];
+  cashFlowRecords?: CashFlowRecord[];
+}): Promise<any> {
+  try {
+    const res = await fetch('/api/sql/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': CLIENT_ID
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Analysis request failed');
+    return await res.json();
+  } catch (err: any) {
+    console.warn('Failed to analyze data via server:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Executes SQL Upsert to Cloud SQL and triggers instant live sync across all open browsers
+ */
+export async function executeCloudSqlUpsert(payload: {
+  products?: Product[];
+  transactions?: Transaction[];
+  cashFlowRecords?: CashFlowRecord[];
+}): Promise<any> {
+  try {
+    const res = await fetch('/api/sql/execute-upsert', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': CLIENT_ID
+      },
+      body: JSON.stringify({ ...payload, sourceClient: CLIENT_ID })
+    });
+    if (!res.ok) throw new Error('Execution request failed');
+    return await res.json();
+  } catch (err: any) {
+    console.warn('Failed to execute Cloud SQL upsert:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Get real-time connection status of live synchronization and Cloud SQL
+ */
+export async function getLiveSyncStatus(): Promise<any> {
+  try {
+    const res = await fetch(`/api/sql/sync-status?_t=${Date.now()}`, {
+      cache: 'no-store'
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+
 

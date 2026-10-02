@@ -37,7 +37,8 @@ import {
   Bell,
   AlertTriangle,
   CreditCard,
-  Building2
+  Building2,
+  Database
 } from 'lucide-react';
 import type { Transaction, CashFlowRecord, CashierShift, User } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -73,6 +74,7 @@ interface AdminDashboardProps {
   onDeleteSales?: (salesName: string) => void;
   allowCashierDrive?: boolean;
   onToggleAllowCashierDrive?: (allowed: boolean) => void;
+  onOpenDataSyncModal?: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -100,7 +102,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddSales,
   onDeleteSales,
   allowCashierDrive = false,
-  onToggleAllowCashierDrive
+  onToggleAllowCashierDrive,
+  onOpenDataSyncModal
 }) => {
   const [showPendapatanModal, setShowPendapatanModal] = useState(false);
   const [showPengeluaranModal, setShowPengeluaranModal] = useState(false);
@@ -659,6 +662,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <TrendingUp className="w-4 h-4 text-[#00871f]" />
               <span>Laporan Keuntungan Sales</span>
             </button>
+            {onOpenDataSyncModal && (
+              <button
+                type="button"
+                onClick={onOpenDataSyncModal}
+                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-950 px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm shadow-lg hover:shadow-xl transition-all active:scale-95 border border-emerald-300 flex items-center gap-1.5 cursor-pointer"
+                title="Pusat Analisis Data, Cloud SQL Upsert, Resolusi Konflik, dan Live Sync Multi-Browser"
+              >
+                <Database className="w-4 h-4 text-[#00871f]" />
+                <span>Analisis Data &amp; Cloud SQL</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+              </button>
+            )}
             {shift.isOpen ? (
               <button
                 type="button"

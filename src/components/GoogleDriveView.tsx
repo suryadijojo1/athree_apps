@@ -11,7 +11,7 @@ import {
   FileSpreadsheet,
   FileText,
   Folder,
-  File,
+  File as FileIcon,
   Search,
   CheckCircle2,
   AlertCircle,
@@ -612,7 +612,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     if (file.mimeType === 'application/pdf' || file.name.endsWith('.pdf')) {
       return <FileText className="w-5 h-5 text-rose-600" />;
     }
-    return <File className="w-5 h-5 text-slate-500" />;
+    return <FileIcon className="w-5 h-5 text-slate-500" />;
   };
 
   const formatFileSize = (bytes?: string) => {

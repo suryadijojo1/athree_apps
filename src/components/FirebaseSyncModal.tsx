@@ -10,7 +10,6 @@ import {
   X,
   Server,
   ShieldCheck,
-  History,
   RotateCcw,
   Clock,
   Sparkles

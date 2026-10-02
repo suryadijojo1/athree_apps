@@ -9,7 +9,7 @@ import {
   FileSpreadsheet,
   FileText,
   Printer,
-  History,
+  History as HistoryIcon,
   TrendingDown,
   CheckCircle2,
   RefreshCw,
@@ -563,7 +563,7 @@ export const KaosStockManagementView: React.FC<KaosStockManagementViewProps> = (
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              <History className="w-3.5 h-3.5" />
+              <HistoryIcon className="w-3.5 h-3.5" />
               Riwayat Mutasi ({kaosMovements.length})
             </button>
             <button

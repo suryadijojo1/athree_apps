@@ -12,7 +12,7 @@ import {
   Edit2,
   Trash2,
   CheckCircle2,
-  History,
+  History as HistoryIcon,
   TrendingDown,
   Boxes,
   ShieldAlert,
@@ -372,7 +372,7 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <History className="w-3.5 h-3.5" />
+            <HistoryIcon className="w-3.5 h-3.5" />
             <span>Riwayat Mutasi Stok ({stockMovements.length})</span>
           </button>
         </div>
@@ -544,7 +544,7 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
           <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
             <div className="p-3 border-b border-slate-200 bg-slate-50/60 flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <History className="w-4 h-4 text-slate-500" />
+                <HistoryIcon className="w-4 h-4 text-slate-500" />
                 Catatan Log Masuk, Keluar, dan Penyesuaian Fisik
               </h3>
               <span className="text-[11px] text-slate-500 font-medium">

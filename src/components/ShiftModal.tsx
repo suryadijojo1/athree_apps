@@ -15,7 +15,7 @@ import {
   Calculator,
   RotateCcw,
   AlertTriangle,
-  History,
+  History as HistoryIcon,
   Check,
   ChevronRight,
   Sparkles,
@@ -809,7 +809,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     onClick={() => setViewMode('history')}
                     className="px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
                   >
-                    <History className="w-3.5 h-3.5" />
+                    <HistoryIcon className="w-3.5 h-3.5" />
                     <span>Riwayat Kasir</span>
                   </button>
                 )}
@@ -1569,7 +1569,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                     onClick={() => setViewMode('history')}
                     className="px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 rounded-xl cursor-pointer flex items-center gap-1"
                   >
-                    <History className="w-3.5 h-3.5" />
+                    <HistoryIcon className="w-3.5 h-3.5" />
                     <span>Riwayat Shift</span>
                   </button>
                 )}
@@ -1826,7 +1826,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                  <History className="w-5 h-5" />
+                  <HistoryIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-800">Riwayat Buka / Tutup Kasir</h3>
@@ -1845,7 +1845,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             <div className="p-6 space-y-3 overflow-y-auto flex-1">
               {shiftHistory.length === 0 ? (
                 <div className="text-center py-10 text-slate-400 text-xs">
-                  <History className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <HistoryIcon className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p>Belum ada riwayat kasir yang tersimpan.</p>
                 </div>
               ) : (

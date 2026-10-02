@@ -4,8 +4,9 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import { getUsers, getOrCreateUser } from './src/db/users.ts';
-import { db } from './src/db/index.ts';
+import { db, createPool } from './src/db/index.ts';
 import { products, transactions, cashFlowRecords } from './src/db/schema.ts';
+import { analyzeIncomingPayload } from './src/utils/dataAnalysisEngine.ts';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'app-database.json');
 const BACKUPS_DIR = path.join(process.cwd(), 'data', 'backups');
@@ -743,6 +744,139 @@ async function startServer() {
       console.error('Failed to fetch cash flow:', error);
       res.status(500).json({ error: error.message || 'Failed to fetch cash flow' });
     }
+  });
+
+  // ============================================================================
+  // Intelligent Data Analysis, Format Validation, Cloud SQL Upsert & Live Sync
+  // ============================================================================
+
+  // 1. Analyze data: Detect Insert vs Update/Upsert, validate format (#ORD/xxxx, stock, names), and detect conflicts
+  app.post('/api/sql/analyze', (req, res) => {
+    try {
+      const payload = req.body || {};
+      const report = analyzeIncomingPayload(payload, currentDbState);
+      res.json({
+        success: true,
+        report
+      });
+    } catch (err: any) {
+      console.error('Failed to analyze data:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 2. Execute SQL Upsert directly to Cloud SQL PostgreSQL and synchronize live to all browsers
+  app.post('/api/sql/execute-upsert', async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const report = analyzeIncomingPayload(payload, currentDbState);
+
+      let cloudSqlExecuted = false;
+      let cloudSqlError: string | null = null;
+      let executedQueriesCount = 0;
+
+      // If combined SQL statements exist, attempt execution on Cloud SQL pool
+      if (report.combinedSql && report.combinedSql.trim()) {
+        try {
+          const pool = createPool();
+          await pool.query(report.combinedSql);
+          cloudSqlExecuted = true;
+          executedQueriesCount = report.items.length;
+          console.log(`Cloud SQL Upsert executed successfully: ${executedQueriesCount} queries.`);
+        } catch (sqlErr: any) {
+          console.warn('Cloud SQL pool notice (persisting to central live master store):', sqlErr.message);
+          cloudSqlError = sqlErr.message;
+        }
+      }
+
+      // Merge clean structured data into central database state
+      if (!currentDbState) {
+        currentDbState = {
+          products: [],
+          transactions: [],
+          cashFlowRecords: [],
+          shiftHistory: [],
+          kaosStocks: [],
+          stockMovements: [],
+          customers: [],
+          lastUpdated: new Date().toISOString(),
+          isRealData: true
+        };
+      }
+
+      // Merge Products
+      if (report.cleanStructuredPayload.products.length > 0) {
+        const prodMap = new Map<string, any>(currentDbState.products.map((p: any) => [p.id, p]));
+        report.cleanStructuredPayload.products.forEach((p: any) => prodMap.set(p.id, p));
+        currentDbState.products = Array.from(prodMap.values());
+      }
+
+      // Merge Transactions
+      if (report.cleanStructuredPayload.transactions.length > 0) {
+        const txMap = new Map<string, any>(currentDbState.transactions.map((t: any) => [t.id, t]));
+        report.cleanStructuredPayload.transactions.forEach((t: any) => txMap.set(t.id, t));
+        currentDbState.transactions = Array.from(txMap.values()).sort(
+          (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+        );
+      }
+
+      // Merge Cash Flow
+      if (report.cleanStructuredPayload.cashFlowRecords.length > 0) {
+        const cfMap = new Map<string, any>(currentDbState.cashFlowRecords.map((c: any) => [c.id, c]));
+        report.cleanStructuredPayload.cashFlowRecords.forEach((c: any) => cfMap.set(c.id, c));
+        currentDbState.cashFlowRecords = Array.from(cfMap.values());
+      }
+
+      currentDbState.lastUpdated = new Date().toISOString();
+      if (payload.sourceClient) {
+        currentDbState.sourceClient = payload.sourceClient;
+      }
+
+      // Atomically persist master state to disk
+      const dir = path.dirname(DB_FILE_PATH);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(currentDbState, null, 2), 'utf-8');
+
+      // REAL LIVE INSTANT BROADCAST TO ALL OPEN BROWSER TABS & DEVICES!
+      broadcastDatabaseUpdate(currentDbState);
+
+      res.json({
+        success: true,
+        report,
+        cloudSql: {
+          executed: cloudSqlExecuted,
+          error: cloudSqlError,
+          queriesCount: executedQueriesCount
+        },
+        liveSync: {
+          broadcasted: true,
+          connectedBrowsers: sseClients.size,
+          timestamp: currentDbState.lastUpdated
+        }
+      });
+    } catch (err: any) {
+      console.error('Failed to execute upsert & sync:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 3. Status monitor endpoint for real-time live synchronization & Cloud SQL
+  app.get('/api/sql/sync-status', (req, res) => {
+    res.json({
+      success: true,
+      connectedBrowsers: sseClients.size,
+      cloudSql: {
+        host: process.env.SQL_HOST ? 'Configured (Active)' : 'Local Sandbox Mode',
+        database: process.env.SQL_DB_NAME || 'cloud_sql_development_database',
+        user: process.env.SQL_USER || 'ai_studio_app_user'
+      },
+      stats: {
+        productsCount: currentDbState?.products?.length || 0,
+        transactionsCount: currentDbState?.transactions?.length || 0,
+        cashFlowCount: currentDbState?.cashFlowRecords?.length || 0,
+        lastUpdated: currentDbState?.lastUpdated || null
+      }
+    });
   });
 
   // Vite middleware for development & static serving for production
