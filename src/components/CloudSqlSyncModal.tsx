@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Flame,
   Database,
   CheckCircle2,
   AlertCircle,
@@ -14,20 +15,27 @@ import {
   Sparkles,
   Zap,
   Activity,
-  Layers
+  Layers,
+  HardDrive
 } from 'lucide-react';
 import {
-  pushToCloudSql,
-  pullFromCloudSql,
-  checkCloudSqlStatus,
-  CloudSqlStatus,
+  testConnection,
+  fetchAllDataFromFirestore,
+  syncAllLocalDataToFirestore,
+  saveCloudBackupSnapshot,
+  fetchCloudBackupSnapshots,
+  getCloudBackupSnapshotById,
+  CloudBackupSnapshotMeta
+} from '../services/firebase';
+import {
   saveServerBackupSnapshot,
   fetchServerBackups,
-  restoreServerBackup
+  restoreServerBackup,
+  fetchServerDatabase
 } from '../services/cloudSqlSync';
 import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, Customer, User, StockMovement } from '../types';
 
-interface CloudSqlSyncModalProps {
+interface DatabaseSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   products: Product[];
@@ -42,9 +50,10 @@ interface CloudSqlSyncModalProps {
   salesList?: string[];
   onManualSyncSuccess: () => void;
   onApplyDatabasePayload?: (payload: any) => void;
+  onNavigateToDrive?: () => void;
 }
 
-export const CloudSqlSyncModal: React.FC<CloudSqlSyncModalProps> = ({
+export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
   isOpen,
   onClose,
   products,
@@ -58,91 +67,97 @@ export const CloudSqlSyncModal: React.FC<CloudSqlSyncModalProps> = ({
   stockMovements,
   salesList,
   onManualSyncSuccess,
-  onApplyDatabasePayload
+  onApplyDatabasePayload,
+  onNavigateToDrive
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError?: boolean } | null>(null);
-  const [backupsList, setBackupsList] = useState<any[]>([]);
-  const [dbStatus, setDbStatus] = useState<CloudSqlStatus | null>(null);
-  const [activeTab, setActiveTab] = useState<'status' | 'backups'>('status');
+  const [activeTab, setActiveTab] = useState<'firestore' | 'sql' | 'drive'>('firestore');
+  const [firestoreConnected, setFirestoreConnected] = useState<boolean>(true);
+  const [firestoreBackups, setFirestoreBackups] = useState<CloudBackupSnapshotMeta[]>([]);
+  const [sqlBackups, setSqlBackups] = useState<any[]>([]);
 
-  // Load status and backups list on open
+  // Load initial health check and backups on open
   useEffect(() => {
     if (isOpen) {
-      checkCloudSqlStatus().then(setDbStatus);
+      testConnection().then(setFirestoreConnected);
+      fetchCloudBackupSnapshots().then(setFirestoreBackups).catch(() => {});
       fetchServerBackups().then((b) => {
-        if (b && Array.isArray(b)) setBackupsList(b);
+        if (b && Array.isArray(b)) setSqlBackups(b);
       }).catch(() => {});
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  // Handle Manual Push to Cloud SQL
-  const handlePushToCloudSql = async () => {
+  // 1. Force Push All Local Data to Firestore (Primary Database)
+  const handlePushAllToFirestore = async () => {
     setIsProcessing(true);
-    setStatusMessage({ text: 'Sedang menyinkronkan seluruh database ke Cloud SQL...' });
+    setStatusMessage({ text: 'Sedang menyinkronkan seluruh database lokal ke Firebase Firestore...' });
 
     try {
-      const result = await pushToCloudSql({
-        products: products || [],
-        transactions: transactions || [],
-        cashFlowRecords: cashFlowRecords || [],
-        shiftHistory: shifts || [],
+      const res = await syncAllLocalDataToFirestore({
+        products,
+        transactions,
+        cashFlowRecords,
+        shiftHistory: shifts,
         currentShift,
-        kaosStocks: kaosStocks || [],
-        stockMovements: stockMovements || [],
-        customers: customers || [],
-        users: users || [],
-        salesList: salesList || [],
-        isRealData: true
-      }, 'Sinkronisasi Manual Cloud SQL');
+        kaosStocks,
+        customers,
+        users,
+        stockMovements
+      });
 
-      if (result.success) {
-        setStatusMessage({ text: 'Berhasil! Seluruh data disinkronkan ke Cloud SQL & disiarkan secara real-time.' });
-        onManualSyncSuccess();
-        const updatedStatus = await checkCloudSqlStatus();
-        setDbStatus(updatedStatus);
-      } else {
-        setStatusMessage({
-          text: result.error ? `Gagal menyinkronkan: ${result.error}` : 'Gagal menyinkronkan data ke Cloud SQL. Cek koneksi server.',
-          isError: true
-        });
-      }
+      setStatusMessage({
+        text: `Berhasil! Seluruh data disinkronkan ke Firebase Firestore (${res.transactionsCount} transaksi, ${res.productsCount} produk, ${res.cashFlowCount} kas). Real-Time Sync aktif.`
+      });
+      onManualSyncSuccess();
     } catch (err: any) {
-      setStatusMessage({ text: `Terjadi kesalahan: ${err.message}`, isError: true });
+      setStatusMessage({ text: `Terjadi kesalahan saat sync Firestore: ${err.message}`, isError: true });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Handle Pull from Cloud SQL
-  const handlePullFromCloudSql = async () => {
+  // 2. Force Pull All Data from Firestore (Primary Database)
+  const handlePullFromFirestore = async () => {
     setIsProcessing(true);
-    setStatusMessage({ text: 'Sedang memuat data master dari Cloud SQL...' });
+    setStatusMessage({ text: 'Sedang memuat data master dari Firebase Firestore...' });
 
     try {
-      const data = await pullFromCloudSql();
+      const data = await fetchAllDataFromFirestore();
       if (data && onApplyDatabasePayload) {
-        onApplyDatabasePayload(data);
+        onApplyDatabasePayload({
+          products: data.products,
+          transactions: data.transactions,
+          cashFlowRecords: data.cashFlowRecords,
+          shiftHistory: data.shifts,
+          currentShift: data.activeShift || currentShift,
+          kaosStocks: data.kaosStocks,
+          customers: data.customers,
+          users: data.users,
+          stockMovements: data.stockMovements,
+          salesList: salesList || [],
+          isRealData: true
+        });
         setStatusMessage({
-          text: `Data Cloud SQL berhasil dimuat: ${data.transactions?.length || 0} transaksi, ${data.products?.length || 0} produk.`
+          text: `Data Firestore berhasil dimuat: ${data.transactions?.length || 0} transaksi, ${data.products?.length || 0} produk.`
         });
         onManualSyncSuccess();
       } else {
-        setStatusMessage({ text: 'Data dari Cloud SQL kosong atau belum tersimpan.', isError: true });
+        setStatusMessage({ text: 'Data dari Firestore kosong atau belum ada.', isError: true });
       }
     } catch (err: any) {
-      setStatusMessage({ text: `Gagal memuat dari Cloud SQL: ${err.message}`, isError: true });
+      setStatusMessage({ text: `Gagal memuat dari Firestore: ${err.message}`, isError: true });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Create dedicated backup snapshot with 14-day retention
-  const handleCreateBackup = async () => {
+  // 3. Create Firestore 14-Day Rolling Backup
+  const handleCreateFirestoreBackup = async () => {
     setIsProcessing(true);
-    setStatusMessage({ text: 'Membuat snapshot cadangan database Cloud SQL (retensi 14 hari)...' });
+    setStatusMessage({ text: 'Membuat snapshot cadangan di Firebase Firestore (retensi 14 hari)...' });
 
     try {
       const payload = {
@@ -159,117 +174,207 @@ export const CloudSqlSyncModal: React.FC<CloudSqlSyncModalProps> = ({
         isRealData: true
       };
 
-      const success = await saveServerBackupSnapshot(payload, 'Manual Cloud SQL Snapshot', 'modal-cloudsql');
-      if (success) {
-        setStatusMessage({ text: 'Snapshot cadangan Cloud SQL 14-hari berhasil disimpan!' });
-        const fresh = await fetchServerBackups();
-        setBackupsList(fresh);
-      } else {
-        setStatusMessage({ text: 'Gagal membuat snapshot cadangan.', isError: true });
-      }
+      const backupId = await saveCloudBackupSnapshot(payload, 'Manual Firestore Snapshot', 'modal-firestore');
+      setStatusMessage({ text: `Snapshot Firestore 14-hari berhasil disimpan (${backupId})!` });
+      const fresh = await fetchCloudBackupSnapshots();
+      setFirestoreBackups(fresh);
     } catch (err: any) {
-      setStatusMessage({ text: `Gagal: ${err.message}`, isError: true });
+      setStatusMessage({ text: `Gagal membuat snapshot Firestore: ${err.message}`, isError: true });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Restore backup
-  const handleRestoreBackup = async (backupId: string) => {
-    if (!confirm('Apakah Anda yakin ingin memulihkan database dari snapshot cadangan ini?')) return;
+  // 4. Restore from Firestore Backup
+  const handleRestoreFirestoreBackup = async (backupId: string) => {
+    if (!confirm('Apakah Anda yakin ingin memulihkan database dari snapshot Firestore ini?')) return;
     setIsProcessing(true);
-    setStatusMessage({ text: 'Sedang memulihkan database dari cadangan Cloud SQL...' });
+    setStatusMessage({ text: 'Mengambil snapshot cadangan dari Firestore...' });
 
     try {
-      const ok = await restoreServerBackup(backupId);
-      if (ok) {
-        setStatusMessage({ text: 'Database Cloud SQL berhasil dipulihkan! Memperbarui tampilan...' });
-        const refreshed = await pullFromCloudSql();
-        if (refreshed && onApplyDatabasePayload) {
-          onApplyDatabasePayload(refreshed);
-        }
+      const snapshotPayload = await getCloudBackupSnapshotById(backupId);
+      if (snapshotPayload && onApplyDatabasePayload) {
+        onApplyDatabasePayload(snapshotPayload);
+        setStatusMessage({
+          text: `Database berhasil dipulihkan dari snapshot Firestore (${snapshotPayload.transactions?.length || 0} transaksi)!`
+        });
         onManualSyncSuccess();
       } else {
-        setStatusMessage({ text: 'Gagal memulihkan snapshot cadangan.', isError: true });
+        setStatusMessage({ text: 'Snapshot Firestore tidak ditemukan atau format tidak sesuai.', isError: true });
       }
     } catch (err: any) {
-      setStatusMessage({ text: `Error saat pemulihan: ${err.message}`, isError: true });
+      setStatusMessage({ text: `Gagal memulihkan snapshot: ${err.message}`, isError: true });
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // 5. Create Manual Backup in Database SQL (Manual Backup Engine)
+  const handleCreateSqlBackup = async () => {
+    setIsProcessing(true);
+    setStatusMessage({ text: 'Menyimpan snapshot cadangan manual ke Database SQL (retensi 14 hari)...' });
+
+    try {
+      const payload = {
+        products,
+        transactions,
+        cashFlowRecords,
+        shiftHistory: shifts,
+        currentShift,
+        kaosStocks,
+        customers,
+        users,
+        stockMovements,
+        salesList,
+        isRealData: true
+      };
+
+      const success = await saveServerBackupSnapshot(payload, 'Manual SQL Snapshot', 'modal-sql');
+      if (success) {
+        setStatusMessage({ text: 'Cadangan manual ke Database SQL berhasil disimpan!' });
+        const fresh = await fetchServerBackups();
+        if (fresh && Array.isArray(fresh)) setSqlBackups(fresh);
+      } else {
+        setStatusMessage({ text: 'Gagal membuat cadangan manual SQL. Cek koneksi server.', isError: true });
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: `Gagal cadangan SQL: ${err.message}`, isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // 6. Restore from SQL Backup
+  const handleRestoreSqlBackup = async (backupId: string) => {
+    if (!confirm('Apakah Anda yakin ingin memulihkan database dari snapshot SQL ini?')) return;
+    setIsProcessing(true);
+    setStatusMessage({ text: 'Mengambil snapshot cadangan dari Database SQL...' });
+
+    try {
+      const success = await restoreServerBackup(backupId);
+      if (success) {
+        const fresh = await fetchServerDatabase();
+        if (fresh?.data && onApplyDatabasePayload) {
+          onApplyDatabasePayload(fresh.data);
+        }
+        setStatusMessage({
+          text: `Database berhasil dipulihkan dari cadangan SQL!`
+        });
+        onManualSyncSuccess();
+      } else {
+        setStatusMessage({ text: 'Snapshot SQL tidak ditemukan atau gagal dipulihkan.', isError: true });
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: `Gagal memulihkan snapshot SQL: ${err.message}`, isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const formatDate = (dateStr?: string | number) => {
+    if (!dateStr) return '-';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleString('id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return String(dateStr);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="px-6 py-5 bg-gradient-to-r from-emerald-800 via-[#00871f] to-teal-700 text-white flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-xs shadow-inner border border-white/20">
-              <Database className="w-5 h-5 text-emerald-200" />
+        <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 px-6 py-5 text-white flex items-center justify-between shrink-0 relative overflow-hidden">
+          <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shadow-inner">
+              <Flame className="w-6 h-6 fill-amber-400 text-amber-400 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold">Cloud SQL Real-Time Sync</h2>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-400 text-emerald-950">
-                  <Zap className="w-2.5 h-2.5 fill-current" />
+                <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                  Sinkronisasi & Cadangan Database
+                </h3>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                  <Zap className="w-3 h-3 fill-amber-300" />
                   Real-time
                 </span>
               </div>
-              <p className="text-xs text-emerald-100/90">
-                Database Utama: Cloud SQL (PostgreSQL) • Firebase Firestore: Dinonaktifkan
+              <p className="text-xs text-emerald-200/90 font-medium">
+                Database Utama: <span className="text-white font-bold">Firebase Firestore</span> • Cadangan Manual: <span className="text-slate-300">SQL & Google Drive</span>
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center text-white/90 hover:text-white transition-colors cursor-pointer relative z-10"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-2">
+        {/* Tab Navigation */}
+        <div className="flex border-b border-slate-200 bg-slate-50/80 px-6 pt-3 gap-2 shrink-0">
           <button
-            onClick={() => setActiveTab('status')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'status'
-                ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-lg'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
+            onClick={() => setActiveTab('firestore')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 ${
+              activeTab === 'firestore'
+                ? 'bg-white text-emerald-800 border-emerald-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
             }`}
           >
-            <Activity className="w-3.5 h-3.5" />
-            <span>Status & Sinkronisasi</span>
+            <Flame className="w-4 h-4 fill-amber-500 text-amber-500" />
+            <span>Firebase Firestore (Utama)</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           </button>
+
           <button
-            onClick={() => setActiveTab('backups')}
-            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'backups'
-                ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-lg'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
+            onClick={() => setActiveTab('sql')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 ${
+              activeTab === 'sql'
+                ? 'bg-white text-emerald-800 border-emerald-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
             }`}
           >
-            <History className="w-3.5 h-3.5" />
-            <span>Cadangan Rolling (14 Hari)</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-semibold">
-              {backupsList.length}
+            <Database className="w-4 h-4 text-blue-600" />
+            <span>Database SQL (Manual)</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-slate-200 text-slate-700 font-semibold">
+              {sqlBackups.length}
             </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('drive')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 ${
+              activeTab === 'drive'
+                ? 'bg-white text-emerald-800 border-emerald-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
+            }`}
+          >
+            <HardDrive className="w-4 h-4 text-emerald-600" />
+            <span>Google Drive (Manual)</span>
           </button>
         </div>
 
-        {/* Body Content */}
+        {/* Modal Content */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1">
-          {/* Status Message Alert */}
+          {/* Status / Alert Banner */}
           {statusMessage && (
             <div
-              className={`p-3.5 rounded-xl text-xs font-medium flex items-center justify-between gap-3 border ${
+              className={`p-3.5 rounded-2xl flex items-start justify-between gap-3 text-xs font-medium animate-in fade-in slide-in-from-top-1 ${
                 statusMessage.isError
-                  ? 'bg-rose-50 text-rose-800 border-rose-200'
-                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                  : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
               }`}
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 {statusMessage.isError ? (
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                 ) : (
@@ -279,222 +384,309 @@ export const CloudSqlSyncModal: React.FC<CloudSqlSyncModalProps> = ({
               </div>
               <button
                 onClick={() => setStatusMessage(null)}
-                className="text-xs font-bold underline hover:opacity-75"
+                className="text-slate-500 hover:text-slate-700 font-bold ml-2 shrink-0 cursor-pointer"
               >
                 Tutup
               </button>
             </div>
           )}
 
-          {activeTab === 'status' && (
-            <>
-              {/* Architecture Badges & Status */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {/* Cloud SQL Card */}
-                <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 flex flex-col justify-between">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                        <Database className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Database Aktif</span>
-                      </div>
-                      <h3 className="text-base font-bold text-slate-800 mt-1">Cloud SQL (PostgreSQL)</h3>
-                    </div>
-                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shadow-2xs">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-                      Terhubung
+          {/* TAB 1: FIREBASE FIRESTORE (DATABASE UTAMA REAL-TIME) */}
+          {activeTab === 'firestore' && (
+            <div className="space-y-5">
+              {/* Primary Active Card */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gradient-to-br from-emerald-50 via-teal-50/50 to-white border border-emerald-200 rounded-2xl p-4 shadow-xs relative overflow-hidden">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
+                      <Flame className="w-4 h-4 fill-amber-500 text-amber-500" />
+                      DATABASE UTAMA AKTIF
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-600 text-white shadow-2xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                      {firestoreConnected ? 'Terhubung (Real-Time)' : 'Connecting...'}
                     </span>
                   </div>
-                  <div className="mt-3 text-xs text-slate-600 space-y-1">
-                    <p className="flex justify-between">
-                      <span className="text-slate-500">Real-Time Sync:</span>
-                      <span className="font-semibold text-emerald-700">Aktif (SSE &lt; 50ms)</span>
-                    </p>
-                    <p className="flex justify-between">
-                      <span className="text-slate-500">Klien Terhubung:</span>
-                      <span className="font-semibold text-slate-700">{dbStatus?.totalTransactions ? 'Multi-Browser Aktif' : '1 Klien'}</span>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Firebase Firestore Status Card */}
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Firebase Firestore</span>
-                      </div>
-                      <h3 className="text-base font-bold text-slate-700 mt-1">Dinonaktifkan</h3>
-                    </div>
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-600">
-                      Disabled
-                    </span>
-                  </div>
-                  <div className="mt-3 text-xs text-slate-500">
-                    <p>
-                      Firestore telah dinonaktifkan sesuai konfigurasi. Seluruh sinkronisasi real-time dipindahkan sepenuhnya ke Cloud SQL PostgreSQL.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Data Statistics in Memory & Cloud SQL */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                    <Server className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Statistik Database Terintegrasi</span>
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    Otomatis tersimpan setiap ada transaksi / perubahan
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Total Transaksi</span>
-                    <span className="text-base font-bold text-slate-800">{transactions.length}</span>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Katalog Produk</span>
-                    <span className="text-base font-bold text-slate-800">{products.length}</span>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Stok Kaos Polos</span>
-                    <span className="text-base font-bold text-slate-800">{kaosStocks?.length || 0}</span>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Pelanggan</span>
-                    <span className="text-base font-bold text-slate-800">{customers?.length || 0}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Manual Synchronization Buttons */}
-              <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/60 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-emerald-600" />
-                      <span>Sinkronisasi Manual & Snapshot</span>
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Kirim segera data lokal ke Cloud SQL atau muat ulang versi master terbaru.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2.5 pt-1">
-                  <button
-                    onClick={handlePushToCloudSql}
-                    disabled={isProcessing}
-                    className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs hover:shadow transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    <UploadCloud className="w-4 h-4" />
-                    <span>Sinkronkan ke Cloud SQL</span>
-                  </button>
-
-                  <button
-                    onClick={handlePullFromCloudSql}
-                    disabled={isProcessing}
-                    className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs border border-slate-300 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    <DownloadCloud className="w-4 h-4" />
-                    <span>Muat dari Cloud SQL</span>
-                  </button>
-
-                  <button
-                    onClick={handleCreateBackup}
-                    disabled={isProcessing}
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-semibold text-xs transition-all cursor-pointer disabled:opacity-50"
-                    title="Simpan cadangan dengan retensi 14 hari"
-                  >
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Buat Cadangan 14 Hari</span>
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {activeTab === 'backups' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-teal-600" />
-                    <span>Daftar Snapshot Cadangan Cloud SQL (Retensi 14 Hari)</span>
+                  <h4 className="text-base font-bold text-slate-800">
+                    Firebase Firestore (Cloud)
                   </h4>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Setiap logout atau perubahan berkala otomatis disimpan dan dihapus aman setelah 14 hari.
+                  <p className="text-xs text-slate-500 mt-1">
+                    Sinkronisasi otomatis dua arah secara real-time (&lt;50ms) menggunakan listener onSnapshot langsung ke cloud database.
                   </p>
+                  <div className="mt-3 flex items-center gap-3 text-xs text-emerald-800 font-semibold bg-emerald-100/60 px-3 py-1.5 rounded-xl border border-emerald-200/60">
+                    <Activity className="w-4 h-4 text-emerald-600 animate-pulse shrink-0" />
+                    <span>Sinkronisasi Otomatis Setiap Transaksi & Perubahan Data</span>
+                  </div>
                 </div>
-                <button
-                  onClick={handleCreateBackup}
-                  disabled={isProcessing}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer transition-colors"
-                >
-                  + Buat Snapshot Baru
-                </button>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-xs">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-blue-600" />
+                      STATUS CADANGAN MANUAL
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700">
+                      Tersedia Manual
+                    </span>
+                  </div>
+                  <h4 className="text-base font-bold text-slate-800">
+                    SQL & Google Drive
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Database SQL dan Google Drive disiapkan khusus untuk cadangan manual (manual backup & restore) tanpa membebani performa kasir.
+                  </p>
+                  <div className="mt-3 flex items-center gap-2 text-xs text-slate-600 font-medium">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Retensi Cadangan: 14 Hari Rolling Snapshot</span>
+                  </div>
+                </div>
               </div>
 
-              {backupsList.length === 0 ? (
-                <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
-                  <Database className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                  Belum ada snapshot cadangan tersimpan. Klik "Buat Snapshot Baru" di atas.
+              {/* Real-time Integrated Database Stats */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-emerald-600" />
+                    STATISTIK DATA AKTIF TERINTEGRASI
+                  </h4>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Auto-Sync Real-Time
+                  </span>
                 </div>
-              ) : (
-                <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
-                  {backupsList.map((b) => (
-                    <div
-                      key={b.id}
-                      className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 hover:border-emerald-300 transition-colors"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-800">
-                            {new Date(b.timestamp).toLocaleString('id-ID', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">
-                            Sisa: {b.remainingDays || 14} Hari
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[11px] text-slate-500 block">Total Transaksi</span>
+                    <span className="text-lg font-bold text-slate-800">{transactions?.length || 0}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[11px] text-slate-500 block">Katalog Produk</span>
+                    <span className="text-lg font-bold text-slate-800">{products?.length || 0}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[11px] text-slate-500 block">Stok Kaos Polos</span>
+                    <span className="text-lg font-bold text-slate-800">{kaosStocks?.length || 0}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[11px] text-slate-500 block">Pelanggan</span>
+                    <span className="text-lg font-bold text-slate-800">{customers?.length || 0}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Firestore Primary Actions */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  AKSI DATABASE UTAMA FIRESTORE
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    onClick={handlePushAllToFirestore}
+                    disabled={isProcessing}
+                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer group text-center"
+                  >
+                    <UploadCloud className="w-6 h-6 mb-1 text-emerald-100 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs">Sinkronkan ke Firestore</span>
+                    <span className="text-[10px] text-emerald-200 font-normal mt-0.5">
+                      Upload seluruh data lokal ke cloud
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={handlePullFromFirestore}
+                    disabled={isProcessing}
+                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-bold transition-all disabled:opacity-50 cursor-pointer group text-center"
+                  >
+                    <DownloadCloud className="w-6 h-6 mb-1 text-slate-600 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs">Muat dari Firestore</span>
+                    <span className="text-[10px] text-slate-500 font-normal mt-0.5">
+                      Ambil master data terbaru cloud
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={handleCreateFirestoreBackup}
+                    disabled={isProcessing}
+                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold transition-all disabled:opacity-50 cursor-pointer group text-center"
+                  >
+                    <ShieldCheck className="w-6 h-6 mb-1 text-amber-600 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs">Snapshot Cadangan (14 Hari)</span>
+                    <span className="text-[10px] text-amber-700 font-normal mt-0.5">
+                      Simpan checkpoint ke Firestore
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Firestore Snapshots List */}
+              {firestoreBackups.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <History className="w-4 h-4 text-emerald-600" />
+                      DAFTAR SNAPSHOT FIRESTORE (RETENSI 14 HARI)
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {firestoreBackups.length} Snapshot
+                    </span>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {firestoreBackups.slice(0, 5).map((snap) => (
+                      <div
+                        key={snap.id}
+                        className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs hover:border-emerald-300 transition-colors"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-800 flex items-center gap-2">
+                            <span>{snap.id}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {snap.stats?.transactionsCount || 0} Transaksi
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500">
+                            Dibuat: {formatDate(snap.createdAt)} • Oleh: {snap.savedBy}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-1">
-                          Sumber: <span className="font-medium text-slate-700">{b.savedBy || 'Kasir'}</span> • Transaksi: {b.stats?.transactionsCount ?? '-'} • Produk: {b.stats?.productsCount ?? '-'}
-                        </p>
+                        <button
+                          onClick={() => handleRestoreFirestoreBackup(snap.id)}
+                          disabled={isProcessing}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Pulihkan
+                        </button>
                       </div>
-
-                      <button
-                        onClick={() => handleRestoreBackup(b.id)}
-                        disabled={isProcessing}
-                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 hover:border-emerald-400 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Pulihkan</span>
-                      </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 2: DATABASE SQL (CADANGAN MANUAL) */}
+          {activeTab === 'sql' && (
+            <div className="space-y-5">
+              <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-blue-600" />
+                    DATABASE SQL: CADANGAN MANUAL
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                    Cadangan Manual Server
+                  </span>
+                </div>
+                <h4 className="text-base font-bold text-slate-800">
+                  Cloud SQL (PostgreSQL) / Server Persistent Storage
+                </h4>
+                <p className="text-xs text-slate-600 mt-1">
+                  Database SQL berfungsi sebagai mesin cadangan manual untuk menyimpan snapshot lengkap sistem secara berkala ke database SQL / storage server.
+                </p>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    onClick={handleCreateSqlBackup}
+                    disabled={isProcessing}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                    Simpan Cadangan ke SQL Sekarang
+                  </button>
+                </div>
+              </div>
+
+              {/* SQL Rolling Backups List */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <History className="w-4 h-4 text-blue-600" />
+                    SNAPSHOT CADANGAN MANUAL DATABASE SQL (14 HARI)
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {sqlBackups.length} Snapshot
+                  </span>
+                </div>
+
+                {sqlBackups.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-slate-100">
+                    Belum ada snapshot cadangan SQL tersimpan. Klik tombol &quot;Simpan Cadangan ke SQL Sekarang&quot; untuk membuat snapshot baru.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto">
+                    {sqlBackups.map((snap) => (
+                      <div
+                        key={snap.id}
+                        className="bg-slate-50 hover:bg-slate-100/80 p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs transition-colors"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-800 flex items-center gap-2">
+                            <span>{snap.id}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-50 text-blue-700 border border-blue-200">
+                              {snap.stats?.transactionsCount || 0} Transaksi
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              {snap.stats?.productsCount || 0} Produk
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500">
+                            Waktu: {formatDate(snap.createdAt)} • Oleh: {snap.savedBy || 'Kasir'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleRestoreSqlBackup(snap.id)}
+                          disabled={isProcessing}
+                          className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold border border-blue-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Pulihkan
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: GOOGLE DRIVE (CADANGAN MANUAL) */}
+          {activeTab === 'drive' && (
+            <div className="space-y-5">
+              <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 rounded-2xl p-5 text-center space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-inner">
+                  <HardDrive className="w-7 h-7" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-800">
+                    Google Drive Backup (Cadangan Manual Cloud)
+                  </h4>
+                  <p className="text-xs text-slate-600 max-w-md mx-auto mt-1">
+                    Anda dapat mencadangkan seluruh data transaksi, produk, kaos, dan laporan kasir secara mandiri ke Google Drive pribadi Anda untuk arsip aman permanen.
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      onClose();
+                      if (onNavigateToDrive) onNavigateToDrive();
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-2 shadow-md hover:shadow-lg"
+                  >
+                    <HardDrive className="w-4 h-4" />
+                    Buka Panel Cadangan Google Drive
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-100 border-t border-slate-200 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>Real-time SSE Sync aktif pada server</span>
+        <div className="bg-slate-100 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <span>Database Utama: <strong>Firebase Firestore (Real-Time)</strong></span>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition-colors cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-white hover:bg-slate-200 border border-slate-300 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
           >
             Tutup
           </button>

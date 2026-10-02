@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User as UserIcon, Lock, Layers, Check, AlertCircle, Clock, ShieldCheck, RefreshCw } from 'lucide-react';
+import { User as UserIcon, Lock, Layers, Check, AlertCircle, Clock, ShieldCheck, RefreshCw, Flame } from 'lucide-react';
 import { User } from '../types';
 import welcomeBg from '../assets/images/kang_sablon_mascot_1789898387552.jpg';
 
@@ -261,6 +261,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   Staf (Budi)
                 </button>
               </div>
+            </div>
+
+            {/* Firestore Real-Time Status indicator */}
+            <div className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 text-[10px] text-emerald-800 font-semibold bg-emerald-50 rounded-xl border border-emerald-200/80 mt-2 shadow-2xs">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <Flame className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+              <span>Firestore: Real-Time Sync (Auto-Load saat Login)</span>
             </div>
           </div>
 

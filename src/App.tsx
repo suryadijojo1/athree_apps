@@ -45,10 +45,23 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { GoogleDriveView } from './components/GoogleDriveView';
 import { KaosStockManagementView } from './components/KaosStockManagementView';
 import { CloudSqlSyncModal } from './components/CloudSqlSyncModal';
-import { CloudUpload, CheckCircle2 } from 'lucide-react';
+import { CloudUpload, CheckCircle2, Flame } from 'lucide-react';
 import { calculateProfit } from './utils/profitUtils';
 import {
   subscribeToAuth,
+  subscribeToProducts,
+  subscribeToTransactions,
+  subscribeToCashFlow,
+  subscribeToShifts,
+  subscribeToActiveShift,
+  subscribeToKaosStocks,
+  subscribeToCustomers,
+  subscribeToStockMovements,
+  subscribeToUsers,
+  testConnection,
+  fetchAllDataFromFirestore,
+  syncAllLocalDataToFirestore,
+  saveCloudBackupSnapshot,
   saveProductToFirestore,
   deleteProductFromFirestore,
   saveMultipleProductsToFirestore,
@@ -583,54 +596,16 @@ export default function App() {
     }
   };
 
-  // Set up Automatic Cloud Synchronization
+  // Set up Automatic Cloud Synchronization (Firebase Firestore Primary Real-Time Sync)
   useEffect(() => {
     let isSubscribed = true;
-
-    // A. Central Server Real-Time Sync (Cross-browser automatic hydration)
-    const checkAndSyncCentralServer = async () => {
-      try {
-        const serverRes = await fetchServerDatabase();
-        if (!isSubscribed) return;
-
-        const currentTransactions = latestStateRef.current.transactions;
-        const localHasRealData = isRealUserData(currentTransactions);
-
-        if (serverRes.success && serverRes.data) {
-          if (serverRes.isRealData) {
-            if (!localHasRealData || serverRes.data.transactions.length >= currentTransactions.length) {
-              console.log('Central Server: Hydrating state from master server database...');
-              applyFullDatabasePayload(serverRes.data);
-            } else if (localHasRealData && currentTransactions.length > serverRes.data.transactions.length) {
-              console.log('Central Server: Local browser has more transactions, updating server...');
-              syncCurrentStateToServer(true);
-            }
-          } else {
-            if (localHasRealData) {
-              console.log('Central Server: Seeding master data from current browser to server...');
-              syncCurrentStateToServer(true);
-            } else if (serverRes.data.transactions && serverRes.data.transactions.length > 0) {
-              applyFullDatabasePayload(serverRes.data);
-            }
-          }
-        } else {
-          // Server has no data stored yet, initialize server with current browser data
-          console.log('Central Server: Initializing master data from current browser to server...');
-          syncCurrentStateToServer(true);
-        }
-      } catch (err) {
-        console.warn('Central server sync init error:', err);
-      }
-    };
-
-    checkAndSyncCentralServer();
 
     // Reusable handler to apply remote shift changes across all sync mechanisms
     const applyShiftUpdate = (remoteShift: CashierShift) => {
       if (!isSubscribed || !remoteShift) return;
       setShift((prevShift) => {
         if (shouldApplyRemoteShift(remoteShift, prevShift)) {
-          console.log('Real-Time Live Shift: Syncing active shift from central server:', {
+          console.log('Real-Time Live Shift: Syncing active shift from Firestore/Server:', {
             isOpen: remoteShift.isOpen,
             startTime: remoteShift.startTime,
             cashierName: remoteShift.cashierName
@@ -644,19 +619,160 @@ export default function App() {
           latestStateRef.current.shift = remoteShift;
           return remoteShift;
         } else if (prevShift.isOpen && (!remoteShift.isOpen || remoteShift.id !== prevShift.id)) {
-          // Local browser has open cashier, ensure server knows about this active open shift
+          // Local browser has open cashier, ensure remote knows about this active open shift
+          saveActiveShiftToFirestore(prevShift).catch(() => {});
           syncShiftToServer(prevShift, `${currentUser.name} (Buka Kasir Aktif)`).catch(() => {});
         }
         return prevShift;
       });
     };
 
-    // Fast-fetch active live shift from central server for instant cross-browser agreement
+    // 1. Check connection to Firebase Firestore (Primary Database)
+    testConnection().then((connected) => {
+      if (isSubscribed) setIsFirebaseConnected(connected);
+    });
+
+    // 2. Initial Hydration / Seed from Firebase Firestore
+    fetchAllDataFromFirestore().then((remoteFs) => {
+      if (!isSubscribed) return;
+      const currentTx = latestStateRef.current.transactions;
+      const localHasReal = isRealUserData(currentTx);
+
+      if (remoteFs.transactions && remoteFs.transactions.length > 0) {
+        console.log('Firebase Firestore (Utama): Memuat data awal dari Firestore cloud database...');
+        if (remoteFs.products.length > 0) {
+          setProducts(remoteFs.products);
+          localStorage.setItem('athree_products', JSON.stringify(remoteFs.products));
+        }
+        if (remoteFs.transactions.length > 0) {
+          setTransactions(remoteFs.transactions);
+          localStorage.setItem('athree_transactions', JSON.stringify(remoteFs.transactions));
+        }
+        if (remoteFs.cashFlowRecords.length > 0) {
+          setCashFlowRecords(remoteFs.cashFlowRecords);
+          localStorage.setItem('athree_cash_flow', JSON.stringify(remoteFs.cashFlowRecords));
+        }
+        if (remoteFs.shifts.length > 0) {
+          setShiftHistory(remoteFs.shifts);
+          localStorage.setItem('athree_shifts', JSON.stringify(remoteFs.shifts));
+        }
+        if (remoteFs.activeShift) {
+          applyShiftUpdate(remoteFs.activeShift);
+        }
+        if (remoteFs.kaosStocks.length > 0) {
+          setKaosStocks(remoteFs.kaosStocks);
+          localStorage.setItem('athree_kaos_stocks', JSON.stringify(remoteFs.kaosStocks));
+        }
+        if (remoteFs.customers.length > 0) {
+          setCustomers(remoteFs.customers);
+          localStorage.setItem('athree_customers', JSON.stringify(remoteFs.customers));
+        }
+        if (remoteFs.users.length > 0) {
+          setUsers(remoteFs.users);
+          localStorage.setItem('athree_users', JSON.stringify(remoteFs.users));
+        }
+      } else if (localHasReal) {
+        console.log('Firebase Firestore (Utama): Mengisi master data awal lokal ke Firestore...');
+        syncAllLocalDataToFirestore({
+          products: latestStateRef.current.products,
+          transactions: latestStateRef.current.transactions,
+          cashFlowRecords: latestStateRef.current.cashFlowRecords,
+          shiftHistory: latestStateRef.current.shiftHistory,
+          currentShift: latestStateRef.current.shift,
+          kaosStocks: latestStateRef.current.kaosStocks,
+          customers: latestStateRef.current.customers,
+          users: latestStateRef.current.users,
+          stockMovements: latestStateRef.current.stockMovements
+        }).catch((err) => console.warn('Firestore initial seed error:', err));
+      }
+    }).catch((err) => console.warn('Firestore initial fetch error:', err));
+
+    // 3. Real-Time onSnapshot Listeners from Firebase Firestore
+    const unsubProd = subscribeToProducts((remoteProducts) => {
+      if (!isSubscribed || !remoteProducts || remoteProducts.length === 0) return;
+      setProducts(remoteProducts);
+      localStorage.setItem('athree_products', JSON.stringify(remoteProducts));
+    });
+
+    const unsubTx = subscribeToTransactions((remoteTransactions) => {
+      if (!isSubscribed || !remoteTransactions || remoteTransactions.length === 0) return;
+      setTransactions((prev) => {
+        if (remoteTransactions.length >= prev.length || isRealUserData(remoteTransactions)) {
+          localStorage.setItem('athree_transactions', JSON.stringify(remoteTransactions));
+          return remoteTransactions;
+        }
+        return prev;
+      });
+    });
+
+    const unsubCashFlow = subscribeToCashFlow((remoteRecords) => {
+      if (!isSubscribed || !remoteRecords) return;
+      if (remoteRecords.length > 0) {
+        setCashFlowRecords(remoteRecords);
+        localStorage.setItem('athree_cash_flow', JSON.stringify(remoteRecords));
+      }
+    });
+
+    const unsubShifts = subscribeToShifts((remoteShifts) => {
+      if (!isSubscribed || !remoteShifts) return;
+      if (remoteShifts.length > 0) {
+        setShiftHistory(remoteShifts);
+        localStorage.setItem('athree_shifts', JSON.stringify(remoteShifts));
+      }
+    });
+
+    const unsubActiveShift = subscribeToActiveShift((remoteActiveShift) => {
+      if (!isSubscribed || !remoteActiveShift) return;
+      applyShiftUpdate(remoteActiveShift);
+    });
+
+    const unsubKaos = subscribeToKaosStocks((remoteKaos) => {
+      if (!isSubscribed || !remoteKaos || remoteKaos.length === 0) return;
+      setKaosStocks(remoteKaos);
+      localStorage.setItem('athree_kaos_stocks', JSON.stringify(remoteKaos));
+    });
+
+    const unsubCustomers = subscribeToCustomers((remoteCustomers) => {
+      if (!isSubscribed || !remoteCustomers || remoteCustomers.length === 0) return;
+      setCustomers(remoteCustomers);
+      localStorage.setItem('athree_customers', JSON.stringify(remoteCustomers));
+    });
+
+    const unsubMovements = subscribeToStockMovements((remoteMovements) => {
+      if (!isSubscribed || !remoteMovements || remoteMovements.length === 0) return;
+      setStockMovements(remoteMovements);
+      localStorage.setItem('athree_stock_movements', JSON.stringify(remoteMovements));
+    });
+
+    const unsubUsers = subscribeToUsers((remoteUsers) => {
+      if (!isSubscribed || !remoteUsers || remoteUsers.length === 0) return;
+      setUsers(remoteUsers);
+      localStorage.setItem('athree_users', JSON.stringify(remoteUsers));
+    });
+
+    // 4. Central Server Secondary Sync (For Manual SQL backup compatibility)
+    const checkAndSyncCentralServer = async () => {
+      try {
+        const serverRes = await fetchServerDatabase();
+        if (!isSubscribed) return;
+        if (serverRes.success && serverRes.data && serverRes.isRealData) {
+          const currentTransactions = latestStateRef.current.transactions;
+          if (currentTransactions.length === 0 && serverRes.data.transactions?.length > 0) {
+            applyFullDatabasePayload(serverRes.data);
+          }
+        }
+      } catch (err) {
+        console.warn('Central server sync check:', err);
+      }
+    };
+    checkAndSyncCentralServer();
+
+    // Fast-fetch active live shift from central server
     fetchCurrentShiftFromServer().then((remoteShift) => {
       if (remoteShift) applyShiftUpdate(remoteShift);
     }).catch(() => {});
 
-    // Ultra-fast dedicated live shift synchronizer (1.5s heartbeat)
+    // Live shift synchronizer
     const unsubLiveShift = startLiveShiftSync((liveShift) => {
       applyShiftUpdate(liveShift);
     });
@@ -715,15 +831,21 @@ export default function App() {
       };
     } catch {}
 
-    // Cloud SQL Real-Time Sync is active by default
-    setIsFirebaseConnected(true);
-
     const unsubAuth = subscribeToAuth((user) => {
       if (isSubscribed) setFirebaseUser(user);
     });
 
     return () => {
       isSubscribed = false;
+      unsubProd();
+      unsubTx();
+      unsubCashFlow();
+      unsubShifts();
+      unsubActiveShift();
+      unsubKaos();
+      unsubCustomers();
+      unsubMovements();
+      unsubUsers();
       unsubLiveShift();
       unsubServer();
       window.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -1200,7 +1322,81 @@ export default function App() {
     syncCurrentStateToServer();
   };
 
-  // Handler: Full Login (from LoginScreen)
+  // Login sync state
+  const [isLoginSyncing, setIsLoginSyncing] = useState<boolean>(false);
+  const [loginSyncMessage, setLoginSyncMessage] = useState<string>('Menyinkronkan data database dari Firebase Firestore...');
+
+  // Helper: Otomatis muat data segar dari Firebase Firestore (Real-Time Hydration)
+  const syncAndLoadFromFirestore = async (showOverlay = true): Promise<boolean> => {
+    if (showOverlay) {
+      setIsLoginSyncing(true);
+      setLoginSyncMessage('Menyinkronkan data database dari Firebase Firestore...');
+    }
+
+    try {
+      console.log('Firebase Firestore: Memulai sinkronisasi otomatis saat login...');
+      const firestoreData = await fetchAllDataFromFirestore();
+      if (firestoreData) {
+        if (firestoreData.products && firestoreData.products.length > 0) {
+          setProducts(firestoreData.products);
+          localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
+        }
+        if (firestoreData.transactions && firestoreData.transactions.length > 0) {
+          setTransactions(firestoreData.transactions);
+          localStorage.setItem('athree_transactions', JSON.stringify(firestoreData.transactions));
+        }
+        if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
+          setCashFlowRecords(firestoreData.cashFlowRecords);
+          localStorage.setItem('athree_cash_flow', JSON.stringify(firestoreData.cashFlowRecords));
+        }
+        if (firestoreData.shifts && firestoreData.shifts.length > 0) {
+          setShiftHistory(firestoreData.shifts);
+          localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
+        }
+        if (firestoreData.activeShift) {
+          setShift(firestoreData.activeShift);
+          localStorage.setItem('athree_shift', JSON.stringify(firestoreData.activeShift));
+          if (firestoreData.activeShift.isOpen) {
+            localStorage.setItem('athree_shift_active_persistent', JSON.stringify(firestoreData.activeShift));
+          } else {
+            localStorage.removeItem('athree_shift_active_persistent');
+          }
+        }
+        if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
+          setKaosStocks(firestoreData.kaosStocks);
+          localStorage.setItem('athree_kaos_stocks', JSON.stringify(firestoreData.kaosStocks));
+        }
+        if (firestoreData.customers && firestoreData.customers.length > 0) {
+          setCustomers(firestoreData.customers);
+          localStorage.setItem('athree_customers', JSON.stringify(firestoreData.customers));
+        }
+        if (firestoreData.users && firestoreData.users.length > 0) {
+          setUsers(firestoreData.users);
+          localStorage.setItem('athree_users', JSON.stringify(firestoreData.users));
+        }
+        if (firestoreData.stockMovements && firestoreData.stockMovements.length > 0) {
+          setStockMovements(firestoreData.stockMovements);
+          localStorage.setItem('athree_stock_movements', JSON.stringify(firestoreData.stockMovements));
+        }
+        if (showOverlay) {
+          setLoginSyncMessage(`Berhasil menyinkronkan data (${firestoreData.transactions.length} transaksi, ${firestoreData.products.length} produk).`);
+        }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn('Gagal memuat data Firestore saat login:', err);
+      return false;
+    } finally {
+      if (showOverlay) {
+        setTimeout(() => {
+          setIsLoginSyncing(false);
+        }, 700);
+      }
+    }
+  };
+
+  // Handler: Full Login (from LoginScreen) - Otomatis Sync dari Firestore
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     setIsAuthenticated(true);
@@ -1217,6 +1413,9 @@ export default function App() {
     } else {
       setActiveTab('orders');
     }
+
+    // Trigger otomatis memuat seluruh data terbaru dari Firebase Firestore
+    syncAndLoadFromFirestore(true).catch(() => {});
   };
 
   // Logout & Cloud Auto-Save state
@@ -1236,7 +1435,24 @@ export default function App() {
 
     if (onStep) onStep('Menyimpan data penjualan ke Server & Cloud...');
 
-    // 1. Parallel save to Server Master and Server Snapshot (ultra fast)
+    // 1. Parallel save to Firebase Firestore, SQL Server Master and Server Snapshot (ultra fast)
+    const firestoreBackupPromise = saveCloudBackupSnapshot(
+      {
+        products: currentState.products,
+        transactions: currentState.transactions,
+        cashFlowRecords: currentState.cashFlowRecords,
+        shiftHistory: currentState.shiftHistory,
+        currentShift: shiftToSave,
+        kaosStocks: currentState.kaosStocks,
+        stockMovements: currentState.stockMovements,
+        customers: currentState.customers,
+        users: currentState.users,
+        salesList: currentState.salesList
+      },
+      savedBy,
+      source
+    ).catch((err) => console.warn('Firestore backup snapshot warning:', err));
+
     const serverSavePromise = saveServerDatabase(
       {
         products: currentState.products,
@@ -1271,10 +1487,10 @@ export default function App() {
       source
     ).catch((err) => console.warn('Server backup warning:', err));
 
-    // Wait for critical saves with safety timeout (max 1200ms)
-    const timeout = new Promise((resolve) => setTimeout(resolve, 1200));
+    // Wait for critical saves with safety timeout (max 1500ms)
+    const timeout = new Promise((resolve) => setTimeout(resolve, 1500));
     await Promise.race([
-      Promise.all([serverSavePromise, serverBackupPromise]),
+      Promise.all([firestoreBackupPromise, serverSavePromise, serverBackupPromise]),
       timeout
     ]);
 
@@ -1464,6 +1680,8 @@ export default function App() {
   // Handler: User selection
   const handleSelectUser = (user: User) => {
     setCurrentUser(user);
+    // Refresh & sync Firestore data for newly active user
+    syncAndLoadFromFirestore(false).catch(() => {});
     if (user.role === 'admin') {
       setActiveTab('dashboard');
     } else if (user.role === 'kasir') {
@@ -2806,6 +3024,7 @@ export default function App() {
         salesList={salesList}
         onManualSyncSuccess={() => {}}
         onApplyDatabasePayload={applyFullDatabasePayload}
+        onNavigateToDrive={() => setActiveTab('drive')}
       />
 
       {/* Logout Cloud Database Saving Overlay */}
@@ -2824,10 +3043,10 @@ export default function App() {
             
             <div className="space-y-1">
               <h3 className="text-base font-bold text-slate-800">
-                {logoutSuccess ? 'Database Berhasil Disimpan Aman!' : 'Menyimpan Database ke Cloud SQL'}
+                {logoutSuccess ? 'Database Berhasil Disimpan Aman!' : 'Menyimpan Database ke Firebase Firestore'}
               </h3>
               <p className="text-xs text-slate-500">
-                Menyimpan seluruh data penjualan, produk, kas, dan shift ke Cloud SQL Database secara Real-Time sebelum keluar aplikasi.
+                Menyimpan seluruh data penjualan, produk, kas, dan shift ke Firebase Firestore secara Real-Time sebelum keluar aplikasi.
               </p>
             </div>
 
@@ -2841,6 +3060,31 @@ export default function App() {
             <div className="bg-slate-50 rounded-xl p-2.5 text-[11px] text-slate-500 border border-slate-100 flex items-center justify-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-ping" />
               <span>Snapshot database tersimpan selama <strong>14 Hari</strong> agar database tidak menumpuk.</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Login Firestore Real-Time Syncing Notification Overlay */}
+      {isLoginSyncing && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-emerald-100 text-center space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center shadow-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
+              <Flame className="w-9 h-9 fill-amber-500 text-amber-500 animate-pulse" />
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-800">
+                Sinkronisasi Database Firestore
+              </h3>
+              <p className="text-xs text-slate-500">
+                Memuat data master & riwayat transaksi real-time terbaru dari cloud.
+              </p>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center justify-center gap-2.5">
+              <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin shrink-0" />
+              <span className="text-xs font-semibold text-emerald-900">{loginSyncMessage}</span>
             </div>
           </div>
         </div>
