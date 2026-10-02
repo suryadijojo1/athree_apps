@@ -14,10 +14,10 @@ interface HeaderProps {
   onLogout?: () => void;
   onRefreshAndClearCache?: () => void;
   onOpenUserManagement?: () => void;
+  onOpenCloudSqlModal?: () => void;
   onOpenFirebaseModal?: () => void;
   isFirebaseConnected?: boolean;
   firebaseUser?: any;
-  onOpenDataSyncModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,10 +32,10 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   onRefreshAndClearCache,
   onOpenUserManagement,
+  onOpenCloudSqlModal,
   onOpenFirebaseModal,
   isFirebaseConnected,
-  firebaseUser,
-  onOpenDataSyncModal
+  firebaseUser
 }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -96,39 +96,20 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Right: Date, Shift button, Profile */}
       <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
         {/* Integrated Cloud SQL Database Status Badge & Trigger */}
-        {onOpenDataSyncModal ? (
+        {(onOpenCloudSqlModal || onOpenFirebaseModal) && (
           <button
             type="button"
-            onClick={onOpenDataSyncModal}
-            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border bg-emerald-950/40 text-emerald-100 hover:bg-emerald-900/50 border-emerald-400/40 transition-all cursor-pointer shadow-2xs"
-            title="Pusat Analisis Data (Insert vs Upsert), Validasi #ORD/xxxx, Query Cloud SQL & Live Multi-Browser Sync"
+            onClick={onOpenCloudSqlModal || onOpenFirebaseModal}
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shadow-2xs bg-emerald-950/40 text-emerald-100 hover:bg-emerald-900/50 border-emerald-400/40"
+            title="Database Utama: Cloud SQL (PostgreSQL) dengan Real-Time Sync (Firebase Firestore dinonaktifkan)"
           >
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
             </span>
             <Database className="w-3.5 h-3.5 text-emerald-300" />
             <span className="hidden sm:inline">Cloud SQL:</span>
-            <span className="font-bold text-emerald-300">Live Sync 🟢</span>
-          </button>
-        ) : onOpenFirebaseModal && (
-          <button
-            type="button"
-            onClick={onOpenFirebaseModal}
-            className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shadow-2xs ${
-              isFirebaseConnected
-                ? 'bg-emerald-950/40 text-emerald-100 hover:bg-emerald-900/50 border-emerald-400/40'
-                : 'bg-black/20 text-white/90 hover:bg-black/30 border-white/20'
-            }`}
-            title="1 Database Terintegrasi: Menyimpan otomatis di Cloud SQL & Cloud DB secara real-time"
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <Database className="w-3.5 h-3.5 text-emerald-300" />
-            <span className="hidden sm:inline">1 Database Terintegrasi:</span>
-            <span className="font-bold text-emerald-300">Auto-Save Cloud SQL</span>
+            <span className="font-bold text-emerald-300">Real-Time Sync</span>
           </button>
         )}
 

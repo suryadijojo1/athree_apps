@@ -58,3 +58,78 @@ export const cashFlowRecords = pgTable('cash_flow_records', {
   recordedBy: text('recorded_by'),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+// Customers table
+export const customers = pgTable('customers', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  phone: text('phone').default(''),
+  address: text('address').default(''),
+  type: text('type').default('Reguler'),
+  discount: doublePrecision('discount').default(0),
+  totalSpent: doublePrecision('total_spent').default(0),
+  totalOrders: integer('total_orders').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Kaos Stocks table
+export const kaosStocks = pgTable('kaos_stocks', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull(),
+  color: text('color').notNull(),
+  hexColor: text('hex_color').default('#000000'),
+  size: text('size').notNull(),
+  stock: integer('stock').default(0),
+  costPrice: doublePrecision('cost_price').default(0),
+  sellingPrice: doublePrecision('selling_price').default(0),
+  lastRestocked: text('last_restocked'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Shifts table (Riwayat & Kasir Aktif)
+export const shifts = pgTable('shifts', {
+  id: text('id').primaryKey(),
+  shiftNumber: integer('shift_number').default(1),
+  outletName: text('outlet_name').default('Athree Studio Jayapura'),
+  cashierName: text('cashier_name').notNull(),
+  startTime: text('start_time').notNull(),
+  startTimestamp: text('start_timestamp'),
+  endTime: text('end_time'),
+  endTimestamp: text('end_timestamp'),
+  startingCash: doublePrecision('starting_cash').default(0),
+  cashSales: doublePrecision('cash_sales').default(0),
+  nonCashSales: doublePrecision('non_cash_sales').default(0),
+  totalSales: doublePrecision('total_sales').default(0),
+  expectedCash: doublePrecision('expected_cash').default(0),
+  actualCash: doublePrecision('actual_cash'),
+  difference: doublePrecision('difference'),
+  isOpen: boolean('is_open').default(false),
+  notes: text('notes'),
+  totalTransactions: integer('total_transactions').default(0),
+  detailsJson: text('details_json'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Stock Movements table
+export const stockMovements = pgTable('stock_movements', {
+  id: text('id').primaryKey(),
+  productId: text('product_id').notNull(),
+  productName: text('product_name').notNull(),
+  type: text('type').notNull(), // IN / OUT / ADJUSTMENT
+  quantity: integer('quantity').notNull(),
+  previousStock: integer('previous_stock').notNull(),
+  newStock: integer('new_stock').notNull(),
+  reason: text('reason').notNull(),
+  date: text('date').notNull(),
+  performedBy: text('performed_by'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Master Cloud SQL Sync State (Key-value snapshot store for instant real-time synchronization)
+export const masterSyncState = pgTable('master_sync_state', {
+  id: text('id').primaryKey(), // e.g. 'current_state'
+  payloadJson: text('payload_json').notNull(),
+  lastUpdated: text('last_updated').notNull(),
+  updatedBy: text('updated_by').default('System'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
