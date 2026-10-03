@@ -183,38 +183,7 @@ export default function App() {
   // 1 Hour Inactivity / Unopened Timeout (1 Jam = 3.600.000 ms)
   const ONE_HOUR_TIMEOUT_MS = 60 * 60 * 1000;
 
-  // Check if page load was triggered by a user refresh (F5, Ctrl+R, reload button)
-  // Sesuai instruksi: "ketika aplikasi refresh maka aplikasi hapus cache , cookies dan langsung logout"
-  const wasPageRefreshed = typeof window !== 'undefined' && isPageRefreshed();
-  if (wasPageRefreshed) {
-    clearRefreshMark();
-    clearAllCachesAndCookies().catch(() => {});
-    localStorage.removeItem('athree_is_authenticated');
-    sessionStorage.removeItem('athree_session_active');
-    localStorage.removeItem('athree_active_session_id');
-    signOutFirebase().catch(() => {});
-    localStorage.setItem(
-      'athree_timeout_notice',
-      'Aplikasi baru saja di-refresh. Seluruh cache & cookies browser telah dibersihkan secara otomatis, dan sesi Anda telah di-logout demi keamanan data.'
-    );
-  }
-
-  // Clear refresh mark once mounted and register beforeunload listener
-  useEffect(() => {
-    clearRefreshMark();
-    const handleBeforeUnload = () => {
-      markPageForRefresh();
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, []);
-
   const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(() => {
-    if (wasPageRefreshed) {
-      return 'Aplikasi baru saja di-refresh. Seluruh cache & cookies browser telah dibersihkan secara otomatis, dan sesi Anda telah di-logout demi keamanan data.';
-    }
     return localStorage.getItem('athree_timeout_notice') || null;
   });
 
@@ -223,11 +192,8 @@ export default function App() {
     localStorage.removeItem('athree_timeout_notice');
   };
 
-  // Authentication state
+  // Authentication state - Preserved across page refresh!
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    if (wasPageRefreshed) {
-      return false;
-    }
     const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
     if (!isAuth) return false;
 
@@ -238,7 +204,6 @@ export default function App() {
       sessionStorage.removeItem('athree_session_active');
       const notice = 'Sesi Anda telah keluar otomatis karena aplikasi tidak dibuka / tidak aktif selama lebih dari 1 jam. Seluruh database penjualan telah otomatis tersimpan aman di Cloud & Server.';
       localStorage.setItem('athree_timeout_notice', notice);
-      clearAllCachesAndCookies().catch(() => {});
       return false;
     }
     // Set active session marker for current browser session
@@ -267,21 +232,41 @@ export default function App() {
 
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem('athree_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_PRODUCTS;
   });
 
   const [categories, setCategories] = useState<string[]>(() => {
     const saved = localStorage.getItem('athree_categories');
-    return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_CATEGORIES;
   });
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
     const saved = localStorage.getItem('athree_customers');
-    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_CUSTOMERS;
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('athree_transactions') || localStorage.getItem('athree_transactions_persistent_backup');
+    const saved =
+      localStorage.getItem('athree_transactions') ||
+      localStorage.getItem('athree_transactions_persistent_backup');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -294,37 +279,61 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem('athree_transactions', JSON.stringify(transactions));
     if (transactions.length > 0) {
+      localStorage.setItem('athree_transactions', JSON.stringify(transactions));
       localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(transactions));
     }
   }, [transactions]);
 
   const [kaosStocks, setKaosStocks] = useState<KaosStockItem[]>(() => {
     const saved = localStorage.getItem('athree_kaos_stocks');
-    return saved ? JSON.parse(saved) : INITIAL_KAOS_STOCK;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_KAOS_STOCK;
   });
 
   useEffect(() => {
-    localStorage.setItem('athree_kaos_stocks', JSON.stringify(kaosStocks));
+    if (kaosStocks.length > 0) {
+      localStorage.setItem('athree_kaos_stocks', JSON.stringify(kaosStocks));
+    }
   }, [kaosStocks]);
 
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
     const saved = localStorage.getItem('athree_stock_movements');
-    return saved ? JSON.parse(saved) : INITIAL_STOCK_MOVEMENTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_STOCK_MOVEMENTS;
   });
 
   useEffect(() => {
-    localStorage.setItem('athree_stock_movements', JSON.stringify(stockMovements));
+    if (stockMovements.length > 0) {
+      localStorage.setItem('athree_stock_movements', JSON.stringify(stockMovements));
+    }
   }, [stockMovements]);
 
   const [salesList, setSalesList] = useState<string[]>(() => {
     const saved = localStorage.getItem('athree_sales_list');
-    return saved ? JSON.parse(saved) : INITIAL_SALES;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_SALES;
   });
 
   useEffect(() => {
-    localStorage.setItem('athree_sales_list', JSON.stringify(salesList));
+    if (salesList.length > 0) {
+      localStorage.setItem('athree_sales_list', JSON.stringify(salesList));
+    }
   }, [salesList]);
 
   const handleAddSales = (newSalesName: string) => {
@@ -707,18 +716,18 @@ export default function App() {
           setUsers(remoteFs.users);
           localStorage.setItem('athree_users', JSON.stringify(remoteFs.users));
         }
-      } else if (localHasReal) {
+      } else {
         console.log('Firebase Firestore (Utama): Mengisi master data awal lokal ke Firestore...');
         syncAllLocalDataToFirestore({
-          products: latestStateRef.current.products,
-          transactions: latestStateRef.current.transactions,
+          products: latestStateRef.current.products.length > 0 ? latestStateRef.current.products : INITIAL_PRODUCTS,
+          transactions: latestStateRef.current.transactions.length > 0 ? latestStateRef.current.transactions : INITIAL_TRANSACTIONS,
           cashFlowRecords: latestStateRef.current.cashFlowRecords,
           shiftHistory: latestStateRef.current.shiftHistory,
           currentShift: latestStateRef.current.shift,
-          kaosStocks: latestStateRef.current.kaosStocks,
-          customers: latestStateRef.current.customers,
-          users: latestStateRef.current.users,
-          stockMovements: latestStateRef.current.stockMovements
+          kaosStocks: latestStateRef.current.kaosStocks.length > 0 ? latestStateRef.current.kaosStocks : INITIAL_KAOS_STOCK,
+          customers: latestStateRef.current.customers.length > 0 ? latestStateRef.current.customers : INITIAL_CUSTOMERS,
+          users: latestStateRef.current.users.length > 0 ? latestStateRef.current.users : INITIAL_USERS,
+          stockMovements: latestStateRef.current.stockMovements.length > 0 ? latestStateRef.current.stockMovements : INITIAL_STOCK_MOVEMENTS
         }).catch((err) => console.warn('Firestore initial seed error:', err));
       }
     }).catch((err) => console.warn('Firestore initial fetch error:', err));
@@ -726,61 +735,58 @@ export default function App() {
     // 3. Real-Time onSnapshot Listeners from Firebase Firestore
     // Sesuai instruksi: "Agar data selalu auto-update di semua browser secara bersamaan,
     // Anda wajib menggunakan metode onSnapshot, Pastikan hasil dari onSnapshot langsung dimasukkan ke dalam state management aplikasi"
+    // PENTING: Jangan overwrite data dengan array kosong [] jika koleksi remote belum terisi!
     const unsubProd = subscribeToProducts((remoteProducts) => {
-      if (!isSubscribed || !remoteProducts) return;
+      if (!isSubscribed || !remoteProducts || remoteProducts.length === 0) return;
       setProducts(remoteProducts);
       localStorage.setItem('athree_products', JSON.stringify(remoteProducts));
     });
 
     const unsubTx = subscribeToTransactions((remoteTransactions) => {
-      if (!isSubscribed || !remoteTransactions) return;
+      if (!isSubscribed || !remoteTransactions || remoteTransactions.length === 0) return;
       setTransactions(remoteTransactions);
       localStorage.setItem('athree_transactions', JSON.stringify(remoteTransactions));
-      if (remoteTransactions.length > 0) {
-        localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(remoteTransactions));
-      }
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(remoteTransactions));
     });
 
     const unsubCashFlow = subscribeToCashFlow((remoteRecords) => {
-      if (!isSubscribed || !remoteRecords) return;
+      if (!isSubscribed || !remoteRecords || remoteRecords.length === 0) return;
       setCashFlowRecords(remoteRecords);
       localStorage.setItem('athree_cash_flow', JSON.stringify(remoteRecords));
     });
 
     const unsubShifts = subscribeToShifts((remoteShifts) => {
-      if (!isSubscribed || !remoteShifts) return;
+      if (!isSubscribed || !remoteShifts || remoteShifts.length === 0) return;
       setShiftHistory(remoteShifts);
       localStorage.setItem('athree_shifts', JSON.stringify(remoteShifts));
     });
 
     const unsubActiveShift = subscribeToActiveShift((remoteActiveShift) => {
-      if (!isSubscribed) return;
-      if (remoteActiveShift) {
-        setShift(remoteActiveShift);
-        localStorage.setItem('athree_shift', JSON.stringify(remoteActiveShift));
-      }
+      if (!isSubscribed || !remoteActiveShift) return;
+      setShift(remoteActiveShift);
+      localStorage.setItem('athree_shift', JSON.stringify(remoteActiveShift));
     });
 
     const unsubKaos = subscribeToKaosStocks((remoteKaos) => {
-      if (!isSubscribed || !remoteKaos) return;
+      if (!isSubscribed || !remoteKaos || remoteKaos.length === 0) return;
       setKaosStocks(remoteKaos);
       localStorage.setItem('athree_kaos_stocks', JSON.stringify(remoteKaos));
     });
 
     const unsubCustomers = subscribeToCustomers((remoteCustomers) => {
-      if (!isSubscribed || !remoteCustomers) return;
+      if (!isSubscribed || !remoteCustomers || remoteCustomers.length === 0) return;
       setCustomers(remoteCustomers);
       localStorage.setItem('athree_customers', JSON.stringify(remoteCustomers));
     });
 
     const unsubMovements = subscribeToStockMovements((remoteMovements) => {
-      if (!isSubscribed || !remoteMovements) return;
+      if (!isSubscribed || !remoteMovements || remoteMovements.length === 0) return;
       setStockMovements(remoteMovements);
       localStorage.setItem('athree_stock_movements', JSON.stringify(remoteMovements));
     });
 
     const unsubUsers = subscribeToUsers((remoteUsers) => {
-      if (!isSubscribed || !remoteUsers) return;
+      if (!isSubscribed || !remoteUsers || remoteUsers.length === 0) return;
       setUsers(remoteUsers);
       localStorage.setItem('athree_users', JSON.stringify(remoteUsers));
     });
