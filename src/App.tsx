@@ -49,6 +49,9 @@ import { CloudUpload, CheckCircle2, Flame } from 'lucide-react';
 import { calculateProfit } from './utils/profitUtils';
 import {
   subscribeToAuth,
+  signOutFirebase,
+  recordActiveSession,
+  subscribeToActiveSession,
   subscribeToProducts,
   subscribeToTransactions,
   subscribeToCashFlow,
@@ -835,6 +838,20 @@ export default function App() {
       if (isSubscribed) setFirebaseUser(user);
     });
 
+    // 4. Lakukan signOut(auth) di salah satu browser jika salah satu browser login
+    const unsubSession = subscribeToActiveSession((remoteSession) => {
+      if (!isSubscribed) return;
+      console.warn(`[Multi-Browser Auth] Akun telah login di browser/perangkat lain oleh ${remoteSession.userName}. Melakukan signOut(auth)...`);
+      signOutFirebase().catch(() => {});
+      localStorage.removeItem('athree_is_authenticated');
+      sessionStorage.removeItem('athree_session_active');
+      localStorage.removeItem('athree_active_session_id');
+      setIsAuthenticated(false);
+      setSessionTimeoutNotice(
+        `Sesi Anda berakhir otomatis karena akun baru saja login di browser/perangkat lain (${remoteSession.userName}).`
+      );
+    });
+
     return () => {
       isSubscribed = false;
       unsubProd();
@@ -848,6 +865,7 @@ export default function App() {
       unsubUsers();
       unsubLiveShift();
       unsubServer();
+      unsubSession();
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', checkAndSyncCentralServer);
       window.removeEventListener('storage', handleStorageEvent);
@@ -1416,6 +1434,9 @@ export default function App() {
 
     // Trigger otomatis memuat seluruh data terbaru dari Firebase Firestore
     syncAndLoadFromFirestore(true).catch(() => {});
+
+    // 4. Lakukan signOut(auth) di browser lain jika salah satu browser login
+    recordActiveSession(user.id, user.name, user.role).catch(() => {});
   };
 
   // Logout & Cloud Auto-Save state
@@ -1682,6 +1703,7 @@ export default function App() {
     setCurrentUser(user);
     // Refresh & sync Firestore data for newly active user
     syncAndLoadFromFirestore(false).catch(() => {});
+    recordActiveSession(user.id, user.name, user.role).catch(() => {});
     if (user.role === 'admin') {
       setActiveTab('dashboard');
     } else if (user.role === 'kasir') {

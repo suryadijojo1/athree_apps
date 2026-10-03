@@ -9,18 +9,22 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  enableMultiTabIndexedDbPersistence,
   collection,
   doc,
   setDoc,
   getDoc,
   getDocs,
+  getDocsFromServer,
+  getDocsFromCache,
+  getDocFromServer,
+  getDocFromCache,
   deleteDoc,
   onSnapshot,
   writeBatch,
   query,
   orderBy,
   limit,
-  getDocFromServer,
   Unsubscribe
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -37,8 +41,11 @@ import {
 
 /**
  * FIREBASE FIRESTORE STATUS: AKTIF (DATABASE UTAMA DENGAN REAL-TIME SYNC)
- * Sesuai instruksi: "ganti integrasi sycn otomatis database utama ke firebase firestore
- * dan menjadi real time, untuk database SQL dan google drive hanya sebagai cadangan manual."
+ * Sesuai instruksi:
+ * 1. Gunakan onSnapshot (Real-time Listener) Bukan getDocs
+ * 2. Atur Sumber Data Secara Eksplisit (getDocsFromCache vs getDocsFromServer)
+ * 3. Gunakan fungsi enableMultiTabIndexedDbPersistence saat inisialisasi Firebase
+ * 4. Lakukan signOut(auth) di salah satu browser jika salah satu browser login
  */
 export const FIRESTORE_ENABLED = true;
 
@@ -47,6 +54,19 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const googleAuthProvider = new GoogleAuthProvider();
+
+// 3. Gunakan fungsi enableMultiTabIndexedDbPersistence saat inisialisasi Firebase
+if (typeof window !== 'undefined') {
+  enableMultiTabIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore multi-tab persistence: multiple tabs open.', err.message);
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore multi-tab persistence not supported in this browser.', err.message);
+    } else {
+      console.warn('Firestore persistence warning:', err);
+    }
+  });
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -538,9 +558,66 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
 
 // ---------------------------------------------------------------------------
 // Bulk Fetch & Seed Methods
+// 2. Atur Sumber Data Secara Eksplisit (getDocsFromCache vs getDocsFromServer)
 // ---------------------------------------------------------------------------
 
-export async function fetchAllDataFromFirestore(): Promise<{
+export async function getDocsExplicit<T = any>(
+  colRef: any,
+  source: 'server' | 'cache' | 'server-first' = 'server-first'
+): Promise<T[]> {
+  if (source === 'server') {
+    const snap = await getDocsFromServer(colRef);
+    return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+  }
+  if (source === 'cache') {
+    const snap = await getDocsFromCache(colRef);
+    return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+  }
+  // server-first with fallback to cache
+  try {
+    const snap = await getDocsFromServer(colRef);
+    return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+  } catch (err) {
+    console.warn('[getDocsExplicit] Server fetch failed, falling back to cache:', err);
+    try {
+      const snap = await getDocsFromCache(colRef);
+      return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+    } catch {
+      throw err;
+    }
+  }
+}
+
+export async function getDocExplicit<T = any>(
+  docRef: any,
+  source: 'server' | 'cache' | 'server-first' = 'server-first'
+): Promise<T | null> {
+  if (source === 'server') {
+    const snap = await getDocFromServer(docRef);
+    return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+  }
+  if (source === 'cache') {
+    const snap = await getDocFromCache(docRef);
+    return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+  }
+  // server-first with fallback to cache
+  try {
+    const snap = await getDocFromServer(docRef);
+    return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+  } catch (err) {
+    console.warn('[getDocExplicit] Server fetch failed, falling back to cache:', err);
+    try {
+      const snap = await getDocFromCache(docRef);
+      return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+    } catch {
+      throw err;
+    }
+  }
+}
+
+export async function fetchAllDataFromFirestore(
+  source: 'server' | 'cache' | 'server-first' = 'server-first'
+): Promise<{
   products: Product[];
   transactions: Transaction[];
   cashFlowRecords: CashFlowRecord[];
@@ -553,42 +630,28 @@ export async function fetchAllDataFromFirestore(): Promise<{
 }> {
   try {
     const [
-      prodSnap,
-      txSnap,
-      cfSnap,
-      shiftSnap,
-      activeShiftSnap,
-      kaosSnap,
-      custSnap,
-      usersSnap,
-      movementsSnap
+      products,
+      transactions,
+      cashFlowRecords,
+      shiftDocs,
+      activeShift,
+      kaosStocks,
+      customers,
+      users,
+      stockMovements
     ] = await Promise.all([
-      getDocs(collection(db, 'products')),
-      getDocs(collection(db, 'transactions')),
-      getDocs(collection(db, 'cashFlowRecords')),
-      getDocs(collection(db, 'shifts')),
-      getDoc(doc(db, 'shifts', 'active_shift')),
-      getDocs(collection(db, 'kaosStocks')),
-      getDocs(collection(db, 'customers')),
-      getDocs(collection(db, 'users')),
-      getDocs(collection(db, 'stockMovements'))
+      getDocsExplicit<Product>(collection(db, 'products'), source),
+      getDocsExplicit<Transaction>(collection(db, 'transactions'), source),
+      getDocsExplicit<CashFlowRecord>(collection(db, 'cashFlowRecords'), source),
+      getDocsExplicit<CashierShift>(collection(db, 'shifts'), source),
+      getDocExplicit<CashierShift>(doc(db, 'shifts', 'active_shift'), source),
+      getDocsExplicit<KaosStockItem>(collection(db, 'kaosStocks'), source),
+      getDocsExplicit<Customer>(collection(db, 'customers'), source),
+      getDocsExplicit<User>(collection(db, 'users'), source),
+      getDocsExplicit<StockMovement>(collection(db, 'stockMovements'), source)
     ]);
 
-    const products = prodSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
-    const transactions = txSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Transaction));
-    const cashFlowRecords = cfSnap.docs.map((d) => ({ id: d.id, ...d.data() } as CashFlowRecord));
-    const shifts = shiftSnap.docs
-      .filter((d) => d.id !== 'active_shift')
-      .map((d) => ({ id: d.id, ...d.data() } as CashierShift));
-    const activeShift = activeShiftSnap.exists()
-      ? (activeShiftSnap.data() as CashierShift)
-      : null;
-    const kaosStocks = kaosSnap.docs.map((d) => ({ id: d.id, ...d.data() } as KaosStockItem));
-    const customers = custSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Customer));
-    const users = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as User));
-    const stockMovements = movementsSnap.docs.map(
-      (d) => ({ id: d.id, ...d.data() } as StockMovement)
-    );
+    const shifts = shiftDocs.filter((s) => s.id !== 'active_shift');
 
     return {
       products,
@@ -614,6 +677,77 @@ export async function fetchAllDataFromFirestore(): Promise<{
       users: [],
       stockMovements: []
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Single Active Session / Multi-Browser Mutual Logout
+// 4. Lakukan signOut(auth) di salah satu browser jika salah satu browser login
+// ---------------------------------------------------------------------------
+
+export interface ActiveSessionData {
+  sessionId: string;
+  userId: string;
+  userName: string;
+  role: string;
+  loggedInAt: number;
+}
+
+export async function recordActiveSession(
+  userId: string,
+  userName: string,
+  role: string
+): Promise<string> {
+  const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  localStorage.setItem('athree_active_session_id', sessionId);
+
+  try {
+    await setDoc(
+      doc(db, 'meta', 'activeSession'),
+      {
+        sessionId,
+        userId,
+        userName,
+        role,
+        loggedInAt: Date.now()
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Failed to record active session in Firestore:', err);
+  }
+
+  return sessionId;
+}
+
+export function subscribeToActiveSession(
+  onDisplaced: (remoteSession: ActiveSessionData) => void
+): Unsubscribe {
+  const path = 'meta/activeSession';
+  try {
+    return onSnapshot(
+      doc(db, 'meta', 'activeSession'),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const data = snapshot.data() as ActiveSessionData;
+        if (!data || !data.sessionId) return;
+
+        const localSessionId = localStorage.getItem('athree_active_session_id');
+        const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
+
+        // If this browser is logged in, but another browser registered a newer/different session ID
+        if (isAuth && localSessionId && data.sessionId !== localSessionId) {
+          console.warn('[Session Security] Akun login di browser lain. Melakukan signOut(auth) otomatis...');
+          onDisplaced(data);
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+      }
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, path);
+    return () => {};
   }
 }
 
