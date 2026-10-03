@@ -22,6 +22,7 @@ import {
   deleteDoc,
   onSnapshot,
   writeBatch,
+  runTransaction,
   query,
   orderBy,
   limit,
@@ -448,6 +449,178 @@ export async function saveActiveShiftToFirestore(shift: CashierShift): Promise<v
     await setDoc(doc(db, 'shifts', 'active_shift'), shift, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. Firestore Transactions (Wajib untuk Data Bersama - ACID Multi-Client Synchronization)
+// ---------------------------------------------------------------------------
+
+export interface CheckoutTransactionInput {
+  transaction: Transaction;
+  items: Array<{
+    productId: string;
+    quantity: number;
+    kaosColor?: string;
+    kaosSize?: string;
+  }>;
+  isCashPayment: boolean;
+  cashAmountReceived: number;
+  stockMovements?: StockMovement[];
+}
+
+/**
+ * Atomic Firestore Transaction for Checkout:
+ * - Reads product stocks and active shift concurrently.
+ * - Atomically decrements product & kaos variant stock.
+ * - Atomically increments active shift cash balance.
+ * - Creates transaction & stock movements in a single ACID commit.
+ */
+export async function runFirestoreCheckoutTransaction(input: CheckoutTransactionInput): Promise<{
+  success: boolean;
+  transaction: Transaction;
+}> {
+  const { transaction: txData, items, isCashPayment, cashAmountReceived, stockMovements } = input;
+  const path = `transactions/${txData.id}`;
+
+  try {
+    await runTransaction(db, async (txn) => {
+      // PHASE 1: ALL READS FIRST (Mandatory in Firestore runTransaction)
+      // 1. Read each unique product document
+      const productDocs: Map<string, any> = new Map();
+      const uniqueProductIds = Array.from(new Set(items.map((i) => i.productId)));
+      for (const pId of uniqueProductIds) {
+        const pRef = doc(db, 'products', pId);
+        const pSnap = await txn.get(pRef);
+        if (pSnap.exists()) {
+          productDocs.set(pId, pSnap.data());
+        }
+      }
+
+      // 2. Read active shift document if present
+      const shiftRef = doc(db, 'shifts', 'active_shift');
+      const shiftSnap = await txn.get(shiftRef);
+      const activeShiftData = shiftSnap.exists() ? (shiftSnap.data() as CashierShift) : null;
+
+      // PHASE 2: CALCULATIONS & ATOMIC WRITES
+      // 1. Write the new transaction document
+      const txRef = doc(db, 'transactions', txData.id);
+      txn.set(txRef, txData, { merge: true });
+
+      // 2. Decrement stock for standard products
+      for (const pId of uniqueProductIds) {
+        const currentPData = productDocs.get(pId);
+        if (currentPData) {
+          const qtySold = items
+            .filter((i) => i.productId === pId)
+            .reduce((sum, i) => sum + i.quantity, 0);
+          const prevStock = typeof currentPData.stock === 'number' ? currentPData.stock : 0;
+          const nextStock = Math.max(0, prevStock - qtySold);
+          const pRef = doc(db, 'products', pId);
+          txn.update(pRef, { stock: nextStock });
+        }
+      }
+
+      // 3. Update active shift balances atomically
+      if (activeShiftData && activeShiftData.isOpen) {
+        const additionalCash = isCashPayment ? cashAmountReceived : 0;
+        const currentTxCount = activeShiftData.totalTransactions || 0;
+        const currentSales = activeShiftData.cashSales || 0;
+        const currentExpected =
+          activeShiftData.expectedCash || activeShiftData.startingCash || 0;
+
+        txn.update(shiftRef, {
+          totalTransactions: currentTxCount + 1,
+          cashSales: currentSales + additionalCash,
+          expectedCash: currentExpected + additionalCash
+        });
+      }
+
+      // 4. Append stock movements atomically
+      if (stockMovements && stockMovements.length > 0) {
+        for (const m of stockMovements) {
+          const mRef = doc(db, 'stockMovements', m.id);
+          txn.set(mRef, m, { merge: true });
+        }
+      }
+    });
+
+    return { success: true, transaction: txData };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+    throw err;
+  }
+}
+
+/**
+ * Atomic Firestore Transaction for Cash Flow (Arus Kas / Mutasi Kas):
+ * - Reads active shift.
+ * - Atomically updates expected cash.
+ * - Writes cash flow record doc in a single transaction.
+ */
+export async function runFirestoreCashFlowTransaction(record: CashFlowRecord): Promise<void> {
+  const path = `cashFlowRecords/${record.id}`;
+  try {
+    await runTransaction(db, async (txn) => {
+      // 1. Read active shift
+      const shiftRef = doc(db, 'shifts', 'active_shift');
+      const shiftSnap = await txn.get(shiftRef);
+      const activeShiftData = shiftSnap.exists() ? (shiftSnap.data() as CashierShift) : null;
+
+      // 2. Write cash flow record
+      const recordRef = doc(db, 'cashFlowRecords', record.id);
+      txn.set(recordRef, record, { merge: true });
+
+      // 3. Atomically update expected cash on active shift if Tunai
+      if (activeShiftData && activeShiftData.isOpen && record.paymentMethod === 'TUNAI') {
+        const isCashIn = record.type === 'INCOME';
+        const amount = Number(record.amount) || 0;
+        const currentExpected =
+          activeShiftData.expectedCash || activeShiftData.startingCash || 0;
+
+        const newExpected = isCashIn ? currentExpected + amount : currentExpected - amount;
+
+        txn.update(shiftRef, {
+          expectedCash: newExpected
+        });
+      }
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+    throw err;
+  }
+}
+
+/**
+ * Atomic Firestore Transaction for Shift Open / Close:
+ * - Reads active shift.
+ * - Writes historical shift entry and updates active_shift doc.
+ */
+export async function runFirestoreShiftTransaction(
+  shift: CashierShift,
+  isClosing: boolean
+): Promise<void> {
+  const path = 'shifts/active_shift';
+  try {
+    await runTransaction(db, async (txn) => {
+      const activeShiftRef = doc(db, 'shifts', 'active_shift');
+      // Read active shift first
+      await txn.get(activeShiftRef);
+
+      // Write to archive doc `shifts/{shift.id}`
+      const historyRef = doc(db, 'shifts', shift.id);
+      txn.set(historyRef, shift, { merge: true });
+
+      // Update `shifts/active_shift`
+      if (isClosing) {
+        txn.set(activeShiftRef, { ...shift, isOpen: false }, { merge: true });
+      } else {
+        txn.set(activeShiftRef, shift, { merge: true });
+      }
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+    throw err;
   }
 }
 

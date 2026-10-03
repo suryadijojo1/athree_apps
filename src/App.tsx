@@ -80,7 +80,10 @@ import {
   saveUserToFirestore,
   deleteUserFromFirestore,
   saveStockMovementToFirestore,
-  saveMultipleStockMovementsToFirestore
+  saveMultipleStockMovementsToFirestore,
+  runFirestoreCheckoutTransaction,
+  runFirestoreCashFlowTransaction,
+  runFirestoreShiftTransaction
 } from './services/firebase';
 import {
   fetchServerDatabase,
@@ -720,64 +723,63 @@ export default function App() {
     }).catch((err) => console.warn('Firestore initial fetch error:', err));
 
     // 3. Real-Time onSnapshot Listeners from Firebase Firestore
+    // Sesuai instruksi: "Agar data selalu auto-update di semua browser secara bersamaan,
+    // Anda wajib menggunakan metode onSnapshot, Pastikan hasil dari onSnapshot langsung dimasukkan ke dalam state management aplikasi"
     const unsubProd = subscribeToProducts((remoteProducts) => {
-      if (!isSubscribed || !remoteProducts || remoteProducts.length === 0) return;
+      if (!isSubscribed || !remoteProducts) return;
       setProducts(remoteProducts);
       localStorage.setItem('athree_products', JSON.stringify(remoteProducts));
     });
 
     const unsubTx = subscribeToTransactions((remoteTransactions) => {
-      if (!isSubscribed || !remoteTransactions || remoteTransactions.length === 0) return;
-      setTransactions((prev) => {
-        if (remoteTransactions.length >= prev.length || isRealUserData(remoteTransactions)) {
-          localStorage.setItem('athree_transactions', JSON.stringify(remoteTransactions));
-          return remoteTransactions;
-        }
-        return prev;
-      });
+      if (!isSubscribed || !remoteTransactions) return;
+      setTransactions(remoteTransactions);
+      localStorage.setItem('athree_transactions', JSON.stringify(remoteTransactions));
+      if (remoteTransactions.length > 0) {
+        localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(remoteTransactions));
+      }
     });
 
     const unsubCashFlow = subscribeToCashFlow((remoteRecords) => {
       if (!isSubscribed || !remoteRecords) return;
-      if (remoteRecords.length > 0) {
-        setCashFlowRecords(remoteRecords);
-        localStorage.setItem('athree_cash_flow', JSON.stringify(remoteRecords));
-      }
+      setCashFlowRecords(remoteRecords);
+      localStorage.setItem('athree_cash_flow', JSON.stringify(remoteRecords));
     });
 
     const unsubShifts = subscribeToShifts((remoteShifts) => {
       if (!isSubscribed || !remoteShifts) return;
-      if (remoteShifts.length > 0) {
-        setShiftHistory(remoteShifts);
-        localStorage.setItem('athree_shifts', JSON.stringify(remoteShifts));
-      }
+      setShiftHistory(remoteShifts);
+      localStorage.setItem('athree_shifts', JSON.stringify(remoteShifts));
     });
 
     const unsubActiveShift = subscribeToActiveShift((remoteActiveShift) => {
-      if (!isSubscribed || !remoteActiveShift) return;
-      applyShiftUpdate(remoteActiveShift);
+      if (!isSubscribed) return;
+      if (remoteActiveShift) {
+        setShift(remoteActiveShift);
+        localStorage.setItem('athree_shift', JSON.stringify(remoteActiveShift));
+      }
     });
 
     const unsubKaos = subscribeToKaosStocks((remoteKaos) => {
-      if (!isSubscribed || !remoteKaos || remoteKaos.length === 0) return;
+      if (!isSubscribed || !remoteKaos) return;
       setKaosStocks(remoteKaos);
       localStorage.setItem('athree_kaos_stocks', JSON.stringify(remoteKaos));
     });
 
     const unsubCustomers = subscribeToCustomers((remoteCustomers) => {
-      if (!isSubscribed || !remoteCustomers || remoteCustomers.length === 0) return;
+      if (!isSubscribed || !remoteCustomers) return;
       setCustomers(remoteCustomers);
       localStorage.setItem('athree_customers', JSON.stringify(remoteCustomers));
     });
 
     const unsubMovements = subscribeToStockMovements((remoteMovements) => {
-      if (!isSubscribed || !remoteMovements || remoteMovements.length === 0) return;
+      if (!isSubscribed || !remoteMovements) return;
       setStockMovements(remoteMovements);
       localStorage.setItem('athree_stock_movements', JSON.stringify(remoteMovements));
     });
 
     const unsubUsers = subscribeToUsers((remoteUsers) => {
-      if (!isSubscribed || !remoteUsers || remoteUsers.length === 0) return;
+      if (!isSubscribed || !remoteUsers) return;
       setUsers(remoteUsers);
       localStorage.setItem('athree_users', JSON.stringify(remoteUsers));
     });
@@ -1100,10 +1102,11 @@ export default function App() {
     }
     latestStateRef.current.shift = updatedShift;
 
-    // 1. Instantly push to Firestore realtime collection so all internet browsers get onSnapshot
-    saveActiveShiftToFirestore(updatedShift).catch((err) =>
-      console.warn('Realtime Firestore active shift error:', err)
-    );
+    // 1. Instantly push to Firestore using Transaction so all internet browsers get onSnapshot
+    runFirestoreShiftTransaction(updatedShift, !updatedShift.isOpen).catch((err) => {
+      console.warn('Realtime Firestore shift transaction warning (fallback):', err);
+      saveActiveShiftToFirestore(updatedShift).catch(() => {});
+    });
 
     // 2. Instantly fast-sync to server which notifies all connected browsers via SSE
     syncShiftToServer(
@@ -1228,7 +1231,12 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
     setCashFlowRecords((prev) => [rec, ...prev]);
-    saveCashFlowToFirestore(rec).catch((err) => console.warn('Sync cashflow error:', err));
+
+    // 2. Gunakan Firestore Transactions (Wajib untuk Data Bersama)
+    runFirestoreCashFlowTransaction(rec).catch((err) => {
+      console.warn('Firestore Cash Flow Transaction warning (fallback):', err);
+      saveCashFlowToFirestore(rec).catch(() => {});
+    });
     syncCurrentStateToServer();
   };
 
@@ -1808,9 +1816,25 @@ export default function App() {
       setStockMovements((prev) => [...newMovements, ...prev]);
     }
 
-    // 3. Add to transactions list & Firestore
+    // 3. Add to transactions list & execute atomic Firestore Transaction
     setTransactions((prev) => [newTx, ...prev]);
-    saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync transaction error:', err));
+
+    // 2. Gunakan Firestore Transactions (Wajib untuk Data Bersama)
+    runFirestoreCheckoutTransaction({
+      transaction: newTx,
+      items: newTx.items.map((it) => ({
+        productId: it.productId,
+        quantity: it.quantity,
+        kaosColor: it.kaosColor,
+        kaosSize: it.kaosSize
+      })),
+      isCashPayment: newTx.paymentMethod === 'Tunai',
+      cashAmountReceived: newTx.amountPaid,
+      stockMovements: newMovements
+    }).catch((err) => {
+      console.warn('Firestore Checkout Transaction warning (fallback to direct save):', err);
+      saveTransactionToFirestore(newTx).catch(() => {});
+    });
 
     // 4. Update shift balances (only actual amount received enters the cash drawer)
     const actualReceived = newTx.amountPaid;
