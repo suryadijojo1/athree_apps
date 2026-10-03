@@ -1406,15 +1406,85 @@ export default function App() {
     }
   }, [snapshotNotice]);
 
-  // Helper: Otomatis muat data segar dari Firebase Firestore (Real-Time Hydration)
+  // Helper: Otomatis muat data segar dari Snapshot Terakhir & Firebase Firestore (Real-Time Hydration)
+  // Sesuai instruksi: "snapshot yang di sinkronisasi adalah snapshot yang terakhir"
   const syncAndLoadFromFirestore = async (showOverlay = true): Promise<boolean> => {
     if (showOverlay) {
       setIsLoginSyncing(true);
-      setLoginSyncMessage('Menyinkronkan data database dari Firebase Firestore...');
+      setLoginSyncMessage('Menyinkronkan snapshot database terakhir...');
     }
 
     try {
-      console.log('Firebase Firestore: Memulai sinkronisasi otomatis saat login...');
+      console.log('Firebase Firestore: Memeriksa dan menyinkronkan snapshot database terakhir...');
+      
+      // 1. Cek snapshot terakhir dari Firestore Cloud & Server
+      const [cloudSnapshot, serverSnapshot] = await Promise.all([
+        getLatestCloudBackupSnapshot().catch(() => null),
+        fetchLatestServerSnapshot().catch(() => null)
+      ]);
+
+      let latestSnapshotData: any = null;
+
+      if (cloudSnapshot && serverSnapshot) {
+        if ((cloudSnapshot.timestamp || 0) >= (serverSnapshot.timestamp || 0)) {
+          latestSnapshotData = cloudSnapshot.payload;
+        } else {
+          latestSnapshotData = serverSnapshot.data;
+        }
+      } else if (cloudSnapshot) {
+        latestSnapshotData = cloudSnapshot.payload;
+      } else if (serverSnapshot) {
+        latestSnapshotData = serverSnapshot.data;
+      }
+
+      if (latestSnapshotData) {
+        if (latestSnapshotData.products && latestSnapshotData.products.length > 0) {
+          setProducts(latestSnapshotData.products);
+          localStorage.setItem('athree_products', JSON.stringify(latestSnapshotData.products));
+        }
+        if (latestSnapshotData.transactions && latestSnapshotData.transactions.length > 0) {
+          setTransactions(latestSnapshotData.transactions);
+          localStorage.setItem('athree_transactions', JSON.stringify(latestSnapshotData.transactions));
+          localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(latestSnapshotData.transactions));
+        }
+        if (latestSnapshotData.cashFlowRecords && latestSnapshotData.cashFlowRecords.length > 0) {
+          setCashFlowRecords(latestSnapshotData.cashFlowRecords);
+          localStorage.setItem('athree_cash_flow', JSON.stringify(latestSnapshotData.cashFlowRecords));
+        }
+        const restoredShifts = latestSnapshotData.shiftHistory || latestSnapshotData.shifts;
+        if (restoredShifts && restoredShifts.length > 0) {
+          setShiftHistory(restoredShifts);
+          localStorage.setItem('athree_shifts', JSON.stringify(restoredShifts));
+        }
+        const restoredShift = latestSnapshotData.currentShift || latestSnapshotData.shift || latestSnapshotData.activeShift;
+        if (restoredShift) {
+          setShift(restoredShift);
+          localStorage.setItem('athree_shift', JSON.stringify(restoredShift));
+        }
+        if (latestSnapshotData.kaosStocks && latestSnapshotData.kaosStocks.length > 0) {
+          setKaosStocks(latestSnapshotData.kaosStocks);
+          localStorage.setItem('athree_kaos_stocks', JSON.stringify(latestSnapshotData.kaosStocks));
+        }
+        if (latestSnapshotData.customers && latestSnapshotData.customers.length > 0) {
+          setCustomers(latestSnapshotData.customers);
+          localStorage.setItem('athree_customers', JSON.stringify(latestSnapshotData.customers));
+        }
+        if (latestSnapshotData.users && latestSnapshotData.users.length > 0) {
+          setUsers(latestSnapshotData.users);
+          localStorage.setItem('athree_users', JSON.stringify(latestSnapshotData.users));
+        }
+        if (latestSnapshotData.stockMovements && latestSnapshotData.stockMovements.length > 0) {
+          setStockMovements(latestSnapshotData.stockMovements);
+          localStorage.setItem('athree_stock_movements', JSON.stringify(latestSnapshotData.stockMovements));
+        }
+
+        if (showOverlay) {
+          setLoginSyncMessage(`Berhasil menyinkronkan snapshot terakhir (${latestSnapshotData.transactions?.length || 0} transaksi, ${latestSnapshotData.products?.length || 0} produk).`);
+        }
+        return true;
+      }
+
+      // 2. Fallback jika belum ada snapshot tersimpan: muat langsung dari Firestore
       const firestoreData = await fetchAllDataFromFirestore();
       if (firestoreData) {
         if (firestoreData.products && firestoreData.products.length > 0) {

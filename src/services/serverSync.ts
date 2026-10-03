@@ -228,6 +228,41 @@ export async function fetchLatestServerSnapshot(): Promise<any | null> {
 }
 
 /**
+ * Delete a specific server backup snapshot
+ */
+export async function deleteServerBackup(backupId: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/database/delete-backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backupId })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Failed to delete server backup:', err);
+    return false;
+  }
+}
+
+/**
+ * Delete all server backup snapshots
+ */
+export async function deleteAllServerBackups(): Promise<number> {
+  try {
+    const res = await fetch('/api/database/delete-all-backups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) return 0;
+    const json = await res.json();
+    return json.count || 0;
+  } catch (err) {
+    console.warn('Failed to delete all server backups:', err);
+    return 0;
+  }
+}
+
+/**
  * Subscribe to real-time updates broadcasted by the central server via Server-Sent Events (SSE)
  */
 export function subscribeToServerEvents(

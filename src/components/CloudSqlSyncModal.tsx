@@ -20,7 +20,10 @@ import {
   FileUp,
   FileText,
   FolderArchive,
-  FileCheck2
+  FileCheck2,
+  Trash2,
+  Trash,
+  Star
 } from 'lucide-react';
 import {
   testConnection,
@@ -29,13 +32,19 @@ import {
   saveCloudBackupSnapshot,
   fetchCloudBackupSnapshots,
   getCloudBackupSnapshotById,
+  deleteCloudBackupSnapshot,
+  deleteAllCloudBackupSnapshots,
+  getLatestCloudBackupSnapshot,
   CloudBackupSnapshotMeta
 } from '../services/firebase';
 import {
   saveServerBackupSnapshot,
   fetchServerBackups,
   restoreServerBackup,
-  fetchServerDatabase
+  fetchServerDatabase,
+  deleteServerBackup,
+  deleteAllServerBackups,
+  fetchLatestServerSnapshot
 } from '../services/cloudSqlSync';
 import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, Customer, User, StockMovement } from '../types';
 
@@ -220,6 +229,112 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
     }
   };
 
+  // Sinkronisasi Snapshot Terakhir (Selalu mengambil snapshot paling mutakhir)
+  const handleSyncLatestSnapshot = async () => {
+    setIsProcessing(true);
+    setStatusMessage({ text: 'Mencari snapshot database paling terakhir...' });
+
+    try {
+      const [cloudSnap, serverSnap] = await Promise.all([
+        getLatestCloudBackupSnapshot().catch(() => null),
+        fetchLatestServerSnapshot().catch(() => null)
+      ]);
+
+      let targetSnapshot: any = null;
+      let sourceName = '';
+      let snapTimestamp: number = 0;
+
+      if (cloudSnap && serverSnap) {
+        if ((cloudSnap.timestamp || 0) >= (serverSnap.timestamp || 0)) {
+          targetSnapshot = cloudSnap.payload;
+          sourceName = `Cloud Firestore (${cloudSnap.id})`;
+          snapTimestamp = cloudSnap.timestamp;
+        } else {
+          targetSnapshot = serverSnap.data;
+          sourceName = `Server Backup (${serverSnap.id})`;
+          snapTimestamp = serverSnap.timestamp;
+        }
+      } else if (cloudSnap) {
+        targetSnapshot = cloudSnap.payload;
+        sourceName = `Cloud Firestore (${cloudSnap.id})`;
+        snapTimestamp = cloudSnap.timestamp;
+      } else if (serverSnap) {
+        targetSnapshot = serverSnap.data;
+        sourceName = `Server Backup (${serverSnap.id})`;
+        snapTimestamp = serverSnap.timestamp;
+      }
+
+      if (targetSnapshot && onApplyDatabasePayload) {
+        onApplyDatabasePayload(targetSnapshot);
+        // Sinkronkan kembali ke koleksi live Firebase Firestore
+        syncAllLocalDataToFirestore({
+          products: targetSnapshot.products,
+          transactions: targetSnapshot.transactions,
+          cashFlowRecords: targetSnapshot.cashFlowRecords,
+          shiftHistory: targetSnapshot.shiftHistory || targetSnapshot.shifts,
+          currentShift: targetSnapshot.currentShift || targetSnapshot.shift || targetSnapshot.activeShift,
+          kaosStocks: targetSnapshot.kaosStocks,
+          customers: targetSnapshot.customers,
+          users: targetSnapshot.users,
+          stockMovements: targetSnapshot.stockMovements
+        }).catch(() => {});
+
+        const dateStr = snapTimestamp ? new Date(snapTimestamp).toLocaleString('id-ID') : 'Terbaru';
+        setStatusMessage({
+          text: `Snapshot terakhir (${sourceName} • ${dateStr}) berhasil dibuka & disinkronkan (${targetSnapshot.transactions?.length || 0} transaksi, ${targetSnapshot.products?.length || 0} produk)!`
+        });
+        onManualSyncSuccess();
+      } else {
+        setStatusMessage({
+          text: 'Tidak ada snapshot database yang tersedia untuk disinkronkan.',
+          isError: true
+        });
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: `Gagal sinkronisasi snapshot terakhir: ${err.message}`, isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Hapus Snapshot Firestore Tertentu
+  const handleDeleteFirestoreBackup = async (backupId: string) => {
+    if (!confirm(`Apakah Anda yakin ingin menghapus snapshot Firestore "${backupId}" ini? Tindakan ini tidak dapat dibatalkan.`)) return;
+    setIsProcessing(true);
+    setStatusMessage({ text: `Menghapus snapshot ${backupId}...` });
+
+    try {
+      const ok = await deleteCloudBackupSnapshot(backupId);
+      if (ok) {
+        setStatusMessage({ text: `Snapshot ${backupId} berhasil dihapus dari Cloud Firestore!` });
+        setFirestoreBackups((prev) => prev.filter((b) => b.id !== backupId));
+      } else {
+        setStatusMessage({ text: `Gagal menghapus snapshot ${backupId}.`, isError: true });
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: `Error hapus snapshot: ${err.message}`, isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Hapus Semua Snapshot Firestore
+  const handleDeleteAllFirestoreBackups = async () => {
+    if (!confirm('PERINGATAN: Apakah Anda yakin ingin menghapus SEMUA snapshot cadangan di Cloud Firestore?')) return;
+    setIsProcessing(true);
+    setStatusMessage({ text: 'Menghapus seluruh snapshot cadangan Cloud Firestore...' });
+
+    try {
+      const count = await deleteAllCloudBackupSnapshots();
+      setStatusMessage({ text: `Seluruh (${count}) snapshot cadangan Firestore berhasil dihapus.` });
+      setFirestoreBackups([]);
+    } catch (err: any) {
+      setStatusMessage({ text: `Error hapus semua: ${err.message}`, isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // 5. Create Manual Backup in Database SQL (Manual Backup Engine)
   const handleCreateSqlBackup = async () => {
     setIsProcessing(true);
@@ -277,6 +392,44 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
       }
     } catch (err: any) {
       setStatusMessage({ text: `Gagal memulihkan snapshot SQL: ${err.message}`, isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Hapus Snapshot SQL Tertentu
+  const handleDeleteSqlBackup = async (backupId: string) => {
+    if (!confirm(`Apakah Anda yakin ingin menghapus snapshot SQL "${backupId}" ini? Tindakan ini tidak dapat dibatalkan.`)) return;
+    setIsProcessing(true);
+    setStatusMessage({ text: `Menghapus snapshot SQL ${backupId}...` });
+
+    try {
+      const ok = await deleteServerBackup(backupId);
+      if (ok) {
+        setStatusMessage({ text: `Snapshot SQL ${backupId} berhasil dihapus.` });
+        setSqlBackups((prev) => prev.filter((b) => b.id !== backupId));
+      } else {
+        setStatusMessage({ text: `Gagal menghapus snapshot SQL ${backupId}.`, isError: true });
+      }
+    } catch (err: any) {
+      setStatusMessage({ text: `Error: ${err.message}`, isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Hapus Semua Snapshot SQL
+  const handleDeleteAllSqlBackups = async () => {
+    if (!confirm('PERINGATAN: Apakah Anda yakin ingin menghapus SEMUA snapshot cadangan di Database SQL?')) return;
+    setIsProcessing(true);
+    setStatusMessage({ text: 'Menghapus seluruh snapshot cadangan SQL...' });
+
+    try {
+      const count = await deleteAllServerBackups();
+      setStatusMessage({ text: `Seluruh (${count}) snapshot cadangan SQL berhasil dihapus.` });
+      setSqlBackups([]);
+    } catch (err: any) {
+      setStatusMessage({ text: `Error hapus semua: ${err.message}`, isError: true });
     } finally {
       setIsProcessing(false);
     }
@@ -711,48 +864,113 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                 </div>
               </div>
 
-              {/* Firestore Snapshots List */}
-              {firestoreBackups.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
+              {/* Firestore Snapshots List & Management Menu */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div>
                     <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       <History className="w-4 h-4 text-emerald-600" />
-                      DAFTAR SNAPSHOT FIRESTORE (RETENSI 14 HARI)
+                      MENU &amp; DAFTAR SNAPSHOT FIRESTORE (RETENSI 14 HARI)
                     </span>
                     <span className="text-[11px] text-slate-500 font-medium">
-                      {firestoreBackups.length} Snapshot
+                      {firestoreBackups.length} Snapshot Tersimpan
                     </span>
                   </div>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {firestoreBackups.slice(0, 5).map((snap) => (
+                  
+                  {/* Menu Aksi Snapshot */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSyncLatestSnapshot}
+                      disabled={isProcessing}
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs hover:shadow transition-all disabled:opacity-50 cursor-pointer"
+                      title="Buka &amp; Sinkronkan Snapshot Database yang Paling Baru"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
+                      <span>Sinkronkan Snapshot Terakhir</span>
+                    </button>
+
+                    {firestoreBackups.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteAllFirestoreBackups}
+                        disabled={isProcessing}
+                        className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
+                        title="Hapus Semua Snapshot Cadangan di Firestore"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span className="hidden sm:inline">Hapus Semua</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {firestoreBackups.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 text-xs bg-white rounded-xl border border-slate-200">
+                    Belum ada snapshot cadangan Firestore. Klik tombol &quot;Snapshot Cadangan (14 Hari)&quot; di atas untuk membuat snapshot baru.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {firestoreBackups.map((snap, idx) => (
                       <div
                         key={snap.id}
-                        className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs hover:border-emerald-300 transition-colors"
+                        className={`p-3 rounded-xl border text-xs transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          idx === 0 
+                            ? 'bg-amber-50/40 border-amber-300 shadow-xs' 
+                            : 'bg-white border-slate-200 hover:border-emerald-300'
+                        }`}
                       >
-                        <div>
-                          <div className="font-bold text-slate-800 flex items-center gap-2">
+                        <div className="space-y-1">
+                          <div className="font-bold text-slate-800 flex flex-wrap items-center gap-2">
                             <span>{snap.id}</span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {idx === 0 && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-400 text-slate-900 border border-amber-500 flex items-center gap-1 shadow-2xs">
+                                <Star className="w-2.5 h-2.5 fill-slate-900 text-slate-900" />
+                                SNAPSHOT TERAKHIR (AKTIF)
+                              </span>
+                            )}
+                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
                               {snap.stats?.transactionsCount || 0} Transaksi
                             </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 border border-slate-200">
+                              {snap.stats?.productsCount || 0} Produk
+                            </span>
                           </div>
-                          <span className="text-[11px] text-slate-500">
-                            Dibuat: {formatDate(snap.createdAt)} • Oleh: {snap.savedBy}
-                          </span>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                            <span>Dibuat: <strong>{formatDate(snap.createdAt)}</strong></span>
+                            <span>•</span>
+                            <span>Oleh: {snap.savedBy}</span>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => handleRestoreFirestoreBackup(snap.id)}
-                          disabled={isProcessing}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Pulihkan
-                        </button>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreFirestoreBackup(snap.id)}
+                            disabled={isProcessing}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                            title="Pulihkan dan Terapkan Snapshot Ini"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Pulihkan</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFirestoreBackup(snap.id)}
+                            disabled={isProcessing}
+                            className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                            title="Hapus Snapshot Ini dari Cloud Firestore"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Hapus</span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 
@@ -983,14 +1201,42 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
 
               {/* SQL Rolling Backups List */}
               <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <History className="w-4 h-4 text-blue-600" />
-                    SNAPSHOT CADANGAN MANUAL DATABASE SQL (14 HARI)
-                  </span>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    {sqlBackups.length} Snapshot
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div>
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <History className="w-4 h-4 text-blue-600" />
+                      MENU &amp; DAFTAR SNAPSHOT CADANGAN SQL (14 HARI)
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {sqlBackups.length} Snapshot SQL Tersimpan
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSyncLatestSnapshot}
+                      disabled={isProcessing}
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs hover:shadow transition-all disabled:opacity-50 cursor-pointer"
+                      title="Buka &amp; Sinkronkan Snapshot Database yang Paling Baru"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
+                      <span>Sinkronkan Snapshot Terakhir</span>
+                    </button>
+
+                    {sqlBackups.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteAllSqlBackups}
+                        disabled={isProcessing}
+                        className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
+                        title="Hapus Semua Snapshot Cadangan di SQL"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span className="hidden sm:inline">Hapus Semua</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {sqlBackups.length === 0 ? (
@@ -998,34 +1244,60 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                     Belum ada snapshot cadangan SQL tersimpan. Klik tombol &quot;Simpan Cadangan ke SQL Sekarang&quot; untuk membuat snapshot baru.
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-72 overflow-y-auto">
-                    {sqlBackups.map((snap) => (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {sqlBackups.map((snap, idx) => (
                       <div
                         key={snap.id}
-                        className="bg-slate-50 hover:bg-slate-100/80 p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs transition-colors"
+                        className={`p-3 rounded-xl border text-xs transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          idx === 0 
+                            ? 'bg-blue-50/40 border-blue-300 shadow-xs' 
+                            : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
+                        }`}
                       >
-                        <div>
-                          <div className="font-bold text-slate-800 flex items-center gap-2">
+                        <div className="space-y-1">
+                          <div className="font-bold text-slate-800 flex flex-wrap items-center gap-2">
                             <span>{snap.id}</span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-50 text-blue-700 border border-blue-200">
+                            {idx === 0 && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-500 text-white flex items-center gap-1 shadow-2xs">
+                                <Star className="w-2.5 h-2.5 fill-amber-300 text-amber-300" />
+                                SNAPSHOT SQL TERAKHIR
+                              </span>
+                            )}
+                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
                               {snap.stats?.transactionsCount || 0} Transaksi
                             </span>
                             <span className="text-[10px] text-slate-400 font-normal">
                               {snap.stats?.productsCount || 0} Produk
                             </span>
                           </div>
-                          <span className="text-[11px] text-slate-500">
-                            Waktu: {formatDate(snap.createdAt)} • Oleh: {snap.savedBy || 'Kasir'}
+                          <span className="text-[11px] text-slate-500 block">
+                            Waktu: <strong>{formatDate(snap.createdAt)}</strong> • Oleh: {snap.savedBy || 'Kasir'}
                           </span>
                         </div>
-                        <button
-                          onClick={() => handleRestoreSqlBackup(snap.id)}
-                          disabled={isProcessing}
-                          className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold border border-blue-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Pulihkan
-                        </button>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreSqlBackup(snap.id)}
+                            disabled={isProcessing}
+                            className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold border border-blue-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                            title="Pulihkan snapshot SQL ini"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Pulihkan</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSqlBackup(snap.id)}
+                            disabled={isProcessing}
+                            className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                            title="Hapus Snapshot SQL Ini"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Hapus</span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

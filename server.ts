@@ -512,6 +512,61 @@ async function startServer() {
     }
   });
 
+  // Delete a specific backup snapshot
+  app.post('/api/database/delete-backup', (req, res) => {
+    try {
+      const { backupId } = req.body;
+      if (!backupId) {
+        return res.status(400).json({ error: 'backupId is required' });
+      }
+
+      if (!fs.existsSync(BACKUPS_DIR)) {
+        return res.status(404).json({ error: 'Direktori backup tidak ditemukan' });
+      }
+
+      const files = fs.readdirSync(BACKUPS_DIR);
+      const targetFile = files.find(f => f.includes(backupId) || f === `${backupId}.json`);
+      if (!targetFile) {
+        return res.status(404).json({ error: 'Snapshot backup tidak ditemukan' });
+      }
+
+      const filePath = path.join(BACKUPS_DIR, targetFile);
+      fs.unlinkSync(filePath);
+
+      res.json({
+        success: true,
+        message: 'Snapshot backup berhasil dihapus',
+        deletedId: backupId
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete all backup snapshots
+  app.post('/api/database/delete-all-backups', (req, res) => {
+    try {
+      if (!fs.existsSync(BACKUPS_DIR)) {
+        return res.json({ success: true, count: 0 });
+      }
+
+      const files = fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json'));
+      let count = 0;
+      for (const file of files) {
+        fs.unlinkSync(path.join(BACKUPS_DIR, file));
+        count++;
+      }
+
+      res.json({
+        success: true,
+        message: `${count} snapshot backup berhasil dihapus`,
+        count
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/database/reload', (req, res) => {
     try {
       if (fs.existsSync(DB_FILE_PATH)) {

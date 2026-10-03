@@ -19,7 +19,10 @@ import {
   fetchCurrentShiftFromServer,
   saveServerBackupSnapshot,
   fetchServerBackups,
-  restoreServerBackup
+  restoreServerBackup,
+  deleteServerBackup,
+  deleteAllServerBackups,
+  fetchLatestServerSnapshot
 } from './serverSync';
 
 export interface CloudSqlStatus {
@@ -129,5 +132,8 @@ export {
   fetchCurrentShiftFromServer,
   saveServerBackupSnapshot,
   fetchServerBackups,
-  restoreServerBackup
+  restoreServerBackup,
+  deleteServerBackup,
+  deleteAllServerBackups,
+  fetchLatestServerSnapshot
 };

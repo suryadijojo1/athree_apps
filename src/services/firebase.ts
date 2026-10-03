@@ -1220,3 +1220,33 @@ export async function cleanExpiredBackupsFirestore(): Promise<number> {
     return 0;
   }
 }
+
+export async function deleteCloudBackupSnapshot(backupId: string): Promise<boolean> {
+  const path = `databaseBackups/${backupId}`;
+  try {
+    await deleteDoc(doc(db, 'databaseBackups', backupId));
+    return true;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+    return false;
+  }
+}
+
+export async function deleteAllCloudBackupSnapshots(): Promise<number> {
+  try {
+    const snap = await getDocs(collection(db, 'databaseBackups'));
+    let count = 0;
+    const batch = writeBatch(db);
+    for (const d of snap.docs) {
+      batch.delete(doc(db, 'databaseBackups', d.id));
+      count++;
+    }
+    if (count > 0) {
+      await batch.commit();
+    }
+    return count;
+  } catch (err) {
+    console.warn('Failed to delete all cloud backup snapshots:', err);
+    return 0;
+  }
+}
