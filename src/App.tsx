@@ -179,12 +179,38 @@ export default function App() {
   // 1 Hour Inactivity / Unopened Timeout (1 Jam = 3.600.000 ms)
   const ONE_HOUR_TIMEOUT_MS = 60 * 60 * 1000;
 
-  // Clear refresh mark once mounted
+  // Check if page load was triggered by a user refresh (F5, Ctrl+R, reload button)
+  // Sesuai instruksi: "ketika aplikasi refresh maka aplikasi hapus cache , cookies dan langsung logout"
+  const wasPageRefreshed = typeof window !== 'undefined' && isPageRefreshed();
+  if (wasPageRefreshed) {
+    clearRefreshMark();
+    clearAllCachesAndCookies().catch(() => {});
+    localStorage.removeItem('athree_is_authenticated');
+    sessionStorage.removeItem('athree_session_active');
+    localStorage.removeItem('athree_active_session_id');
+    signOutFirebase().catch(() => {});
+    localStorage.setItem(
+      'athree_timeout_notice',
+      'Aplikasi baru saja di-refresh. Seluruh cache & cookies browser telah dibersihkan secara otomatis, dan sesi Anda telah di-logout demi keamanan data.'
+    );
+  }
+
+  // Clear refresh mark once mounted and register beforeunload listener
   useEffect(() => {
     clearRefreshMark();
+    const handleBeforeUnload = () => {
+      markPageForRefresh();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
   }, []);
 
   const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(() => {
+    if (wasPageRefreshed) {
+      return 'Aplikasi baru saja di-refresh. Seluruh cache & cookies browser telah dibersihkan secara otomatis, dan sesi Anda telah di-logout demi keamanan data.';
+    }
     return localStorage.getItem('athree_timeout_notice') || null;
   });
 
@@ -195,6 +221,9 @@ export default function App() {
 
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (wasPageRefreshed) {
+      return false;
+    }
     const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
     if (!isAuth) return false;
 
