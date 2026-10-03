@@ -1169,6 +1169,34 @@ export async function getCloudBackupSnapshotById(backupId: string): Promise<any 
   }
 }
 
+export async function getLatestCloudBackupSnapshot(): Promise<{
+  id: string;
+  timestamp: number;
+  createdAt: string;
+  savedBy: string;
+  payload: any;
+} | null> {
+  try {
+    const list = await fetchCloudBackupSnapshots();
+    if (list && list.length > 0) {
+      const latest = list[0];
+      const payload = await getCloudBackupSnapshotById(latest.id);
+      if (payload) {
+        return {
+          id: latest.id,
+          timestamp: latest.timestamp,
+          createdAt: latest.createdAt,
+          savedBy: latest.savedBy,
+          payload
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to get latest cloud backup snapshot:', err);
+  }
+  return null;
+}
+
 export async function cleanExpiredBackupsFirestore(): Promise<number> {
   try {
     const now = Date.now();

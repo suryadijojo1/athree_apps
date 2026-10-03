@@ -213,6 +213,21 @@ export async function restoreServerBackup(backupId: string): Promise<boolean> {
 }
 
 /**
+ * Fetch latest server backup snapshot
+ */
+export async function fetchLatestServerSnapshot(): Promise<any | null> {
+  try {
+    const res = await fetch('/api/database/latest-snapshot');
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.snapshot || null;
+  } catch (err) {
+    console.warn('Failed to fetch latest server snapshot:', err);
+    return null;
+  }
+}
+
+/**
  * Subscribe to real-time updates broadcasted by the central server via Server-Sent Events (SSE)
  */
 export function subscribeToServerEvents(

@@ -430,6 +430,53 @@ async function startServer() {
     }
   });
 
+  // Get latest 14-day backup snapshot
+  app.get('/api/database/latest-snapshot', (req, res) => {
+    try {
+      pruneExpiredBackups();
+      if (fs.existsSync(BACKUPS_DIR)) {
+        const files = fs.readdirSync(BACKUPS_DIR)
+          .filter(f => f.endsWith('.json'))
+          .sort((a, b) => b.localeCompare(a));
+
+        if (files.length > 0) {
+          const filePath = path.join(BACKUPS_DIR, files[0]);
+          const snapshot = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          if (snapshot?.data) {
+            return res.json({
+              success: true,
+              snapshot: {
+                id: snapshot.id || files[0].replace('.json', ''),
+                createdAt: snapshot.createdAt,
+                timestamp: snapshot.timestamp,
+                savedBy: snapshot.savedBy,
+                source: snapshot.source,
+                data: snapshot.data
+              }
+            });
+          }
+        }
+      }
+
+      if (currentDbState) {
+        return res.json({
+          success: true,
+          snapshot: {
+            id: 'current_live',
+            timestamp: Date.now(),
+            createdAt: new Date().toISOString(),
+            savedBy: 'Server Live',
+            data: currentDbState
+          }
+        });
+      }
+
+      res.status(404).json({ error: 'No snapshots available' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Restore database from a specific 14-day backup snapshot
   app.post('/api/database/restore-backup', (req, res) => {
     try {

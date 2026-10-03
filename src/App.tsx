@@ -65,6 +65,7 @@ import {
   fetchAllDataFromFirestore,
   syncAllLocalDataToFirestore,
   saveCloudBackupSnapshot,
+  getLatestCloudBackupSnapshot,
   saveProductToFirestore,
   deleteProductFromFirestore,
   saveMultipleProductsToFirestore,
@@ -90,6 +91,7 @@ import {
   fetchCurrentShiftFromServer,
   saveServerDatabase,
   saveServerBackupSnapshot,
+  fetchLatestServerSnapshot,
   subscribeToServerEvents,
   startLiveShiftSync,
   syncShiftToServer,
@@ -1388,6 +1390,22 @@ export default function App() {
   const [isLoginSyncing, setIsLoginSyncing] = useState<boolean>(false);
   const [loginSyncMessage, setLoginSyncMessage] = useState<string>('Menyinkronkan data database dari Firebase Firestore...');
 
+  // Floating notice for snapshot open/restore status
+  const [snapshotNotice, setSnapshotNotice] = useState<{
+    message: string;
+    subMessage?: string;
+    type: 'success' | 'info';
+  } | null>(null);
+
+  useEffect(() => {
+    if (snapshotNotice) {
+      const timer = setTimeout(() => {
+        setSnapshotNotice(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [snapshotNotice]);
+
   // Helper: Otomatis muat data segar dari Firebase Firestore (Real-Time Hydration)
   const syncAndLoadFromFirestore = async (showOverlay = true): Promise<boolean> => {
     if (showOverlay) {
@@ -1458,8 +1476,8 @@ export default function App() {
     }
   };
 
-  // Handler: Full Login (from LoginScreen) - Instant Login + Async Cache Clean & Firestore Sync
-  // Sesuai instruksi: "saat login aplikasi menghapus cache dan sinkronisasi database di firebase firestore"
+  // Handler: Full Login (from LoginScreen) - Instant Login + Buka/Update Snapshot Terakhir
+  // Sesuai instruksi: "lakukan buka/update database snapshot terakhir. saat login"
   const handleLogin = (user: User) => {
     // 1. INSTANT LOGIN: Pengguna langsung masuk ke aplikasi tanpa jeda / tanpa tertahan
     setCurrentUser(user);
@@ -1479,7 +1497,7 @@ export default function App() {
       setActiveTab('orders');
     }
 
-    // 2. Pembersihan cache & sinkronisasi database Firestore di background (non-blocking)
+    // 2. Pembersihan cache & Buka/Update Database dari Snapshot Terakhir di background (non-blocking)
     (async () => {
       try {
         await clearBrowserCaches();
@@ -1488,53 +1506,158 @@ export default function App() {
       }
 
       try {
-        const firestoreData = await fetchAllDataFromFirestore('server-first');
-        if (firestoreData) {
-          if (firestoreData.products && firestoreData.products.length > 0) {
-            setProducts(firestoreData.products);
-            localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
+        // Ambil snapshot terakhir dari Firebase Firestore & Server secara paralel
+        const [cloudSnapshot, serverSnapshot] = await Promise.all([
+          getLatestCloudBackupSnapshot().catch(() => null),
+          fetchLatestServerSnapshot().catch(() => null)
+        ]);
+
+        let latestSnapshotData: any = null;
+        let snapshotSource = '';
+        let snapshotTime = '';
+
+        if (cloudSnapshot && serverSnapshot) {
+          if ((cloudSnapshot.timestamp || 0) >= (serverSnapshot.timestamp || 0)) {
+            latestSnapshotData = cloudSnapshot.payload;
+            snapshotSource = `Cloud Firestore (${cloudSnapshot.savedBy || 'Sistem'})`;
+            snapshotTime = cloudSnapshot.createdAt ? new Date(cloudSnapshot.createdAt).toLocaleString('id-ID') : '';
+          } else {
+            latestSnapshotData = serverSnapshot.data;
+            snapshotSource = `Server Backup (${serverSnapshot.savedBy || 'Sistem'})`;
+            snapshotTime = serverSnapshot.createdAt ? new Date(serverSnapshot.createdAt).toLocaleString('id-ID') : '';
           }
-          if (firestoreData.transactions && firestoreData.transactions.length > 0) {
-            setTransactions(firestoreData.transactions);
-            localStorage.setItem('athree_transactions', JSON.stringify(firestoreData.transactions));
-            localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(firestoreData.transactions));
+        } else if (cloudSnapshot) {
+          latestSnapshotData = cloudSnapshot.payload;
+          snapshotSource = `Cloud Firestore (${cloudSnapshot.savedBy || 'Sistem'})`;
+          snapshotTime = cloudSnapshot.createdAt ? new Date(cloudSnapshot.createdAt).toLocaleString('id-ID') : '';
+        } else if (serverSnapshot) {
+          latestSnapshotData = serverSnapshot.data;
+          snapshotSource = `Server Backup (${serverSnapshot.savedBy || 'Sistem'})`;
+          snapshotTime = serverSnapshot.createdAt ? new Date(serverSnapshot.createdAt).toLocaleString('id-ID') : '';
+        }
+
+        // Jika snapshot terakhir ditemukan, BUKA DAN UPDATE DATABASE ke state & local storage:
+        if (latestSnapshotData) {
+          console.log(`[Snapshot Auto-Restore] Membuka snapshot database terakhir dari ${snapshotSource}...`);
+
+          if (latestSnapshotData.products && latestSnapshotData.products.length > 0) {
+            setProducts(latestSnapshotData.products);
+            localStorage.setItem('athree_products', JSON.stringify(latestSnapshotData.products));
           }
-          if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
-            setCashFlowRecords(firestoreData.cashFlowRecords);
-            localStorage.setItem('athree_cash_flow', JSON.stringify(firestoreData.cashFlowRecords));
+          if (latestSnapshotData.transactions && latestSnapshotData.transactions.length > 0) {
+            setTransactions(latestSnapshotData.transactions);
+            localStorage.setItem('athree_transactions', JSON.stringify(latestSnapshotData.transactions));
+            localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(latestSnapshotData.transactions));
           }
-          if (firestoreData.shifts && firestoreData.shifts.length > 0) {
-            setShiftHistory(firestoreData.shifts);
-            localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
+          if (latestSnapshotData.cashFlowRecords && latestSnapshotData.cashFlowRecords.length > 0) {
+            setCashFlowRecords(latestSnapshotData.cashFlowRecords);
+            localStorage.setItem('athree_cash_flow', JSON.stringify(latestSnapshotData.cashFlowRecords));
           }
-          if (firestoreData.activeShift) {
-            setShift(firestoreData.activeShift);
-            localStorage.setItem('athree_shift', JSON.stringify(firestoreData.activeShift));
-            if (firestoreData.activeShift.isOpen) {
-              localStorage.setItem('athree_shift_active_persistent', JSON.stringify(firestoreData.activeShift));
+          const restoredShifts = latestSnapshotData.shiftHistory || latestSnapshotData.shifts;
+          if (restoredShifts && restoredShifts.length > 0) {
+            setShiftHistory(restoredShifts);
+            localStorage.setItem('athree_shifts', JSON.stringify(restoredShifts));
+          }
+          const restoredShift = latestSnapshotData.currentShift || latestSnapshotData.shift || latestSnapshotData.activeShift;
+          if (restoredShift) {
+            setShift(restoredShift);
+            localStorage.setItem('athree_shift', JSON.stringify(restoredShift));
+            if (restoredShift.isOpen) {
+              localStorage.setItem('athree_shift_active_persistent', JSON.stringify(restoredShift));
             } else {
               localStorage.removeItem('athree_shift_active_persistent');
             }
           }
-          if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
-            setKaosStocks(firestoreData.kaosStocks);
-            localStorage.setItem('athree_kaos_stocks', JSON.stringify(firestoreData.kaosStocks));
+          if (latestSnapshotData.kaosStocks && latestSnapshotData.kaosStocks.length > 0) {
+            setKaosStocks(latestSnapshotData.kaosStocks);
+            localStorage.setItem('athree_kaos_stocks', JSON.stringify(latestSnapshotData.kaosStocks));
           }
-          if (firestoreData.customers && firestoreData.customers.length > 0) {
-            setCustomers(firestoreData.customers);
-            localStorage.setItem('athree_customers', JSON.stringify(firestoreData.customers));
+          if (latestSnapshotData.customers && latestSnapshotData.customers.length > 0) {
+            setCustomers(latestSnapshotData.customers);
+            localStorage.setItem('athree_customers', JSON.stringify(latestSnapshotData.customers));
           }
-          if (firestoreData.users && firestoreData.users.length > 0) {
-            setUsers(firestoreData.users);
-            localStorage.setItem('athree_users', JSON.stringify(firestoreData.users));
+          if (latestSnapshotData.users && latestSnapshotData.users.length > 0) {
+            setUsers(latestSnapshotData.users);
+            localStorage.setItem('athree_users', JSON.stringify(latestSnapshotData.users));
           }
-          if (firestoreData.stockMovements && firestoreData.stockMovements.length > 0) {
-            setStockMovements(firestoreData.stockMovements);
-            localStorage.setItem('athree_stock_movements', JSON.stringify(firestoreData.stockMovements));
+          if (latestSnapshotData.stockMovements && latestSnapshotData.stockMovements.length > 0) {
+            setStockMovements(latestSnapshotData.stockMovements);
+            localStorage.setItem('athree_stock_movements', JSON.stringify(latestSnapshotData.stockMovements));
+          }
+          if (latestSnapshotData.salesList && latestSnapshotData.salesList.length > 0) {
+            setSalesList(latestSnapshotData.salesList);
+            localStorage.setItem('athree_sales_list', JSON.stringify(latestSnapshotData.salesList));
+          }
+
+          // Sinkronisasi data snapshot yang dibuka kembali ke Firestore agar live realtime onSnapshot tersinkronkan
+          syncAllLocalDataToFirestore({
+            products: latestSnapshotData.products,
+            transactions: latestSnapshotData.transactions,
+            cashFlowRecords: latestSnapshotData.cashFlowRecords,
+            shiftHistory: restoredShifts,
+            currentShift: restoredShift,
+            kaosStocks: latestSnapshotData.kaosStocks,
+            customers: latestSnapshotData.customers,
+            users: latestSnapshotData.users,
+            stockMovements: latestSnapshotData.stockMovements
+          }).catch(() => {});
+
+          setSnapshotNotice({
+            message: 'Database Snapshot Terakhir Berhasil Dibuka & Diperbarui',
+            subMessage: `Memuat ${latestSnapshotData.transactions?.length || 0} transaksi & ${latestSnapshotData.products?.length || 0} produk (${snapshotSource} ${snapshotTime ? '- ' + snapshotTime : ''})`,
+            type: 'success'
+          });
+        } else {
+          // Fallback: muat langsung dari koleksi Firestore
+          const firestoreData = await fetchAllDataFromFirestore('server-first');
+          if (firestoreData) {
+            if (firestoreData.products && firestoreData.products.length > 0) {
+              setProducts(firestoreData.products);
+              localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
+            }
+            if (firestoreData.transactions && firestoreData.transactions.length > 0) {
+              setTransactions(firestoreData.transactions);
+              localStorage.setItem('athree_transactions', JSON.stringify(firestoreData.transactions));
+              localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(firestoreData.transactions));
+            }
+            if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
+              setCashFlowRecords(firestoreData.cashFlowRecords);
+              localStorage.setItem('athree_cash_flow', JSON.stringify(firestoreData.cashFlowRecords));
+            }
+            if (firestoreData.shifts && firestoreData.shifts.length > 0) {
+              setShiftHistory(firestoreData.shifts);
+              localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
+            }
+            if (firestoreData.activeShift) {
+              setShift(firestoreData.activeShift);
+              localStorage.setItem('athree_shift', JSON.stringify(firestoreData.activeShift));
+            }
+            if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
+              setKaosStocks(firestoreData.kaosStocks);
+              localStorage.setItem('athree_kaos_stocks', JSON.stringify(firestoreData.kaosStocks));
+            }
+            if (firestoreData.customers && firestoreData.customers.length > 0) {
+              setCustomers(firestoreData.customers);
+              localStorage.setItem('athree_customers', JSON.stringify(firestoreData.customers));
+            }
+            if (firestoreData.users && firestoreData.users.length > 0) {
+              setUsers(firestoreData.users);
+              localStorage.setItem('athree_users', JSON.stringify(firestoreData.users));
+            }
+            if (firestoreData.stockMovements && firestoreData.stockMovements.length > 0) {
+              setStockMovements(firestoreData.stockMovements);
+              localStorage.setItem('athree_stock_movements', JSON.stringify(firestoreData.stockMovements));
+            }
+
+            setSnapshotNotice({
+              message: 'Database Aktif Berhasil Disinkronkan',
+              subMessage: `Memuat ${firestoreData.transactions?.length || 0} transaksi & ${firestoreData.products?.length || 0} produk dari Cloud Firestore.`,
+              type: 'info'
+            });
           }
         }
       } catch (err) {
-        console.warn('Background Firestore sync on login warning:', err);
+        console.warn('Buka snapshot terakhir saat login warning:', err);
       }
     })();
 
@@ -3228,6 +3351,32 @@ export default function App() {
               <span className="text-xs font-semibold text-emerald-900">{loginSyncMessage}</span>
             </div>
           </div>
+        </div>
+      )}
+      {/* Floating Notice: Snapshot Terakhir Berhasil Dibuka / Diperbarui */}
+      {snapshotNotice && (
+        <div className="fixed bottom-6 right-6 z-[9999] bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-center gap-3.5 max-w-md animate-in slide-in-from-bottom-5 duration-300">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+            <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+          </div>
+          <div className="flex-1 text-left min-w-0">
+            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>{snapshotNotice.message}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-ping" />
+            </div>
+            {snapshotNotice.subMessage && (
+              <div className="text-[11px] text-slate-300 truncate mt-0.5">
+                {snapshotNotice.subMessage}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setSnapshotNotice(null)}
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-xs shrink-0 cursor-pointer"
+            title="Tutup"
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>
