@@ -1452,99 +1452,88 @@ export default function App() {
     }
   };
 
-  // Handler: Full Login (from LoginScreen) - Hapus Cache & Sinkronisasi Database Firestore
+  // Handler: Full Login (from LoginScreen) - Instant Login + Async Cache Clean & Firestore Sync
   // Sesuai instruksi: "saat login aplikasi menghapus cache dan sinkronisasi database di firebase firestore"
-  const handleLogin = async (user: User) => {
-    setIsLoginSyncing(true);
-    setLoginSyncMessage('Membersihkan cache browser...');
+  const handleLogin = (user: User) => {
+    // 1. INSTANT LOGIN: Pengguna langsung masuk ke aplikasi tanpa jeda / tanpa tertahan
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    localStorage.setItem('athree_is_authenticated', 'true');
+    sessionStorage.setItem('athree_session_active', 'true');
+    localStorage.setItem('athree_current_user', JSON.stringify(user));
+    localStorage.setItem('athree_last_active_time', String(Date.now()));
+    localStorage.removeItem('athree_timeout_notice');
+    setSessionTimeoutNotice(null);
 
-    try {
-      // 1. Hapus cache browser (CacheStorage & sessionStorage)
-      await clearBrowserCaches();
+    if (user.role === 'admin') {
+      setActiveTab('dashboard');
+    } else if (user.role === 'kasir') {
+      setActiveTab('pos');
+    } else {
+      setActiveTab('orders');
+    }
 
-      // 2. Sinkronisasi database di Firebase Firestore
-      setLoginSyncMessage('Menyinkronkan database terbaru dari Firebase Firestore...');
-      const firestoreData = await fetchAllDataFromFirestore();
+    // 2. Pembersihan cache & sinkronisasi database Firestore di background (non-blocking)
+    (async () => {
+      try {
+        await clearBrowserCaches();
+      } catch (err) {
+        console.warn('Cache clean warning:', err);
+      }
 
-      if (firestoreData) {
-        if (firestoreData.products && firestoreData.products.length > 0) {
-          setProducts(firestoreData.products);
-          localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
-        }
-        if (firestoreData.transactions && firestoreData.transactions.length > 0) {
-          setTransactions(firestoreData.transactions);
-          localStorage.setItem('athree_transactions', JSON.stringify(firestoreData.transactions));
-          localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(firestoreData.transactions));
-        }
-        if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
-          setCashFlowRecords(firestoreData.cashFlowRecords);
-          localStorage.setItem('athree_cash_flow', JSON.stringify(firestoreData.cashFlowRecords));
-        }
-        if (firestoreData.shifts && firestoreData.shifts.length > 0) {
-          setShiftHistory(firestoreData.shifts);
-          localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
-        }
-        if (firestoreData.activeShift) {
-          setShift(firestoreData.activeShift);
-          localStorage.setItem('athree_shift', JSON.stringify(firestoreData.activeShift));
-          if (firestoreData.activeShift.isOpen) {
-            localStorage.setItem('athree_shift_active_persistent', JSON.stringify(firestoreData.activeShift));
-          } else {
-            localStorage.removeItem('athree_shift_active_persistent');
+      try {
+        const firestoreData = await fetchAllDataFromFirestore('server-first');
+        if (firestoreData) {
+          if (firestoreData.products && firestoreData.products.length > 0) {
+            setProducts(firestoreData.products);
+            localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
+          }
+          if (firestoreData.transactions && firestoreData.transactions.length > 0) {
+            setTransactions(firestoreData.transactions);
+            localStorage.setItem('athree_transactions', JSON.stringify(firestoreData.transactions));
+            localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(firestoreData.transactions));
+          }
+          if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
+            setCashFlowRecords(firestoreData.cashFlowRecords);
+            localStorage.setItem('athree_cash_flow', JSON.stringify(firestoreData.cashFlowRecords));
+          }
+          if (firestoreData.shifts && firestoreData.shifts.length > 0) {
+            setShiftHistory(firestoreData.shifts);
+            localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
+          }
+          if (firestoreData.activeShift) {
+            setShift(firestoreData.activeShift);
+            localStorage.setItem('athree_shift', JSON.stringify(firestoreData.activeShift));
+            if (firestoreData.activeShift.isOpen) {
+              localStorage.setItem('athree_shift_active_persistent', JSON.stringify(firestoreData.activeShift));
+            } else {
+              localStorage.removeItem('athree_shift_active_persistent');
+            }
+          }
+          if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
+            setKaosStocks(firestoreData.kaosStocks);
+            localStorage.setItem('athree_kaos_stocks', JSON.stringify(firestoreData.kaosStocks));
+          }
+          if (firestoreData.customers && firestoreData.customers.length > 0) {
+            setCustomers(firestoreData.customers);
+            localStorage.setItem('athree_customers', JSON.stringify(firestoreData.customers));
+          }
+          if (firestoreData.users && firestoreData.users.length > 0) {
+            setUsers(firestoreData.users);
+            localStorage.setItem('athree_users', JSON.stringify(firestoreData.users));
+          }
+          if (firestoreData.stockMovements && firestoreData.stockMovements.length > 0) {
+            setStockMovements(firestoreData.stockMovements);
+            localStorage.setItem('athree_stock_movements', JSON.stringify(firestoreData.stockMovements));
           }
         }
-        if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
-          setKaosStocks(firestoreData.kaosStocks);
-          localStorage.setItem('athree_kaos_stocks', JSON.stringify(firestoreData.kaosStocks));
-        }
-        if (firestoreData.customers && firestoreData.customers.length > 0) {
-          setCustomers(firestoreData.customers);
-          localStorage.setItem('athree_customers', JSON.stringify(firestoreData.customers));
-        }
-        if (firestoreData.users && firestoreData.users.length > 0) {
-          setUsers(firestoreData.users);
-          localStorage.setItem('athree_users', JSON.stringify(firestoreData.users));
-        }
-        if (firestoreData.stockMovements && firestoreData.stockMovements.length > 0) {
-          setStockMovements(firestoreData.stockMovements);
-          localStorage.setItem('athree_stock_movements', JSON.stringify(firestoreData.stockMovements));
-        }
-        setLoginSyncMessage(`Sinkronisasi sukses! Memuat ${firestoreData.transactions?.length || 0} transaksi & ${firestoreData.products?.length || 0} produk.`);
+      } catch (err) {
+        console.warn('Background Firestore sync on login warning:', err);
       }
+    })();
 
-      // 3. Set authenticated state & user
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-      localStorage.setItem('athree_is_authenticated', 'true');
-      sessionStorage.setItem('athree_session_active', 'true');
-      localStorage.setItem('athree_current_user', JSON.stringify(user));
-      localStorage.setItem('athree_last_active_time', String(Date.now()));
-      localStorage.removeItem('athree_timeout_notice');
-      setSessionTimeoutNotice(null);
-
-      if (user.role === 'admin') {
-        setActiveTab('dashboard');
-      } else if (user.role === 'kasir') {
-        setActiveTab('pos');
-      } else {
-        setActiveTab('orders');
-      }
-
-      // 4. Catat active session
-      recordActiveSession(user.id, user.name, user.role).catch(() => {});
-    } catch (err) {
-      console.warn('Gagal membersihkan cache dan sinkronisasi Firestore saat login:', err);
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-      localStorage.setItem('athree_is_authenticated', 'true');
-      sessionStorage.setItem('athree_session_active', 'true');
-      localStorage.setItem('athree_current_user', JSON.stringify(user));
-      localStorage.setItem('athree_last_active_time', String(Date.now()));
-    } finally {
-      setTimeout(() => {
-        setIsLoginSyncing(false);
-      }, 500);
-    }
+    // 3. Catat active session
+    recordActiveSession(user.id, user.name, user.role).catch(() => {});
   };
 
   // Logout & Cloud Auto-Save state
@@ -2738,39 +2727,12 @@ export default function App() {
   // 0. INITIAL SCREEN: LOGIN SCREEN (Matches uploaded fluid wave image)
   if (!isAuthenticated) {
     return (
-      <>
-        <LoginScreen
-          users={users}
-          onLogin={handleLogin}
-          sessionTimeoutNotice={sessionTimeoutNotice}
-          onClearTimeoutNotice={clearSessionTimeoutNotice}
-          isSyncing={isLoginSyncing}
-          syncMessage={loginSyncMessage}
-        />
-        {isLoginSyncing && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-emerald-100 text-center space-y-4 animate-in zoom-in-95 duration-150">
-              <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center shadow-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
-                <Flame className="w-9 h-9 fill-amber-500 text-amber-500 animate-pulse" />
-              </div>
-              
-              <div className="space-y-1">
-                <h3 className="text-base font-bold text-slate-800">
-                  Sinkronisasi Database Firestore
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Membersihkan cache browser &amp; memuat data real-time terbaru dari cloud.
-                </p>
-              </div>
-
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center justify-center gap-2.5">
-                <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                <span className="text-xs font-semibold text-emerald-900">{loginSyncMessage}</span>
-              </div>
-            </div>
-          </div>
-        )}
-      </>
+      <LoginScreen
+        users={users}
+        onLogin={handleLogin}
+        sessionTimeoutNotice={sessionTimeoutNotice}
+        onClearTimeoutNotice={clearSessionTimeoutNotice}
+      />
     );
   }
 

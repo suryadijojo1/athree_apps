@@ -8,17 +8,13 @@ interface LoginScreenProps {
   onLogin: (user: User) => void;
   sessionTimeoutNotice?: string | null;
   onClearTimeoutNotice?: () => void;
-  isSyncing?: boolean;
-  syncMessage?: string;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   users,
   onLogin,
   sessionTimeoutNotice,
-  onClearTimeoutNotice,
-  isSyncing,
-  syncMessage
+  onClearTimeoutNotice
 }) => {
   const [usernameInput, setUsernameInput] = useState<string>('admin_athree');
   const [passwordInput, setPasswordInput] = useState<string>('1234');
@@ -199,17 +195,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               {/* Login Button (Matches screenshot) */}
               <button
                 type="submit"
-                disabled={isSyncing}
-                className="w-full py-2.5 rounded-full bg-[#203166] hover:bg-[#182652] active:scale-98 text-white font-extrabold text-xs uppercase tracking-widest shadow-md transition-all mt-1 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2.5 rounded-full bg-[#203166] hover:bg-[#182652] active:scale-98 text-white font-extrabold text-xs uppercase tracking-widest shadow-md transition-all mt-1 flex items-center justify-center gap-2 cursor-pointer"
               >
-                {isSyncing ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
-                    <span>HAPUS CACHE &amp; SYNC...</span>
-                  </>
-                ) : (
-                  <span>LOGIN</span>
-                )}
+                LOGIN
               </button>
 
               {/* Checkbox and Forgot Password (Matches screenshot) */}

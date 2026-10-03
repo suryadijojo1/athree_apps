@@ -734,29 +734,56 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
 // 2. Atur Sumber Data Secara Eksplisit (getDocsFromCache vs getDocsFromServer)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Explicit Data Fetching Helpers with Fast-Timeout Fallback
+// ---------------------------------------------------------------------------
+
+function withTimeout<T>(promise: Promise<T>, ms = 2000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout of ${ms}ms exceeded`)), ms)
+    )
+  ]);
+}
+
 export async function getDocsExplicit<T = any>(
   colRef: any,
   source: 'server' | 'cache' | 'server-first' = 'server-first'
 ): Promise<T[]> {
   if (source === 'server') {
-    const snap = await getDocsFromServer(colRef);
-    return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+    try {
+      const snap = await withTimeout(getDocsFromServer(colRef), 2500);
+      return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+    } catch {
+      const snap = await getDocs(colRef);
+      return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+    }
   }
   if (source === 'cache') {
-    const snap = await getDocsFromCache(colRef);
-    return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
-  }
-  // server-first with fallback to cache
-  try {
-    const snap = await getDocsFromServer(colRef);
-    return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
-  } catch (err) {
-    console.warn('[getDocsExplicit] Server fetch failed, falling back to cache:', err);
     try {
       const snap = await getDocsFromCache(colRef);
       return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
     } catch {
-      throw err;
+      const snap = await getDocs(colRef);
+      return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+    }
+  }
+  // server-first with fast 1.5s fallback to cache / local
+  try {
+    const snap = await withTimeout(getDocsFromServer(colRef), 1500);
+    return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+  } catch (err) {
+    try {
+      const snap = await getDocsFromCache(colRef);
+      return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+    } catch {
+      try {
+        const snap = await getDocs(colRef);
+        return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
+      } catch {
+        return [];
+      }
     }
   }
 }
@@ -766,24 +793,38 @@ export async function getDocExplicit<T = any>(
   source: 'server' | 'cache' | 'server-first' = 'server-first'
 ): Promise<T | null> {
   if (source === 'server') {
-    const snap = await getDocFromServer(docRef);
-    return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+    try {
+      const snap = await withTimeout(getDocFromServer(docRef), 2500);
+      return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+    } catch {
+      const snap = await getDoc(docRef);
+      return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+    }
   }
   if (source === 'cache') {
-    const snap = await getDocFromCache(docRef);
-    return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
-  }
-  // server-first with fallback to cache
-  try {
-    const snap = await getDocFromServer(docRef);
-    return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
-  } catch (err) {
-    console.warn('[getDocExplicit] Server fetch failed, falling back to cache:', err);
     try {
       const snap = await getDocFromCache(docRef);
       return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
     } catch {
-      throw err;
+      const snap = await getDoc(docRef);
+      return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+    }
+  }
+  // server-first with fast 1.5s fallback to cache / local
+  try {
+    const snap = await withTimeout(getDocFromServer(docRef), 1500);
+    return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+  } catch (err) {
+    try {
+      const snap = await getDocFromCache(docRef);
+      return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+    } catch {
+      try {
+        const snap = await getDoc(docRef);
+        return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
+      } catch {
+        return null;
+      }
     }
   }
 }
