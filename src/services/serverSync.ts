@@ -23,27 +23,72 @@ export interface AppDatabasePayload {
 // Client ID for this browser tab/session
 export const CLIENT_ID = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
+let runtimeCustomBaseUrl: string | null = null;
+
+/**
+ * Programmatically configure or override the Cloud SQL API Gateway base URL.
+ */
+export function setServerBaseUrl(url: string | null): void {
+  runtimeCustomBaseUrl = url ? url.trim().replace(/\/+$/, '') : null;
+  if (typeof window !== 'undefined') {
+    (window as any).__CLOUD_SQL_API_GATEWAY__ = runtimeCustomBaseUrl;
+  }
+}
+
 /**
  * Resolves the active Cloud SQL API Gateway base URL.
- * Automatically checks for custom runtime overrides, Vite environment variables,
- * or browser location to ensure the request is directed to the active gateway.
+ * Automatically checks for runtime programmatic overrides, window globals,
+ * localStorage persistent settings, and Vite environment variables.
  */
 export function getServerBaseUrl(): string {
+  // 1. Programmatic override
+  if (runtimeCustomBaseUrl) {
+    return runtimeCustomBaseUrl;
+  }
+
+  // 2. Window global overrides (injected by gateway proxy, script tag, or browser console)
   if (typeof window !== 'undefined') {
+    const win = window as any;
     const customGateway =
-      (window as any).__CLOUD_SQL_API_GATEWAY__ ||
-      (window as any).__CLOUD_SQL_GATEWAY__ ||
-      (window as any).__API_BASE_URL__;
-    if (customGateway && typeof customGateway === 'string') {
-      return customGateway.replace(/\/+$/, '');
+      win.__CLOUD_SQL_API_GATEWAY__ ||
+      win.__CLOUD_SQL_GATEWAY__ ||
+      win.CLOUD_SQL_API_GATEWAY ||
+      win.CLOUD_SQL_GATEWAY ||
+      win.__API_BASE_URL__ ||
+      win.__API_URL__ ||
+      win.API_BASE_URL ||
+      win.API_URL;
+    if (customGateway && typeof customGateway === 'string' && customGateway.trim()) {
+      return customGateway.trim().replace(/\/+$/, '');
+    }
+
+    // 3. LocalStorage persistent configuration
+    try {
+      const stored =
+        localStorage.getItem('CLOUD_SQL_API_GATEWAY') ||
+        localStorage.getItem('CLOUD_SQL_GATEWAY') ||
+        localStorage.getItem('API_BASE_URL') ||
+        localStorage.getItem('VITE_API_URL');
+      if (stored && typeof stored === 'string' && stored.trim()) {
+        return stored.trim().replace(/\/+$/, '');
+      }
+    } catch {
+      // Ignore localStorage access restrictions
     }
   }
 
+  // 4. Vite bundler environment variables
   if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
     const env = (import.meta as any).env;
-    const envUrl = env.VITE_API_URL || env.VITE_CLOUD_SQL_GATEWAY || env.VITE_SERVER_URL;
-    if (envUrl && typeof envUrl === 'string') {
-      return envUrl.replace(/\/+$/, '');
+    const envUrl =
+      env.VITE_CLOUD_SQL_API_GATEWAY ||
+      env.VITE_CLOUD_SQL_GATEWAY ||
+      env.VITE_API_URL ||
+      env.VITE_SERVER_URL ||
+      env.VITE_API_BASE_URL ||
+      env.VITE_API_BASE;
+    if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+      return envUrl.trim().replace(/\/+$/, '');
     }
   }
 
@@ -51,12 +96,296 @@ export function getServerBaseUrl(): string {
 }
 
 /**
- * Builds a normalized, fully qualified or relative URL pointing to the Cloud SQL server endpoint.
+ * Resolves the full, absolute base URL (including scheme, host, and port)
+ * of the active Cloud SQL API Gateway.
+ */
+export function getFullServerBaseUrl(): string {
+  const base = getServerBaseUrl();
+  if (base) {
+    if (base.startsWith('http://') || base.startsWith('https://')) {
+      return base;
+    }
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      const normalizedPath = base.startsWith('/') ? base : `/${base}`;
+      return `${window.location.origin}${normalizedPath}`.replace(/\/+$/, '');
+    }
+    return base;
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return 'http://localhost:3000';
+}
+
+/**
+ * Builds a normalized, properly routed URL pointing to the Cloud SQL server endpoint.
+ * Prevents duplicate '/api' path segments and double slashes to eliminate 404 routing errors.
  */
 export function buildApiUrl(path: string): string {
   const base = getServerBaseUrl();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return base ? `${base}${normalizedPath}` : normalizedPath;
+  if (!base) return normalizedPath;
+
+  const cleanBase = base.replace(/\/+$/, '');
+
+  // Prevent duplicate '/api' if cleanBase already ends with '/api' and path starts with '/api/'
+  if (cleanBase.endsWith('/api') && normalizedPath.startsWith('/api/')) {
+    return `${cleanBase}${normalizedPath.substring(4)}`;
+  }
+
+  // Exact match '/api'
+  if (cleanBase.endsWith('/api') && normalizedPath === '/api') {
+    return cleanBase;
+  }
+
+  return `${cleanBase}${normalizedPath}`;
+}
+
+/**
+ * Builds a fully qualified absolute URL with scheme and host for external requests or diagnostics.
+ */
+export function buildFullApiUrl(path: string): string {
+  const fullBase = getFullServerBaseUrl();
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const cleanBase = fullBase.replace(/\/+$/, '');
+
+  if (cleanBase.endsWith('/api') && normalizedPath.startsWith('/api/')) {
+    return `${cleanBase}${normalizedPath.substring(4)}`;
+  }
+  if (cleanBase.endsWith('/api') && normalizedPath === '/api') {
+    return cleanBase;
+  }
+  return `${cleanBase}${normalizedPath}`;
+}
+
+export interface CloudSqlDiagnosticInfo {
+  fullBaseUrl: string;
+  configuredBaseUrl: string;
+  primaryEndpoint: string;
+  status: string;
+  httpStatus?: number;
+  connected: boolean;
+  cloudSqlDirect: boolean;
+  databaseType: string;
+  details?: any;
+  error?: string;
+  testedEndpoints: Array<{
+    endpoint: string;
+    status: number | string;
+    ok: boolean;
+    responseTimeMs: number;
+  }>;
+  totalElapsedMs: number;
+  timestamp: string;
+}
+
+/**
+ * Diagnostic function that tests the Cloud SQL API Gateway and logs the full base URL
+ * and connection status of the Cloud SQL service to the console for easier debugging of 404 errors.
+ *
+ * Can also be executed from browser DevTools:
+ *   window.diagnoseCloudSql()
+ */
+export async function diagnoseCloudSqlService(options?: {
+  silent?: boolean;
+  timeoutMs?: number;
+}): Promise<CloudSqlDiagnosticInfo> {
+  const fullBaseUrl = getFullServerBaseUrl();
+  const configuredBaseUrl = getServerBaseUrl();
+  const targetEndpoint = buildFullApiUrl('/api/cloudsql/status');
+  const timeoutMs = options?.timeoutMs || 8000;
+  const timestamp = new Date().toISOString();
+  const startTime = Date.now();
+
+  let connected = false;
+  let cloudSqlDirect = false;
+  let httpStatus: number | undefined;
+  let statusText = 'UNKNOWN';
+  let databaseType = 'Cloud SQL (PostgreSQL)';
+  let details: any = null;
+  let errorMessage: string | undefined;
+
+  const testedEndpoints: Array<{
+    endpoint: string;
+    status: number | string;
+    ok: boolean;
+    responseTimeMs: number;
+  }> = [];
+
+  const endpointsToCheck = [
+    { name: 'Cloud SQL Status', path: '/api/cloudsql/status' },
+    { name: 'Cloud SQL Tables', path: '/api/cloudsql/tables' },
+    { name: 'Sync Status', path: '/api/sql/sync-status' },
+    { name: 'Database State', path: '/api/database' },
+    { name: 'Server Health', path: '/api/health' }
+  ];
+
+  for (const item of endpointsToCheck) {
+    const fullUrl = buildFullApiUrl(item.path);
+    const epStart = Date.now();
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      const res = await fetch(fullUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/json', 'X-Client-Id': CLIENT_ID },
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+
+      const elapsed = Date.now() - epStart;
+      testedEndpoints.push({
+        endpoint: fullUrl,
+        status: res.status,
+        ok: res.ok,
+        responseTimeMs: elapsed
+      });
+
+      if (item.path === '/api/cloudsql/status') {
+        httpStatus = res.status;
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          connected = Boolean(json.connected ?? true);
+          cloudSqlDirect = Boolean(json.cloudSqlDirect);
+          databaseType = json.databaseType || 'Cloud SQL (PostgreSQL)';
+          details = json;
+          statusText = 'CONNECTED';
+        } else if (res.status === 404) {
+          statusText = '404_NOT_FOUND';
+          errorMessage = `Endpoint ${fullUrl} returned 404 Not Found`;
+        } else {
+          statusText = `HTTP_${res.status}`;
+          errorMessage = `Endpoint returned HTTP status ${res.status}`;
+        }
+      }
+    } catch (err: any) {
+      const elapsed = Date.now() - epStart;
+      const isAbort = err.name === 'AbortError';
+      testedEndpoints.push({
+        endpoint: fullUrl,
+        status: isAbort ? 'TIMEOUT' : 'NETWORK_ERROR',
+        ok: false,
+        responseTimeMs: elapsed
+      });
+      if (item.path === '/api/cloudsql/status') {
+        statusText = isAbort ? 'TIMEOUT' : 'CONNECTION_ERROR';
+        errorMessage = err.message || 'Connection failed';
+      }
+    }
+  }
+
+  // If status endpoint was 404, check if alternative endpoints succeeded
+  if (!connected) {
+    const anySuccess = testedEndpoints.find((t) => t.ok);
+    if (anySuccess) {
+      connected = true;
+      if (statusText === '404_NOT_FOUND') {
+        statusText = 'PARTIAL (Status 404, but alternative endpoints responsive)';
+      }
+    }
+  }
+
+  const result: CloudSqlDiagnosticInfo = {
+    fullBaseUrl,
+    configuredBaseUrl,
+    primaryEndpoint: targetEndpoint,
+    status: statusText,
+    httpStatus,
+    connected,
+    cloudSqlDirect,
+    databaseType,
+    details,
+    error: errorMessage,
+    testedEndpoints,
+    totalElapsedMs: Date.now() - startTime,
+    timestamp
+  };
+
+  if (!options?.silent) {
+    logDiagnosticResults(result);
+  }
+
+  return result;
+}
+
+/**
+ * Formats and prints comprehensive diagnostic logs to the browser console.
+ */
+function logDiagnosticResults(diag: CloudSqlDiagnosticInfo): void {
+  const isOk = diag.connected && diag.status !== '404_NOT_FOUND';
+  const badgeColor = isOk ? '#00871f' : '#dc2626';
+
+  console.group(
+    `%c[Cloud SQL Diagnostics] ${isOk ? '✔ SERVICE CONNECTED' : '✖ CONNECTION ISSUE DETECTED'}`,
+    `background: ${badgeColor}; color: #ffffff; font-weight: bold; padding: 2px 8px; border-radius: 4px;`
+  );
+  console.log('%cFull Base URL:%c', 'font-weight: bold;', 'color: #0284c7; font-weight: bold;', diag.fullBaseUrl);
+  console.log(
+    '%cConfigured Base URL:%c',
+    'font-weight: bold;',
+    'color: #475569;',
+    diag.configuredBaseUrl || '(default / browser origin)'
+  );
+  console.log('%cPrimary Endpoint:%c', 'font-weight: bold;', 'color: #0284c7;', diag.primaryEndpoint);
+  console.log(
+    '%cConnection Status:%c',
+    'font-weight: bold;',
+    isOk ? 'color: #16a34a; font-weight: bold;' : 'color: #dc2626; font-weight: bold;',
+    diag.status + (diag.httpStatus ? ` (HTTP ${diag.httpStatus})` : '')
+  );
+  console.log(
+    '%cCloud SQL Direct DB:%c',
+    'font-weight: bold;',
+    diag.cloudSqlDirect ? 'color: #16a34a; font-weight: bold;' : 'color: #eab308; font-weight: bold;',
+    diag.cloudSqlDirect ? 'Connected (PostgreSQL active)' : 'Standby / Replication mode'
+  );
+  console.log('%cDatabase Engine:%c', 'font-weight: bold;', 'color: #334155;', diag.databaseType);
+
+  if (diag.error) {
+    console.warn(
+      '%cDiagnostic Warning:%c',
+      'font-weight: bold; color: #dc2626;',
+      'color: #dc2626;',
+      diag.error,
+      '\nIf you see a 404 error, verify that the base URL correctly points to the active Cloud SQL API Gateway.'
+    );
+  }
+
+  if (console.table && diag.testedEndpoints.length > 0) {
+    console.table(
+      diag.testedEndpoints.map((t) => ({
+        Endpoint: t.endpoint,
+        Status: t.status,
+        Success: t.ok ? 'YES' : 'NO',
+        'Latency (ms)': t.responseTimeMs
+      }))
+    );
+  }
+
+  if (diag.details) {
+    console.log('%cResponse Payload:%c', 'font-weight: bold;', '', diag.details);
+  }
+
+  console.groupEnd();
+}
+
+// Aliases for developer convenience
+export const logCloudSqlDiagnostics = diagnoseCloudSqlService;
+export const diagnoseCloudSqlConnection = diagnoseCloudSqlService;
+export const checkCloudSqlDiagnostics = diagnoseCloudSqlService;
+
+// Attach diagnostics to window for immediate DevTools inspection
+if (typeof window !== 'undefined') {
+  const win = window as any;
+  win.diagnoseCloudSqlService = diagnoseCloudSqlService;
+  win.diagnoseCloudSql = diagnoseCloudSqlService;
+  win.logCloudSqlDiagnostics = diagnoseCloudSqlService;
+  win.getFullServerBaseUrl = getFullServerBaseUrl;
+  win.getServerBaseUrl = getServerBaseUrl;
+  win.buildApiUrl = buildApiUrl;
+  win.buildFullApiUrl = buildFullApiUrl;
 }
 
 const LEGACY_DUMMY_INVOICES = new Set([
@@ -117,13 +446,15 @@ export async function fetchServerDatabase(): Promise<{
     '/api/cloudsql/sync'
   ];
 
-  const endpoints: string[] = [];
-  const base = getServerBaseUrl();
+  const endpointsToTry: string[] = [];
   for (const p of candidatePaths) {
-    if (base) endpoints.push(`${base}${p}`);
-    endpoints.push(p);
+    endpointsToTry.push(buildApiUrl(p));
+    const rel = p.startsWith('/') ? p : `/${p}`;
+    if (!endpointsToTry.includes(rel)) {
+      endpointsToTry.push(rel);
+    }
   }
-  const uniqueEndpoints = Array.from(new Set(endpoints));
+  const uniqueEndpoints = Array.from(new Set(endpointsToTry));
 
   for (const ep of uniqueEndpoints) {
     try {
@@ -138,6 +469,8 @@ export async function fetchServerDatabase(): Promise<{
           data: json.data || null,
           isRealData: Boolean(json.isRealData)
         };
+      } else if (res.status === 404) {
+        console.warn(`[ServerSync] Endpoint ${ep} returned 404. Full Base URL: ${getFullServerBaseUrl()}`);
       }
     } catch (err) {
       console.warn(`Failed to fetch database from ${ep}:`, err);
@@ -180,10 +513,12 @@ export async function saveServerDatabase(
   ];
 
   const endpointsToTry: string[] = [];
-  const base = getServerBaseUrl();
   for (const p of candidatePaths) {
-    if (base) endpointsToTry.push(`${base}${p}`);
-    endpointsToTry.push(p);
+    endpointsToTry.push(buildApiUrl(p));
+    const rel = p.startsWith('/') ? p : `/${p}`;
+    if (!endpointsToTry.includes(rel)) {
+      endpointsToTry.push(rel);
+    }
   }
   const uniqueEndpoints = Array.from(new Set(endpointsToTry));
 
@@ -229,7 +564,7 @@ export async function saveServerDatabase(
         }
         break;
       } else {
-        console.warn(`Database sync endpoint ${ep} returned 404, trying next alternative...`);
+        console.warn(`[ServerSync] Database sync endpoint ${ep} returned 404 (Full Base URL: ${getFullServerBaseUrl()}), trying next alternative...`);
         lastErrorMsg = `Server error 404 pada endpoint ${ep}`;
       }
     } catch (err: any) {
@@ -238,6 +573,11 @@ export async function saveServerDatabase(
       }
       lastErrorMsg = err.message || 'Koneksi ke server gagal';
     }
+  }
+
+  // If a 404 error occurred on all endpoints, run full diagnostics in the console
+  if (lastErrorMsg.includes('404')) {
+    diagnoseCloudSqlService().catch(() => {});
   }
 
   return { success: false, error: lastErrorMsg };

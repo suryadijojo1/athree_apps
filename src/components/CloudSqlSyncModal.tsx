@@ -33,7 +33,8 @@ import {
   saveServerDatabase,
   checkCloudSqlStatus,
   CloudSqlStatus,
-  buildApiUrl
+  buildApiUrl,
+  diagnoseCloudSqlService
 } from '../services/cloudSqlSync';
 import { deleteServerBackup, deleteAllServerBackups } from '../services/serverSync';
 import { deleteCloudBackupSnapshot } from '../services/firebase';
@@ -158,6 +159,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
         loadInitialData();
       } else {
         setStatusMessage({ text: `Gagal sinkron Cloud SQL: ${res.error || 'Server error'}`, isError: true });
+        diagnoseCloudSqlService().catch(() => {});
       }
     } catch (err: any) {
       setStatusMessage({ text: `Terjadi kesalahan saat sync Cloud SQL: ${err.message}`, isError: true });

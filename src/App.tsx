@@ -95,7 +95,8 @@ import {
   syncShiftToServer,
   isRealUserData,
   AppDatabasePayload,
-  buildApiUrl
+  buildApiUrl,
+  diagnoseCloudSqlService
 } from './services/serverSync';
 import { User as FirebaseUser } from 'firebase/auth';
 import {
@@ -672,6 +673,9 @@ export default function App() {
         return prevShift;
       });
     };
+
+    // 0. Cloud SQL Service & API Gateway Diagnostics Check
+    diagnoseCloudSqlService().catch(() => {});
 
     // 1. Primary Hydration from Cloud SQL Central Database
     const syncFromCloudSql = async () => {

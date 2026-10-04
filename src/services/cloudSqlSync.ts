@@ -12,7 +12,15 @@ import {
   AppDatabasePayload,
   CLIENT_ID,
   getServerBaseUrl,
+  getFullServerBaseUrl,
+  setServerBaseUrl,
   buildApiUrl,
+  buildFullApiUrl,
+  diagnoseCloudSqlService,
+  logCloudSqlDiagnostics,
+  diagnoseCloudSqlConnection,
+  checkCloudSqlDiagnostics,
+  CloudSqlDiagnosticInfo,
   fetchServerDatabase,
   saveServerDatabase,
   subscribeToServerEvents,
@@ -127,7 +135,14 @@ export async function pullFromCloudSql(): Promise<AppDatabasePayload | null> {
 export {
   CLIENT_ID,
   getServerBaseUrl,
+  getFullServerBaseUrl,
+  setServerBaseUrl,
   buildApiUrl,
+  buildFullApiUrl,
+  diagnoseCloudSqlService,
+  logCloudSqlDiagnostics,
+  diagnoseCloudSqlConnection,
+  checkCloudSqlDiagnostics,
   fetchServerDatabase,
   saveServerDatabase,
   subscribeToServerEvents,
@@ -141,3 +156,4 @@ export {
   deleteAllServerBackups,
   fetchLatestServerSnapshot
 };
+export type { CloudSqlDiagnosticInfo };
