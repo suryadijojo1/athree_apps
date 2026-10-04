@@ -1,4 +1,5 @@
 {
+  "products": [],
   "transactions": [
     {
       "createdAt": "2026-09-30T11:23:39.015Z",
@@ -897,37 +898,9 @@
       "amountPaid": 1040000
     }
   ],
-  "products": [],
-  "isRealData": true,
-  "users": [
-    {
-      "id": "u1",
-      "name": "DIMAS",
-      "roleLabel": "Kasir POS",
-      "avatarText": "DI",
-      "pin": "1234",
-      "role": "kasir",
-      "username": "kasir_dimas"
-    },
-    {
-      "avatarText": "AT",
-      "role": "admin",
-      "roleLabel": "Administrator / Pemilik",
-      "id": "u2",
-      "name": "ATHREE(Owner)",
-      "username": "admin_athree",
-      "pin": "1234"
-    },
-    {
-      "avatarText": "BS",
-      "id": "u3",
-      "name": "Budi Santoso",
-      "username": "staff_budi",
-      "roleLabel": "Staf Produksi / Desain",
-      "pin": "1234",
-      "role": "staff"
-    }
-  ],
+  "cashFlowRecords": [],
+  "shiftHistory": [],
+  "kaosStocks": [],
   "customers": [
     {
       "id": "c-1790247670148",
@@ -993,6 +966,36 @@
       "address": "Kotaraja",
       "name": "SMA Negeri 1 Jayapura (OSIS)",
       "phone": "0852-3322-1100"
+    }
+  ],
+  "isRealData": true,
+  "users": [
+    {
+      "id": "u1",
+      "name": "DIMAS",
+      "roleLabel": "Kasir POS",
+      "avatarText": "DI",
+      "pin": "1234",
+      "role": "kasir",
+      "username": "kasir_dimas"
+    },
+    {
+      "avatarText": "AT",
+      "role": "admin",
+      "roleLabel": "Administrator / Pemilik",
+      "id": "u2",
+      "name": "ATHREE(Owner)",
+      "username": "admin_athree",
+      "pin": "1234"
+    },
+    {
+      "avatarText": "BS",
+      "id": "u3",
+      "name": "Budi Santoso",
+      "username": "staff_budi",
+      "roleLabel": "Staf Produksi / Desain",
+      "pin": "1234",
+      "role": "staff"
     }
   ],
   "currentShift": {
