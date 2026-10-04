@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame, RotateCcw, Database, Trash2 } from 'lucide-react';
+import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame, RotateCcw, Database } from 'lucide-react';
 import { User, CashierShift } from '../types';
 
 interface HeaderProps {
@@ -16,7 +16,6 @@ interface HeaderProps {
   onOpenUserManagement?: () => void;
   onOpenCloudSqlModal?: () => void;
   onOpenFirebaseModal?: () => void;
-  onOpenSnapshotModal?: () => void;
   isFirebaseConnected?: boolean;
   firebaseUser?: any;
 }
@@ -35,7 +34,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenUserManagement,
   onOpenCloudSqlModal,
   onOpenFirebaseModal,
-  onOpenSnapshotModal,
   isFirebaseConnected,
   firebaseUser
 }) => {
@@ -97,21 +95,21 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Date, Shift button, Profile */}
       <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
-        {/* Integrated Firebase Firestore Database Status Badge & Trigger */}
+        {/* Integrated Cloud SQL Database Status Badge & Trigger */}
         {(onOpenCloudSqlModal || onOpenFirebaseModal) && (
           <button
             type="button"
             onClick={onOpenCloudSqlModal || onOpenFirebaseModal}
             className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shadow-2xs bg-emerald-950/40 text-emerald-100 hover:bg-emerald-900/50 border-emerald-400/40"
-            title="Database Utama: Firebase Firestore dengan Real-Time Sync (Database SQL & Google Drive sebagai Cadangan Manual)"
+            title="Database Utama: Cloud SQL (PostgreSQL) dengan Real-Time Sync & SSE"
           >
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-400"></span>
             </span>
-            <Flame className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span className="hidden sm:inline">Firestore:</span>
-            <span className="font-bold text-emerald-300">Real-Time Sync</span>
+            <Database className="w-3.5 h-3.5 text-blue-300" />
+            <span className="hidden sm:inline">Cloud SQL:</span>
+            <span className="font-bold text-blue-200">Real-Time Active</span>
           </button>
         )}
 
@@ -268,25 +266,6 @@ export const Header: React.FC<HeaderProps> = ({
                       </span>
                       <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
                         {firebaseUser ? 'Online' : 'Cloud'}
-                      </span>
-                    </button>
-                  )}
-
-                  {onOpenSnapshotModal && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        onOpenSnapshotModal();
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-medium text-rose-700 hover:bg-rose-50 flex items-center justify-between cursor-pointer border-t border-slate-100"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Trash2 className="w-4 h-4 text-rose-600" />
-                        <span>Kelola &amp; Hapus Snapshot</span>
-                      </span>
-                      <span className="text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-semibold">
-                        Snapshot
                       </span>
                     </button>
                   )}

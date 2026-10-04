@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Flame,
   Database,
   CheckCircle2,
   AlertCircle,
@@ -12,7 +11,6 @@ import {
   History,
   RotateCcw,
   Clock,
-  Sparkles,
   Zap,
   Activity,
   Layers,
@@ -20,32 +18,20 @@ import {
   FileUp,
   FileText,
   FolderArchive,
-  FileCheck2,
-  Trash2,
-  Trash,
-  Star,
-  AlertTriangle
+  Play,
+  Table,
+  Terminal,
+  RefreshCw,
+  Flame
 } from 'lucide-react';
-import {
-  testConnection,
-  fetchAllDataFromFirestore,
-  syncAllLocalDataToFirestore,
-  saveCloudBackupSnapshot,
-  fetchCloudBackupSnapshots,
-  getCloudBackupSnapshotById,
-  deleteCloudBackupSnapshot,
-  deleteAllCloudBackupSnapshots,
-  getLatestCloudBackupSnapshot,
-  CloudBackupSnapshotMeta
-} from '../services/firebase';
 import {
   saveServerBackupSnapshot,
   fetchServerBackups,
   restoreServerBackup,
   fetchServerDatabase,
-  deleteServerBackup,
-  deleteAllServerBackups,
-  fetchLatestServerSnapshot
+  saveServerDatabase,
+  checkCloudSqlStatus,
+  CloudSqlStatus
 } from '../services/cloudSqlSync';
 import { Product, Transaction, CashFlowRecord, CashierShift, KaosStockItem, Customer, User, StockMovement } from '../types';
 
@@ -62,7 +48,6 @@ interface DatabaseSyncModalProps {
   users?: User[];
   stockMovements?: StockMovement[];
   salesList?: string[];
-  initialTab?: 'firestore' | 'snapshots' | 'local' | 'sql' | 'drive';
   onManualSyncSuccess: () => void;
   onApplyDatabasePayload?: (payload: any) => void;
   onNavigateToDrive?: () => void;
@@ -81,27 +66,22 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
   users,
   stockMovements,
   salesList,
-  initialTab,
   onManualSyncSuccess,
   onApplyDatabasePayload,
   onNavigateToDrive
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError?: boolean } | null>(null);
-  const [activeTab, setActiveTab] = useState<'firestore' | 'snapshots' | 'local' | 'sql' | 'drive'>(initialTab || 'firestore');
-  const [firestoreConnected, setFirestoreConnected] = useState<boolean>(true);
-  const [firestoreBackups, setFirestoreBackups] = useState<CloudBackupSnapshotMeta[]>([]);
+  const [activeTab, setActiveTab] = useState<'sql' | 'query' | 'local' | 'drive' | 'firestore'>('sql');
   const [sqlBackups, setSqlBackups] = useState<any[]>([]);
+  const [cloudSqlStats, setCloudSqlStats] = useState<CloudSqlStatus | null>(null);
 
-  // In-App Safe Confirmation Modal State (replaces blocked window.confirm)
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmLabel: string;
-    isDanger?: boolean;
-    onConfirm: () => void;
-  } | null>(null);
+  // SQL Query Console States
+  const [queryInput, setQueryInput] = useState<string>('SELECT id, name, sku, category, price, stock FROM products LIMIT 10;');
+  const [queryResult, setQueryResult] = useState<any | null>(null);
+  const [queryRunning, setQueryRunning] = useState<boolean>(false);
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [tablesList, setTablesList] = useState<Array<{ name: string; count: number }>>([]);
 
   // Local File Upload & Restore States
   const [selectedLocalFile, setSelectedLocalFile] = useState<File | null>(null);
@@ -110,88 +90,34 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
   const [isParsingFile, setIsParsingFile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load initial health check and backups on open
+  const loadInitialData = async () => {
+    try {
+      const stats = await checkCloudSqlStatus();
+      setCloudSqlStats(stats);
+      const b = await fetchServerBackups();
+      if (b && Array.isArray(b)) setSqlBackups(b);
+      const tablesRes = await fetch('/api/cloudsql/tables');
+      if (tablesRes.ok) {
+        const tData = await tablesRes.json();
+        if (tData.tables) setTablesList(tData.tables);
+      }
+    } catch (err) {
+      console.warn('Error loading initial Cloud SQL state:', err);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
-      if (initialTab) setActiveTab(initialTab);
-      testConnection().then(setFirestoreConnected);
-      fetchCloudBackupSnapshots().then(setFirestoreBackups).catch(() => {});
-      fetchServerBackups().then((b) => {
-        if (b && Array.isArray(b)) setSqlBackups(b);
-      }).catch(() => {});
+      loadInitialData();
     }
-  }, [isOpen, initialTab]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  // 1. Force Push All Local Data to Firestore (Primary Database)
-  const handlePushAllToFirestore = async () => {
+  // 1. Force Push All Local Data to Cloud SQL Central Database
+  const handlePushAllToCloudSql = async () => {
     setIsProcessing(true);
-    setStatusMessage({ text: 'Sedang menyinkronkan seluruh database lokal ke Firebase Firestore...' });
-
-    try {
-      const res = await syncAllLocalDataToFirestore({
-        products,
-        transactions,
-        cashFlowRecords,
-        shiftHistory: shifts,
-        currentShift,
-        kaosStocks,
-        customers,
-        users,
-        stockMovements
-      });
-
-      setStatusMessage({
-        text: `Berhasil! Seluruh data disinkronkan ke Firebase Firestore (${res.transactionsCount} transaksi, ${res.productsCount} produk, ${res.cashFlowCount} kas). Real-Time Sync aktif.`
-      });
-      onManualSyncSuccess();
-    } catch (err: any) {
-      setStatusMessage({ text: `Terjadi kesalahan saat sync Firestore: ${err.message}`, isError: true });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // 2. Force Pull All Data from Firestore (Primary Database)
-  const handlePullFromFirestore = async () => {
-    setIsProcessing(true);
-    setStatusMessage({ text: 'Sedang memuat data master dari Firebase Firestore...' });
-
-    try {
-      const data = await fetchAllDataFromFirestore();
-      if (data && onApplyDatabasePayload) {
-        onApplyDatabasePayload({
-          products: data.products,
-          transactions: data.transactions,
-          cashFlowRecords: data.cashFlowRecords,
-          shiftHistory: data.shifts,
-          currentShift: data.activeShift || currentShift,
-          kaosStocks: data.kaosStocks,
-          customers: data.customers,
-          users: data.users,
-          stockMovements: data.stockMovements,
-          salesList: salesList || [],
-          isRealData: true
-        });
-        setStatusMessage({
-          text: `Data Firestore berhasil dimuat: ${data.transactions?.length || 0} transaksi, ${data.products?.length || 0} produk.`
-        });
-        onManualSyncSuccess();
-      } else {
-        setStatusMessage({ text: 'Data dari Firestore kosong atau belum ada.', isError: true });
-      }
-    } catch (err: any) {
-      setStatusMessage({ text: `Gagal memuat dari Firestore: ${err.message}`, isError: true });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // 3. Create Firestore 3-Day Rolling Backup (Max 3 days to prevent database piling up)
-  const handleCreateFirestoreBackup = async () => {
-    setIsProcessing(true);
-    setStatusMessage({ text: 'Membuat snapshot cadangan di Firebase Firestore (retensi 3 hari maksimal)...' });
+    setStatusMessage({ text: 'Sedang menyinkronkan seluruh database ke Cloud SQL (PostgreSQL)...' });
 
     try {
       const payload = {
@@ -208,180 +134,54 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
         isRealData: true
       };
 
-      const backupId = await saveCloudBackupSnapshot(payload, 'Manual Firestore Snapshot', 'modal-firestore');
-      setStatusMessage({ text: `Snapshot Firestore 3-hari berhasil disimpan (${backupId})!` });
-      const fresh = await fetchCloudBackupSnapshots();
-      setFirestoreBackups(fresh);
+      const res = await saveServerDatabase(payload, {
+        savedBy: 'Manual Cloud SQL Sync',
+        source: 'modal-cloudsql'
+      });
+
+      if (res.success) {
+        setStatusMessage({
+          text: `Berhasil! Seluruh data disinkronkan ke Cloud SQL (${transactions.length} transaksi, ${products.length} produk). Real-Time SSE aktif.`
+        });
+        onManualSyncSuccess();
+        loadInitialData();
+      } else {
+        setStatusMessage({ text: `Gagal sinkron Cloud SQL: ${res.error || 'Server error'}`, isError: true });
+      }
     } catch (err: any) {
-      setStatusMessage({ text: `Gagal membuat snapshot Firestore: ${err.message}`, isError: true });
+      setStatusMessage({ text: `Terjadi kesalahan saat sync Cloud SQL: ${err.message}`, isError: true });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // 4. Restore from Firestore Backup
-  const handleRestoreFirestoreBackup = (backupId: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Pulihkan Database dari Snapshot Firestore?',
-      message: `Apakah Anda yakin ingin memulihkan database dari snapshot Firestore "${backupId}" ini? Seluruh data kasir saat ini akan diperbarui sesuai snapshot ini.`,
-      confirmLabel: 'Ya, Pulihkan Database',
-      isDanger: false,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsProcessing(true);
-        setStatusMessage({ text: 'Mengambil snapshot cadangan dari Firestore...' });
-
-        try {
-          const snapshotPayload = await getCloudBackupSnapshotById(backupId);
-          if (snapshotPayload && onApplyDatabasePayload) {
-            onApplyDatabasePayload(snapshotPayload);
-            setStatusMessage({
-              text: `Database berhasil dipulihkan dari snapshot Firestore (${snapshotPayload.transactions?.length || 0} transaksi, ${snapshotPayload.products?.length || 0} produk)!`
-            });
-            onManualSyncSuccess();
-          } else {
-            setStatusMessage({ text: 'Snapshot Firestore tidak ditemukan atau format tidak sesuai.', isError: true });
-          }
-        } catch (err: any) {
-          setStatusMessage({ text: `Gagal memulihkan snapshot: ${err.message}`, isError: true });
-        } finally {
-          setIsProcessing(false);
-        }
-      }
-    });
-  };
-
-  // Sinkronisasi Snapshot Terakhir (Selalu mengambil snapshot paling mutakhir)
-  const handleSyncLatestSnapshot = async () => {
+  // 2. Force Pull All Data from Cloud SQL Central Database
+  const handlePullFromCloudSql = async () => {
     setIsProcessing(true);
-    setStatusMessage({ text: 'Mencari snapshot database paling terakhir...' });
+    setStatusMessage({ text: 'Sedang memuat data master dari Cloud SQL...' });
 
     try {
-      const [cloudSnap, serverSnap] = await Promise.all([
-        getLatestCloudBackupSnapshot().catch(() => null),
-        fetchLatestServerSnapshot().catch(() => null)
-      ]);
-
-      let targetSnapshot: any = null;
-      let sourceName = '';
-      let snapTimestamp: number = 0;
-
-      if (cloudSnap && serverSnap) {
-        if ((cloudSnap.timestamp || 0) >= (serverSnap.timestamp || 0)) {
-          targetSnapshot = cloudSnap.payload;
-          sourceName = `Cloud Firestore (${cloudSnap.id})`;
-          snapTimestamp = cloudSnap.timestamp;
-        } else {
-          targetSnapshot = serverSnap.data;
-          sourceName = `Server Backup (${serverSnap.id})`;
-          snapTimestamp = serverSnap.timestamp;
-        }
-      } else if (cloudSnap) {
-        targetSnapshot = cloudSnap.payload;
-        sourceName = `Cloud Firestore (${cloudSnap.id})`;
-        snapTimestamp = cloudSnap.timestamp;
-      } else if (serverSnap) {
-        targetSnapshot = serverSnap.data;
-        sourceName = `Server Backup (${serverSnap.id})`;
-        snapTimestamp = serverSnap.timestamp;
-      }
-
-      if (targetSnapshot && onApplyDatabasePayload) {
-        onApplyDatabasePayload(targetSnapshot);
-        // Sinkronkan kembali ke koleksi live Firebase Firestore
-        syncAllLocalDataToFirestore({
-          products: targetSnapshot.products,
-          transactions: targetSnapshot.transactions,
-          cashFlowRecords: targetSnapshot.cashFlowRecords,
-          shiftHistory: targetSnapshot.shiftHistory || targetSnapshot.shifts,
-          currentShift: targetSnapshot.currentShift || targetSnapshot.shift || targetSnapshot.activeShift,
-          kaosStocks: targetSnapshot.kaosStocks,
-          customers: targetSnapshot.customers,
-          users: targetSnapshot.users,
-          stockMovements: targetSnapshot.stockMovements
-        }).catch(() => {});
-
-        const dateStr = snapTimestamp ? new Date(snapTimestamp).toLocaleString('id-ID') : 'Terbaru';
+      const res = await fetchServerDatabase();
+      if (res.success && res.data && onApplyDatabasePayload) {
+        onApplyDatabasePayload(res.data);
         setStatusMessage({
-          text: `Snapshot terakhir (${sourceName} • ${dateStr}) berhasil dibuka & disinkronkan (${targetSnapshot.transactions?.length || 0} transaksi, ${targetSnapshot.products?.length || 0} produk)!`
+          text: `Data Cloud SQL berhasil dimuat: ${res.data.transactions?.length || 0} transaksi, ${res.data.products?.length || 0} produk.`
         });
         onManualSyncSuccess();
       } else {
-        setStatusMessage({
-          text: 'Tidak ada snapshot database yang tersedia untuk disinkronkan.',
-          isError: true
-        });
+        setStatusMessage({ text: 'Data dari Cloud SQL belum tersedia atau kosong.', isError: true });
       }
     } catch (err: any) {
-      setStatusMessage({ text: `Gagal sinkronisasi snapshot terakhir: ${err.message}`, isError: true });
+      setStatusMessage({ text: `Gagal memuat dari Cloud SQL: ${err.message}`, isError: true });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Hapus Snapshot Firestore Tertentu (Tanpa window.confirm yang terblokir)
-  const handleDeleteFirestoreBackup = (backupId: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Hapus Snapshot Firestore?',
-      message: `Apakah Anda yakin ingin menghapus snapshot cadangan "${backupId}" dari Cloud Firestore? File snapshot yang dihapus tidak dapat dipulihkan.`,
-      confirmLabel: 'Ya, Hapus Snapshot',
-      isDanger: true,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsProcessing(true);
-        setStatusMessage({ text: `Menghapus snapshot ${backupId} dari Cloud Firestore...` });
-
-        try {
-          const ok = await deleteCloudBackupSnapshot(backupId);
-          if (ok) {
-            setStatusMessage({ text: `Snapshot ${backupId} berhasil dihapus dari Cloud Firestore!` });
-            setFirestoreBackups((prev) => prev.filter((b) => b.id !== backupId));
-            const fresh = await fetchCloudBackupSnapshots().catch(() => []);
-            if (fresh && Array.isArray(fresh)) setFirestoreBackups(fresh);
-          } else {
-            setStatusMessage({ text: `Gagal menghapus snapshot ${backupId}.`, isError: true });
-          }
-        } catch (err: any) {
-          setStatusMessage({ text: `Error hapus snapshot: ${err.message}`, isError: true });
-        } finally {
-          setIsProcessing(false);
-        }
-      }
-    });
-  };
-
-  // Hapus Semua Snapshot Firestore
-  const handleDeleteAllFirestoreBackups = () => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Hapus SEMUA Snapshot Firestore?',
-      message: 'PERINGATAN: Anda akan menghapus SELURUH daftar snapshot cadangan database di Cloud Firestore. Tindakan ini permanen.',
-      confirmLabel: 'Ya, Hapus Semua Snapshot',
-      isDanger: true,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsProcessing(true);
-        setStatusMessage({ text: 'Menghapus seluruh snapshot cadangan Cloud Firestore...' });
-
-        try {
-          const count = await deleteAllCloudBackupSnapshots();
-          setStatusMessage({ text: `Seluruh (${count}) snapshot cadangan Firestore berhasil dihapus!` });
-          setFirestoreBackups([]);
-        } catch (err: any) {
-          setStatusMessage({ text: `Error hapus semua: ${err.message}`, isError: true });
-        } finally {
-          setIsProcessing(false);
-        }
-      }
-    });
-  };
-
-  // 5. Create Manual Backup in Database SQL (Manual Backup Engine)
+  // 3. Create Cloud SQL 14-Day Rolling Backup
   const handleCreateSqlBackup = async () => {
     setIsProcessing(true);
-    setStatusMessage({ text: 'Menyimpan snapshot cadangan manual ke Database SQL (retensi 3 hari maksimal)...' });
+    setStatusMessage({ text: 'Menyimpan snapshot cadangan manual ke Cloud SQL (retensi 14 hari)...' });
 
     try {
       const payload = {
@@ -398,116 +198,77 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
         isRealData: true
       };
 
-      const success = await saveServerBackupSnapshot(payload, 'Manual SQL Snapshot', 'modal-sql');
+      const success = await saveServerBackupSnapshot(payload, 'Manual Cloud SQL Snapshot', 'modal-sql');
       if (success) {
-        setStatusMessage({ text: 'Cadangan manual ke Database SQL berhasil disimpan!' });
+        setStatusMessage({ text: 'Snapshot cadangan ke Cloud SQL berhasil disimpan!' });
         const fresh = await fetchServerBackups();
         if (fresh && Array.isArray(fresh)) setSqlBackups(fresh);
       } else {
-        setStatusMessage({ text: 'Gagal membuat cadangan manual SQL. Cek koneksi server.', isError: true });
+        setStatusMessage({ text: 'Gagal membuat cadangan manual Cloud SQL.', isError: true });
       }
     } catch (err: any) {
-      setStatusMessage({ text: `Gagal cadangan SQL: ${err.message}`, isError: true });
+      setStatusMessage({ text: `Gagal cadangan Cloud SQL: ${err.message}`, isError: true });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // 6. Restore from SQL Backup
-  const handleRestoreSqlBackup = (backupId: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Pulihkan Database dari Snapshot SQL?',
-      message: `Apakah Anda yakin ingin memulihkan database dari snapshot SQL "${backupId}" ini?`,
-      confirmLabel: 'Ya, Pulihkan Sekarang',
-      isDanger: false,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsProcessing(true);
-        setStatusMessage({ text: 'Mengambil snapshot cadangan dari Database SQL...' });
+  // 4. Restore from SQL Backup
+  const handleRestoreSqlBackup = async (backupId: string) => {
+    if (!confirm('Apakah Anda yakin ingin memulihkan database dari snapshot Cloud SQL ini?')) return;
+    setIsProcessing(true);
+    setStatusMessage({ text: 'Mengambil snapshot cadangan dari Cloud SQL...' });
 
-        try {
-          const success = await restoreServerBackup(backupId);
-          if (success) {
-            const fresh = await fetchServerDatabase();
-            if (fresh?.data && onApplyDatabasePayload) {
-              onApplyDatabasePayload(fresh.data);
-            }
-            setStatusMessage({
-              text: `Database berhasil dipulihkan dari cadangan SQL!`
-            });
-            onManualSyncSuccess();
-          } else {
-            setStatusMessage({ text: 'Snapshot SQL tidak ditemukan atau gagal dipulihkan.', isError: true });
-          }
-        } catch (err: any) {
-          setStatusMessage({ text: `Gagal memulihkan snapshot SQL: ${err.message}`, isError: true });
-        } finally {
-          setIsProcessing(false);
+    try {
+      const success = await restoreServerBackup(backupId);
+      if (success) {
+        const fresh = await fetchServerDatabase();
+        if (fresh?.data && onApplyDatabasePayload) {
+          onApplyDatabasePayload(fresh.data);
         }
+        setStatusMessage({
+          text: `Database berhasil dipulihkan dari cadangan Cloud SQL!`
+        });
+        onManualSyncSuccess();
+      } else {
+        setStatusMessage({ text: 'Snapshot Cloud SQL tidak ditemukan atau gagal dipulihkan.', isError: true });
       }
-    });
+    } catch (err: any) {
+      setStatusMessage({ text: `Gagal memulihkan snapshot Cloud SQL: ${err.message}`, isError: true });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  // Hapus Snapshot SQL Tertentu
-  const handleDeleteSqlBackup = (backupId: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Hapus Snapshot SQL?',
-      message: `Apakah Anda yakin ingin menghapus snapshot SQL "${backupId}" ini? Tindakan ini tidak dapat dibatalkan.`,
-      confirmLabel: 'Ya, Hapus Snapshot',
-      isDanger: true,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsProcessing(true);
-        setStatusMessage({ text: `Menghapus snapshot SQL ${backupId}...` });
-
-        try {
-          const ok = await deleteServerBackup(backupId);
-          if (ok) {
-            setStatusMessage({ text: `Snapshot SQL ${backupId} berhasil dihapus!` });
-            setSqlBackups((prev) => prev.filter((b) => b.id !== backupId));
-            const fresh = await fetchServerBackups().catch(() => []);
-            if (fresh && Array.isArray(fresh)) setSqlBackups(fresh);
-          } else {
-            setStatusMessage({ text: `Gagal menghapus snapshot SQL ${backupId}.`, isError: true });
-          }
-        } catch (err: any) {
-          setStatusMessage({ text: `Error: ${err.message}`, isError: true });
-        } finally {
-          setIsProcessing(false);
-        }
+  // 5. Execute SQL Query via Backend Endpoint
+  const handleExecuteSqlQuery = async (customSql?: string) => {
+    const statement = customSql || queryInput;
+    if (!statement.trim()) return;
+    setQueryRunning(true);
+    setQueryError(null);
+    try {
+      const res = await fetch('/api/cloudsql/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql_statement: statement })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setQueryError(data.error || 'Eksekusi query gagal');
+        setQueryResult(null);
+      } else {
+        setQueryResult(data);
+        setQueryError(null);
       }
-    });
+    } catch (err: any) {
+      setQueryError(err.message || 'Gagal mengirim query ke server Cloud SQL');
+      setQueryResult(null);
+    } finally {
+      setQueryRunning(false);
+    }
   };
 
-  // Hapus Semua Snapshot SQL
-  const handleDeleteAllSqlBackups = () => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Hapus SEMUA Snapshot SQL?',
-      message: 'PERINGATAN: Apakah Anda yakin ingin menghapus SELURUH snapshot cadangan di Database SQL? Tindakan ini permanen.',
-      confirmLabel: 'Ya, Hapus Semua Snapshot SQL',
-      isDanger: true,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsProcessing(true);
-        setStatusMessage({ text: 'Menghapus seluruh snapshot cadangan SQL...' });
-
-        try {
-          const count = await deleteAllServerBackups();
-          setStatusMessage({ text: `Seluruh (${count}) snapshot cadangan SQL berhasil dihapus!` });
-          setSqlBackups([]);
-        } catch (err: any) {
-          setStatusMessage({ text: `Error hapus semua: ${err.message}`, isError: true });
-        } finally {
-          setIsProcessing(false);
-        }
-      }
-    });
-  };
-
-  // 7. Handle Local File Selection & Validation
+  // 6. Handle Local File Selection & Validation
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -528,8 +289,6 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
       try {
         const text = event.target?.result as string;
         const parsed = JSON.parse(text);
-
-        // Normalize if nested inside payload or data
         const payload = parsed.payload || parsed.data || parsed;
 
         const hasProducts = Array.isArray(payload.products);
@@ -537,7 +296,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
         const hasCashFlow = Array.isArray(payload.cashFlowRecords);
 
         if (!hasProducts && !hasTransactions && !hasCashFlow) {
-          setFileValidationMessage('Format file tidak sesuai. File JSON tidak memiliki struktur database kasir (products, transactions, dll).');
+          setFileValidationMessage('Format file tidak sesuai. File JSON tidak memiliki struktur database kasir.');
           setParsedLocalBackup(null);
           setIsParsingFile(false);
           return;
@@ -576,72 +335,59 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
     reader.readAsText(file);
   };
 
-  // 8. Restore from Local JSON File
-  const handleRestoreFromLocalFile = () => {
+  // 7. Restore from Local JSON File to Cloud SQL
+  const handleRestoreFromLocalFile = async () => {
     if (!parsedLocalBackup) return;
 
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Pulihkan Database dari File Cadangan Lokal?',
-      message: `File: ${selectedLocalFile?.name || 'File Lokal'}\n` +
-        `• ${parsedLocalBackup.transactions.length} Transaksi Penjualan\n` +
-        `• ${parsedLocalBackup.products.length} Master Produk\n` +
-        `• ${parsedLocalBackup.cashFlowRecords.length} Catatan Kas\n` +
-        `• ${parsedLocalBackup.kaosStocks.length} Stok Kaos Polos\n` +
-        `• ${parsedLocalBackup.customers.length} Pelanggan\n\n` +
-        `Apakah Anda yakin ingin memulihkan seluruh database dari file ini? Seluruh data kasir dan Firebase Firestore akan diperbarui.`,
-      confirmLabel: 'Ya, Pulihkan Database',
-      isDanger: false,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setIsProcessing(true);
-        setStatusMessage({ text: 'Sedang memulihkan database ke sistem dan menyinkronkan ke Firebase Firestore...' });
+    const confirmMsg = `Konfirmasi Pemulihan Database:\n\n` +
+      `File: ${selectedLocalFile?.name}\n` +
+      `- ${parsedLocalBackup.transactions.length} Transaksi Penjualan\n` +
+      `- ${parsedLocalBackup.products.length} Master Produk\n` +
+      `- ${parsedLocalBackup.cashFlowRecords.length} Catatan Arus Kas\n` +
+      `- ${parsedLocalBackup.kaosStocks.length} Stok Kaos Polos\n` +
+      `- ${parsedLocalBackup.customers.length} Pelanggan\n\n` +
+      `Apakah Anda yakin ingin memulihkan seluruh database dari file ini? Seluruh data kasir dan Cloud SQL akan diperbarui.`;
 
-        try {
-          // A. Update local React states
-          if (onApplyDatabasePayload) {
-            onApplyDatabasePayload(parsedLocalBackup);
-          }
+    if (!confirm(confirmMsg)) return;
 
-          // B. Push to Firebase Firestore cloud (Primary Real-Time Database)
-          await syncAllLocalDataToFirestore({
-            products: parsedLocalBackup.products,
-            transactions: parsedLocalBackup.transactions,
-            cashFlowRecords: parsedLocalBackup.cashFlowRecords,
-            shiftHistory: parsedLocalBackup.shifts,
-            currentShift: parsedLocalBackup.currentShift,
-            kaosStocks: parsedLocalBackup.kaosStocks,
-            customers: parsedLocalBackup.customers,
-            users: parsedLocalBackup.users,
-            stockMovements: parsedLocalBackup.stockMovements
-          });
+    setIsProcessing(true);
+    setStatusMessage({ text: 'Sedang memulihkan database ke sistem dan menyinkronkan ke Cloud SQL...' });
 
-          // C. Save to server backup
-          saveServerBackupSnapshot(parsedLocalBackup, 'Manual File Upload Restore', 'local-file-upload').catch(() => {});
-
-          setStatusMessage({
-            text: `Berhasil memulihkan database dari file lokal "${selectedLocalFile?.name}"! Data lokal dan cloud Firebase Firestore telah diperbarui (${parsedLocalBackup.transactions.length} transaksi, ${parsedLocalBackup.products.length} produk).`
-          });
-
-          onManualSyncSuccess();
-        } catch (err: any) {
-          setStatusMessage({
-            text: `Gagal memulihkan database: ${err.message}`,
-            isError: true
-          });
-        } finally {
-          setIsProcessing(false);
-        }
+    try {
+      if (onApplyDatabasePayload) {
+        onApplyDatabasePayload(parsedLocalBackup);
       }
-    });
+
+      await saveServerDatabase(parsedLocalBackup, {
+        savedBy: 'Local File Upload Restore',
+        source: 'local-file-upload'
+      });
+
+      saveServerBackupSnapshot(parsedLocalBackup, 'Manual File Upload Restore', 'local-file-upload').catch(() => {});
+
+      setStatusMessage({
+        text: `Berhasil memulihkan database dari file lokal "${selectedLocalFile?.name}"! Data lokal dan Cloud SQL telah diperbarui (${parsedLocalBackup.transactions.length} transaksi, ${parsedLocalBackup.products.length} produk).`
+      });
+
+      onManualSyncSuccess();
+      loadInitialData();
+    } catch (err: any) {
+      setStatusMessage({
+        text: `Gagal memulihkan database: ${err.message}`,
+        isError: true
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  // 9. Download Current Database as Local JSON
+  // 8. Download Current Database as Local JSON
   const handleDownloadLocalDatabaseJson = () => {
     try {
       const fullBackupPayload = {
         meta: {
           appName: 'Athree Studio Jayapura POS',
+          databaseEngine: 'Cloud SQL (PostgreSQL)',
           exportedAt: new Date().toISOString(),
           version: '1.0'
         },
@@ -663,14 +409,14 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
       const a = document.createElement('a');
       const dateStr = new Date().toISOString().slice(0, 10);
       a.href = url;
-      a.download = `athree_database_backup_${dateStr}_${Date.now()}.json`;
+      a.download = `athree_database_backup_cloudsql_${dateStr}_${Date.now()}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
       setStatusMessage({
-        text: `File cadangan database lokal berhasil diunduh (${transactions.length} transaksi, ${products.length} produk)!`
+        text: `File cadangan database berhasil diunduh (${transactions.length} transaksi, ${products.length} produk)!`
       });
     } catch (err: any) {
       setStatusMessage({
@@ -698,26 +444,26 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 px-6 py-5 text-white flex items-center justify-between shrink-0 relative overflow-hidden">
-          <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 px-6 py-5 text-white flex items-center justify-between shrink-0 relative overflow-hidden">
+          <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 w-40 h-40 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
           <div className="flex items-center gap-3 relative z-10">
-            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shadow-inner">
-              <Flame className="w-6 h-6 fill-amber-400 text-amber-400 animate-pulse" />
+            <div className="w-11 h-11 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300 shadow-inner">
+              <Database className="w-6 h-6 text-blue-400" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
-                  Sinkronisasi & Cadangan Database
+                  Integrasi Database Cloud SQL (PostgreSQL)
                 </h3>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                  <Zap className="w-3 h-3 fill-amber-300" />
-                  Real-time
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                  <Zap className="w-3 h-3 fill-blue-300" />
+                  Real-time SSE
                 </span>
               </div>
-              <p className="text-xs text-emerald-200/90 font-medium">
-                Database Utama: <span className="text-white font-bold">Firebase Firestore</span> • Cadangan Manual: <span className="text-slate-300">File Lokal & SQL</span>
+              <p className="text-xs text-blue-200/90 font-medium">
+                Database Utama: <span className="text-white font-bold">Cloud SQL (PostgreSQL)</span> • Firebase Firestore: <span className="text-rose-300 font-bold">Non-aktif</span>
               </p>
             </div>
           </div>
@@ -732,30 +478,30 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
         {/* Tab Navigation */}
         <div className="flex border-b border-slate-200 bg-slate-50/80 px-6 pt-3 gap-2 shrink-0 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('firestore')}
+            onClick={() => setActiveTab('sql')}
             className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 whitespace-nowrap ${
-              activeTab === 'firestore'
-                ? 'bg-white text-emerald-800 border-emerald-600 shadow-xs'
+              activeTab === 'sql'
+                ? 'bg-white text-blue-800 border-blue-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
             }`}
           >
-            <Flame className="w-4 h-4 fill-amber-500 text-amber-500" />
-            <span>Firebase Firestore (Utama)</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <Database className="w-4 h-4 text-blue-600" />
+            <span>Cloud SQL (Database Utama)</span>
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
           </button>
 
           <button
-            onClick={() => setActiveTab('snapshots')}
+            onClick={() => setActiveTab('query')}
             className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 whitespace-nowrap ${
-              activeTab === 'snapshots'
-                ? 'bg-white text-rose-800 border-rose-600 shadow-xs'
+              activeTab === 'query'
+                ? 'bg-white text-blue-800 border-blue-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
             }`}
           >
-            <Trash2 className="w-4 h-4 text-rose-600" />
-            <span>Kelola &amp; Hapus Snapshot</span>
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-800 font-extrabold">
-              {firestoreBackups.length + sqlBackups.length}
+            <Terminal className="w-4 h-4 text-indigo-600" />
+            <span>Query SQL Real-Time</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-indigo-100 text-indigo-800 font-bold">
+              Console
             </span>
           </button>
 
@@ -763,42 +509,39 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
             onClick={() => setActiveTab('local')}
             className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 whitespace-nowrap ${
               activeTab === 'local'
-                ? 'bg-white text-emerald-800 border-emerald-600 shadow-xs'
+                ? 'bg-white text-blue-800 border-blue-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
             }`}
           >
             <FolderArchive className="w-4 h-4 text-purple-600" />
-            <span>Upload File Cadangan Lokal (.json)</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-purple-100 text-purple-800 font-bold">
-              Pulihkan
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('sql')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 whitespace-nowrap ${
-              activeTab === 'sql'
-                ? 'bg-white text-emerald-800 border-emerald-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
-            }`}
-          >
-            <Database className="w-4 h-4 text-blue-600" />
-            <span>Database SQL (Manual)</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-slate-200 text-slate-700 font-semibold">
-              {sqlBackups.length}
-            </span>
+            <span>Upload / Unduh File (.json)</span>
           </button>
 
           <button
             onClick={() => setActiveTab('drive')}
             className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 whitespace-nowrap ${
               activeTab === 'drive'
-                ? 'bg-white text-emerald-800 border-emerald-600 shadow-xs'
+                ? 'bg-white text-blue-800 border-blue-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
             }`}
           >
             <HardDrive className="w-4 h-4 text-emerald-600" />
-            <span>Google Drive (Manual)</span>
+            <span>Google Drive (Cadangan Manual)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('firestore')}
+            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 whitespace-nowrap ${
+              activeTab === 'firestore'
+                ? 'bg-white text-slate-800 border-slate-400 shadow-xs'
+                : 'text-slate-400 hover:text-slate-600 border-transparent hover:bg-slate-100/60'
+            }`}
+          >
+            <Flame className="w-4 h-4 text-slate-400" />
+            <span>Status Firestore</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-rose-100 text-rose-700 font-bold">
+              Non-aktif
+            </span>
           </button>
         </div>
 
@@ -830,31 +573,31 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
             </div>
           )}
 
-          {/* TAB 1: FIREBASE FIRESTORE (DATABASE UTAMA REAL-TIME) */}
-          {activeTab === 'firestore' && (
+          {/* TAB 1: CLOUD SQL (DATABASE UTAMA REAL-TIME) */}
+          {activeTab === 'sql' && (
             <div className="space-y-5">
               {/* Primary Active Card */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gradient-to-br from-emerald-50 via-teal-50/50 to-white border border-emerald-200 rounded-2xl p-4 shadow-xs relative overflow-hidden">
+                <div className="bg-gradient-to-br from-blue-50 via-indigo-50/50 to-white border border-blue-200 rounded-2xl p-4 shadow-xs relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
-                      <Flame className="w-4 h-4 fill-amber-500 text-amber-500" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 flex items-center gap-1.5">
+                      <Database className="w-4 h-4 text-blue-600" />
                       DATABASE UTAMA AKTIF
                     </span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-600 text-white shadow-2xs">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-600 text-white shadow-2xs">
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                      {firestoreConnected ? 'Terhubung (Real-Time)' : 'Connecting...'}
+                      Terhubung (Cloud SQL)
                     </span>
                   </div>
                   <h4 className="text-base font-bold text-slate-800">
-                    Firebase Firestore (Cloud)
+                    Cloud SQL (PostgreSQL Engine)
                   </h4>
                   <p className="text-xs text-slate-500 mt-1">
-                    Sinkronisasi otomatis dua arah secara real-time (&lt;50ms) menggunakan listener onSnapshot langsung ke cloud database.
+                    Sinkronisasi real-time dua arah menggunakan Server-Sent Events (SSE) dan PostgreSQL pool connection untuk integritas ACID data transaksi kasir.
                   </p>
-                  <div className="mt-3 flex items-center gap-3 text-xs text-emerald-800 font-semibold bg-emerald-100/60 px-3 py-1.5 rounded-xl border border-emerald-200/60">
-                    <Activity className="w-4 h-4 text-emerald-600 animate-pulse shrink-0" />
-                    <span>Sinkronisasi Otomatis Setiap Transaksi & Perubahan Data</span>
+                  <div className="mt-3 flex items-center gap-3 text-xs text-blue-800 font-semibold bg-blue-100/60 px-3 py-1.5 rounded-xl border border-blue-200/60">
+                    <Activity className="w-4 h-4 text-blue-600 animate-pulse shrink-0" />
+                    <span>Real-Time SSE Streaming Aktif ke Seluruh Browser &amp; Tab</span>
                   </div>
                 </div>
 
@@ -862,21 +605,21 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-blue-600" />
-                      STATUS CADANGAN MANUAL
+                      STATUS ARSIP &amp; CADANGAN
                     </span>
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700">
-                      Tersedia Manual
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                      14 Hari Retensi
                     </span>
                   </div>
                   <h4 className="text-base font-bold text-slate-800">
-                    SQL & Google Drive
+                    Rolling Backup Snapshots
                   </h4>
                   <p className="text-xs text-slate-500 mt-1">
-                    Database SQL dan Google Drive disiapkan khusus untuk cadangan manual (manual backup & restore) tanpa membebani performa kasir.
+                    Setiap pembaruan data atau logout otomatis membuat snapshot cadangan yang dapat dipulihkan kapan saja dengan aman.
                   </p>
                   <div className="mt-3 flex items-center gap-2 text-xs text-slate-600 font-medium">
                     <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Retensi Cadangan: 3 Hari Maksimal Rolling Snapshot</span>
+                    <span>Snapshot Tersimpan: {sqlBackups.length} snapshot</span>
                   </div>
                 </div>
               </div>
@@ -885,439 +628,295 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
               <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-4 h-4 text-emerald-600" />
-                    STATISTIK DATA AKTIF TERINTEGRASI
+                    <Layers className="w-4 h-4 text-blue-600" />
+                    STATISTIK TABEL CLOUD SQL
                   </h4>
-                  <span className="text-[11px] text-slate-400 font-medium">
-                    Auto-Sync Real-Time
-                  </span>
+                  <button
+                    onClick={loadInitialData}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Refresh
+                  </button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Total Transaksi</span>
+                    <span className="text-[11px] text-slate-500 block">Tabel Transactions</span>
                     <span className="text-lg font-bold text-slate-800">{transactions?.length || 0}</span>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Katalog Produk</span>
+                    <span className="text-[11px] text-slate-500 block">Tabel Products</span>
                     <span className="text-lg font-bold text-slate-800">{products?.length || 0}</span>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Stok Kaos Polos</span>
+                    <span className="text-[11px] text-slate-500 block">Tabel Kaos Stocks</span>
                     <span className="text-lg font-bold text-slate-800">{kaosStocks?.length || 0}</span>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Pelanggan</span>
+                    <span className="text-[11px] text-slate-500 block">Tabel Customers</span>
                     <span className="text-lg font-bold text-slate-800">{customers?.length || 0}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Firestore Primary Actions */}
+              {/* Cloud SQL Primary Actions */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  AKSI DATABASE UTAMA FIRESTORE
+                  AKSI DATABASE CLOUD SQL
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
-                    onClick={handlePushAllToFirestore}
+                    onClick={handlePushAllToCloudSql}
                     disabled={isProcessing}
-                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer group text-center"
+                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer group text-center"
                   >
-                    <UploadCloud className="w-6 h-6 mb-1 text-emerald-100 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs">Sinkronkan ke Firestore</span>
-                    <span className="text-[10px] text-emerald-200 font-normal mt-0.5">
-                      Upload seluruh data lokal ke cloud
+                    <UploadCloud className="w-6 h-6 mb-1 text-blue-100 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs">Sinkronkan ke Cloud SQL</span>
+                    <span className="text-[10px] text-blue-200 font-normal mt-0.5">
+                      Upload state lokal ke server SQL
                     </span>
                   </button>
 
                   <button
-                    onClick={handlePullFromFirestore}
+                    onClick={handlePullFromCloudSql}
                     disabled={isProcessing}
                     className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-bold transition-all disabled:opacity-50 cursor-pointer group text-center"
                   >
                     <DownloadCloud className="w-6 h-6 mb-1 text-slate-600 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs">Muat dari Firestore</span>
+                    <span className="text-xs">Muat dari Cloud SQL</span>
                     <span className="text-[10px] text-slate-500 font-normal mt-0.5">
-                      Ambil master data terbaru cloud
+                      Ambil master data terbaru SQL
                     </span>
                   </button>
 
                   <button
-                    onClick={handleCreateFirestoreBackup}
+                    onClick={handleCreateSqlBackup}
                     disabled={isProcessing}
-                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold transition-all disabled:opacity-50 cursor-pointer group text-center"
+                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold transition-all disabled:opacity-50 cursor-pointer group text-center"
                   >
-                    <ShieldCheck className="w-6 h-6 mb-1 text-amber-600 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs">Snapshot Cadangan (3 Hari)</span>
-                    <span className="text-[10px] text-amber-700 font-normal mt-0.5">
-                      Simpan checkpoint ke Firestore
+                    <ShieldCheck className="w-6 h-6 mb-1 text-indigo-600 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs">Buat Snapshot SQL (14 Hari)</span>
+                    <span className="text-[10px] text-indigo-700 font-normal mt-0.5">
+                      Simpan checkpoint ke Cloud SQL
                     </span>
                   </button>
                 </div>
               </div>
 
-              {/* Firestore Snapshots List & Management Menu */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                  <div>
+              {/* Cloud SQL Snapshots List */}
+              {sqlBackups.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <History className="w-4 h-4 text-emerald-600" />
-                      MENU &amp; DAFTAR SNAPSHOT FIRESTORE (RETENSI 3 HARI MAKSIMAL)
+                      <History className="w-4 h-4 text-blue-600" />
+                      DAFTAR SNAPSHOT CLOUD SQL (RETENSI 14 HARI)
                     </span>
                     <span className="text-[11px] text-slate-500 font-medium">
-                      {firestoreBackups.length} Snapshot Tersimpan
+                      {sqlBackups.length} Snapshot
                     </span>
                   </div>
-                  
-                  {/* Menu Aksi Snapshot */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSyncLatestSnapshot}
-                      disabled={isProcessing}
-                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs hover:shadow transition-all disabled:opacity-50 cursor-pointer"
-                      title="Buka &amp; Sinkronkan Snapshot Database yang Paling Baru"
-                    >
-                      <Star className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
-                      <span>Sinkronkan Snapshot Terakhir</span>
-                    </button>
-
-                    {firestoreBackups.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleDeleteAllFirestoreBackups}
-                        disabled={isProcessing}
-                        className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
-                        title="Hapus Semua Snapshot Cadangan di Firestore"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                        <span className="hidden sm:inline">Hapus Semua</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {firestoreBackups.length === 0 ? (
-                  <div className="p-6 text-center text-slate-400 text-xs bg-white rounded-xl border border-slate-200">
-                    Belum ada snapshot cadangan Firestore. Klik tombol &quot;Snapshot Cadangan (3 Hari)&quot; di atas untuk membuat snapshot baru.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    {firestoreBackups.map((snap, idx) => (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {sqlBackups.slice(0, 5).map((snap) => (
                       <div
                         key={snap.id}
-                        className={`p-3 rounded-xl border text-xs transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                          idx === 0 
-                            ? 'bg-amber-50/40 border-amber-300 shadow-xs' 
-                            : 'bg-white border-slate-200 hover:border-emerald-300'
-                        }`}
+                        className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs hover:border-blue-300 transition-colors"
                       >
-                        <div className="space-y-1">
-                          <div className="font-bold text-slate-800 flex flex-wrap items-center gap-2">
+                        <div>
+                          <div className="font-bold text-slate-800 flex items-center gap-2">
                             <span>{snap.id}</span>
-                            {idx === 0 && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-400 text-slate-900 border border-amber-500 flex items-center gap-1 shadow-2xs">
-                                <Star className="w-2.5 h-2.5 fill-slate-900 text-slate-900" />
-                                SNAPSHOT TERAKHIR (AKTIF)
-                              </span>
-                            )}
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-50 text-blue-700 border border-blue-200">
                               {snap.stats?.transactionsCount || 0} Transaksi
                             </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 border border-slate-200">
+                            <span className="text-[10px] text-slate-400">
                               {snap.stats?.productsCount || 0} Produk
                             </span>
                           </div>
-                          <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                            <span>Dibuat: <strong>{formatDate(snap.createdAt)}</strong></span>
-                            <span>•</span>
-                            <span>Oleh: {snap.savedBy}</span>
-                          </div>
+                          <span className="text-[11px] text-slate-500">
+                            Dibuat: {formatDate(snap.createdAt)} • Oleh: {snap.savedBy || 'Kasir'}
+                          </span>
                         </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleRestoreFirestoreBackup(snap.id)}
-                            disabled={isProcessing}
-                            className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
-                            title="Pulihkan dan Terapkan Snapshot Ini"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Pulihkan</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteFirestoreBackup(snap.id)}
-                            disabled={isProcessing}
-                            className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
-                            title="Hapus Snapshot Ini dari Cloud Firestore"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Hapus</span>
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleRestoreSqlBackup(snap.id)}
+                          disabled={isProcessing}
+                          className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold border border-blue-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Pulihkan
+                        </button>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* TAB: MENU KELOLA & HAPUS SNAPSHOT */}
-          {activeTab === 'snapshots' && (
-            <div className="space-y-5 animate-in fade-in duration-150">
-              {/* Header Box */}
-              <div className="bg-gradient-to-br from-rose-50 via-white to-amber-50/40 border border-rose-200 rounded-2xl p-5 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+          {/* TAB 2: QUERY CONSOLE REAL-TIME */}
+          {activeTab === 'query' && (
+            <div className="space-y-4">
+              <div className="bg-slate-900 text-white p-4 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center border border-rose-200 shadow-xs">
-                      <Trash2 className="w-5 h-5 text-rose-600" />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-bold text-slate-900">
-                        Menu Kelola &amp; Hapus Snapshot Database
-                      </h4>
-                      <p className="text-xs text-slate-500">
-                        Hapus snapshot cadangan yang sudah tidak diperlukan atau sinkronkan snapshot paling baru.
-                      </p>
-                    </div>
+                    <Terminal className="w-5 h-5 text-indigo-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+                      Cloud SQL Query Console (PostgreSQL)
+                    </span>
                   </div>
+                  <span className="text-[11px] text-slate-400">
+                    Real-Time DQL / Query Inspector
+                  </span>
+                </div>
 
-                  {/* Primary Action: Sinkronkan Snapshot Terakhir */}
+                {/* Quick Shortcut Buttons */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="text-[11px] text-slate-400 py-1">Contoh Cepat:</span>
                   <button
                     type="button"
-                    onClick={handleSyncLatestSnapshot}
-                    disabled={isProcessing}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer shrink-0"
-                    title="Buka &amp; Sinkronkan Database ke Snapshot Terakhir"
+                    onClick={() => {
+                      const q = 'SELECT id, name, sku, price, stock FROM products LIMIT 10;';
+                      setQueryInput(q);
+                      handleExecuteSqlQuery(q);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
                   >
-                    <Star className="w-4 h-4 fill-amber-300 text-amber-300" />
-                    <span>Sinkronkan Snapshot Terakhir</span>
+                    SELECT * FROM products
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const q = 'SELECT id, invoice_no, total, payment_method, status FROM transactions LIMIT 10;';
+                      setQueryInput(q);
+                      handleExecuteSqlQuery(q);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
+                  >
+                    SELECT * FROM transactions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const q = 'SELECT id, type, amount, description, date FROM cash_flow_records LIMIT 10;';
+                      setQueryInput(q);
+                      handleExecuteSqlQuery(q);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
+                  >
+                    SELECT * FROM cash_flow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const q = 'SELECT id, name, phone, type, total_orders FROM customers LIMIT 10;';
+                      setQueryInput(q);
+                      handleExecuteSqlQuery(q);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
+                  >
+                    SELECT * FROM customers
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-rose-100/80">
-                  <div className="bg-white/80 p-2.5 rounded-xl border border-rose-100">
-                    <span className="text-[10px] text-slate-500 block font-semibold">Snapshot Firestore</span>
-                    <span className="text-base font-bold text-emerald-800">{firestoreBackups.length} file</span>
-                  </div>
-                  <div className="bg-white/80 p-2.5 rounded-xl border border-rose-100">
-                    <span className="text-[10px] text-slate-500 block font-semibold">Snapshot SQL</span>
-                    <span className="text-base font-bold text-blue-800">{sqlBackups.length} file</span>
-                  </div>
-                  <div className="bg-white/80 p-2.5 rounded-xl border border-rose-100 col-span-2">
-                    <span className="text-[10px] text-slate-500 block font-semibold">Masa Retensi Otomatis</span>
-                    <span className="text-xs font-bold text-slate-700">3 Hari Maksimal (Database Tidak Menumpuk)</span>
-                  </div>
+                {/* SQL Statement Input */}
+                <div className="relative">
+                  <textarea
+                    value={queryInput}
+                    onChange={(e) => setQueryInput(e.target.value)}
+                    rows={3}
+                    placeholder="Tuliskan query SQL di sini (misal: SELECT * FROM products;)"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs font-mono text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 shadow-inner"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-slate-400">
+                    Mendukung query SELECT type-safe langsung ke tabel database Cloud SQL.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleExecuteSqlQuery()}
+                    disabled={queryRunning}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>{queryRunning ? 'Mengeksekusi...' : 'Jalankan Query'}</span>
+                  </button>
                 </div>
               </div>
 
-              {/* SECTION 1: DAFTAR SNAPSHOT CLOUD FIRESTORE */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Flame className="w-5 h-5 fill-amber-500 text-amber-500" />
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                        Daftar Snapshot Firebase Firestore (Cloud)
-                      </h5>
-                      <span className="text-[11px] text-slate-500">
-                        {firestoreBackups.length} Snapshot Tersimpan
+              {/* Query Error Display */}
+              {queryError && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <div className="font-mono">{queryError}</div>
+                </div>
+              )}
+
+              {/* Query Results Display */}
+              {queryResult && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2">
+                      <Table className="w-4 h-4 text-indigo-600" />
+                      <span className="text-xs font-bold text-slate-800">
+                        Hasil Query ({queryResult.rowCount} baris ditemukan)
                       </span>
                     </div>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Sumber: {queryResult.source || 'Cloud SQL'}
+                    </span>
                   </div>
 
-                  {firestoreBackups.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleDeleteAllFirestoreBackups}
-                      disabled={isProcessing}
-                      className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer w-fit"
-                      title="Hapus Seluruh Snapshot Firestore"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Hapus Semua Snapshot Firestore</span>
-                    </button>
-                  )}
-                </div>
-
-                {firestoreBackups.length === 0 ? (
-                  <div className="p-6 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-slate-100">
-                    Tidak ada snapshot cadangan di Cloud Firestore.
-                  </div>
-                ) : (
-                  <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
-                    {firestoreBackups.map((snap, idx) => (
-                      <div
-                        key={snap.id}
-                        className={`p-3.5 rounded-xl border text-xs transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                          idx === 0
-                            ? 'bg-amber-50/50 border-amber-300 shadow-xs'
-                            : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
-                        }`}
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <div className="font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-slate-900">{snap.id}</span>
-                            {idx === 0 && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-400 text-slate-900 border border-amber-500 flex items-center gap-1 shadow-2xs">
-                                <Star className="w-2.5 h-2.5 fill-slate-900 text-slate-900" />
-                                SNAPSHOT TERAKHIR (AKTIF)
-                              </span>
-                            )}
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200">
-                              {snap.stats?.transactionsCount || 0} Transaksi
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 text-slate-700">
-                              {snap.stats?.productsCount || 0} Produk
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                            <span>Waktu: <strong>{formatDate(snap.createdAt)}</strong></span>
-                            <span>•</span>
-                            <span>Oleh: {snap.savedBy}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleRestoreFirestoreBackup(snap.id)}
-                            disabled={isProcessing}
-                            className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 transition-colors cursor-pointer text-xs flex items-center gap-1.5"
-                            title="Pulihkan dan Terapkan Snapshot Ini"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Pulihkan</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteFirestoreBackup(snap.id)}
-                            disabled={isProcessing}
-                            className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors cursor-pointer text-xs flex items-center gap-1.5 shadow-xs"
-                            title="Hapus Snapshot Ini Permanen"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-white" />
-                            <span>Hapus</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* SECTION 2: DAFTAR SNAPSHOT DATABASE SQL */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Database className="w-5 h-5 text-blue-600" />
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                        Daftar Snapshot Database SQL (Server)
-                      </h5>
-                      <span className="text-[11px] text-slate-500">
-                        {sqlBackups.length} Snapshot Tersimpan
-                      </span>
+                  {queryResult.rows && queryResult.rows.length > 0 ? (
+                    <div className="overflow-x-auto max-h-72 border border-slate-200 rounded-xl">
+                      <table className="w-full text-left text-xs border-collapse font-mono">
+                        <thead className="bg-slate-100 text-slate-700 sticky top-0 border-b border-slate-200">
+                          <tr>
+                            {(queryResult.fields && queryResult.fields.length > 0
+                              ? queryResult.fields
+                              : Object.keys(queryResult.rows[0])
+                            ).map((header: string) => (
+                              <th key={header} className="p-2.5 font-bold uppercase text-[10px]">
+                                {header}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {queryResult.rows.map((row: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
+                              {(queryResult.fields && queryResult.fields.length > 0
+                                ? queryResult.fields
+                                : Object.keys(queryResult.rows[0])
+                              ).map((col: string) => (
+                                <td key={col} className="p-2.5 text-slate-700 whitespace-nowrap">
+                                  {typeof row[col] === 'object'
+                                    ? JSON.stringify(row[col])
+                                    : String(row[col] ?? '')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  </div>
-
-                  {sqlBackups.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleDeleteAllSqlBackups}
-                      disabled={isProcessing}
-                      className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer w-fit"
-                      title="Hapus Seluruh Snapshot SQL"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Hapus Semua Snapshot SQL</span>
-                    </button>
+                  ) : (
+                    <div className="p-6 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-slate-100">
+                      Query berhasil dieksekusi, tidak ada baris data yang cocok.
+                    </div>
                   )}
                 </div>
-
-                {sqlBackups.length === 0 ? (
-                  <div className="p-6 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-slate-100">
-                    Tidak ada snapshot cadangan di Database SQL.
-                  </div>
-                ) : (
-                  <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
-                    {sqlBackups.map((snap, idx) => (
-                      <div
-                        key={snap.id}
-                        className={`p-3.5 rounded-xl border text-xs transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                          idx === 0
-                            ? 'bg-blue-50/50 border-blue-300 shadow-xs'
-                            : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
-                        }`}
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <div className="font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-slate-900">{snap.id}</span>
-                            {idx === 0 && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-600 text-white flex items-center gap-1 shadow-2xs">
-                                <Star className="w-2.5 h-2.5 fill-amber-300 text-amber-300" />
-                                SNAPSHOT SQL TERAKHIR
-                              </span>
-                            )}
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-800 font-semibold border border-blue-200">
-                              {snap.stats?.transactionsCount || 0} Transaksi
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 text-slate-700">
-                              {snap.stats?.productsCount || 0} Produk
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                            <span>Waktu: <strong>{formatDate(snap.createdAt)}</strong></span>
-                            <span>•</span>
-                            <span>Oleh: {snap.savedBy || 'Kasir'}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleRestoreSqlBackup(snap.id)}
-                            disabled={isProcessing}
-                            className="px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold border border-blue-200 transition-colors cursor-pointer text-xs flex items-center gap-1.5"
-                            title="Pulihkan snapshot SQL ini"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Pulihkan</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSqlBackup(snap.id)}
-                            disabled={isProcessing}
-                            className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors cursor-pointer text-xs flex items-center gap-1.5 shadow-xs"
-                            title="Hapus Snapshot SQL Ini Permanen"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-white" />
-                            <span>Hapus</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           )}
 
-          {/* TAB: FILE CADANGAN LOKAL (UPLOAD & PULIHKAN) */}
+          {/* TAB 3: FILE CADANGAN LOKAL (UPLOAD & UNDUH) */}
           {activeTab === 'local' && (
             <div className="space-y-5">
-              {/* Header Box */}
               <div className="bg-gradient-to-br from-purple-50 via-white to-purple-50/30 border border-purple-200 rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-purple-800 flex items-center gap-1.5">
                     <FolderArchive className="w-4 h-4 text-purple-600" />
-                    PILIH FILE CADANGAN LOKAL (.JSON)
+                    FILE CADANGAN LOKAL (.JSON)
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
                     Upload &amp; Pulihkan
@@ -1327,7 +926,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                   Upload &amp; Pulihkan Database dari File Komputer / Perangkat
                 </h4>
                 <p className="text-xs text-slate-600 mt-1">
-                  Pilih file cadangan JSON yang tersimpan di perangkat lokal Anda. Sistem akan memvalidasi struktur database, menampilkan pratinjau data, dan memulihkan seluruh data kasir serta menyinkronkannya langsung ke Firebase Firestore.
+                  Pilih file cadangan JSON yang tersimpan di perangkat lokal Anda. Sistem akan memvalidasi struktur database, menampilkan pratinjau data, dan memulihkan seluruh data kasir serta menyinkronkannya langsung ke Cloud SQL.
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <button
@@ -1415,7 +1014,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                   {/* Statistics Grid */}
                   <div>
                     <h5 className="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">
-                      Pratinjau Data yang Akan Dipulihkan:
+                      Pratinjau Data yang Akan Dipulihkan ke Cloud SQL:
                     </h5>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
@@ -1453,13 +1052,13 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                   </div>
 
                   {/* Summary Details */}
-                  <div className="bg-purple-50/60 border border-purple-100 rounded-xl p-3 text-xs text-purple-900 space-y-1">
-                    <div className="font-bold flex items-center gap-1.5 text-purple-950">
-                      <ShieldCheck className="w-4 h-4 text-purple-700" />
-                      <span>Proses Pemulihan Aman &amp; Sinkron Cloud Otomatis:</span>
+                  <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-blue-950">
+                      <ShieldCheck className="w-4 h-4 text-blue-700" />
+                      <span>Proses Pemulihan Aman &amp; Sinkron Cloud SQL Otomatis:</span>
                     </div>
-                    <p className="text-[11px] text-purple-800 leading-relaxed">
-                      Memulihkan file ini akan memperbarui database kasir lokal, menyetel status aktif, serta mengirimkan data ke <strong>Firebase Firestore</strong> sehingga seluruh perangkat kasir lain akan langsung tersinkronkan secara real-time.
+                    <p className="text-[11px] text-blue-800 leading-relaxed">
+                      Memulihkan file ini akan memperbarui database kasir lokal, menyetel status aktif, serta mengirimkan data ke <strong>Cloud SQL (PostgreSQL)</strong> sehingga seluruh browser/tab kasir lain akan langsung tersinkronkan secara real-time.
                     </p>
                   </div>
 
@@ -1469,7 +1068,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                       type="button"
                       onClick={handleRestoreFromLocalFile}
                       disabled={isProcessing}
-                      className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-sm transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-50"
+                      className="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-98 text-white font-bold text-sm transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-50"
                     >
                       <RotateCcw className="w-4 h-4" />
                       <span>Pulihkan Database dari File Ini Sekarang</span>
@@ -1477,171 +1076,10 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* No File Selected Guide */}
-              {!selectedLocalFile && !isParsingFile && (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-300 hover:border-purple-400 hover:bg-purple-50/20 rounded-2xl p-8 text-center cursor-pointer transition-colors space-y-3"
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto border border-purple-200">
-                    <FileUp className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h5 className="text-sm font-bold text-slate-700">
-                      Klik di Sini untuk Memilih File Cadangan (.json)
-                    </h5>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Pilih file cadangan JSON dari harddisk, flashdisk, atau folder download komputer Anda.
-                    </p>
-                  </div>
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
-                    <span>Format yang didukung: <strong>.json</strong></span>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
-          {/* TAB 3: DATABASE SQL (CADANGAN MANUAL) */}
-          {activeTab === 'sql' && (
-            <div className="space-y-5">
-              <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
-                    <Database className="w-4 h-4 text-blue-600" />
-                    DATABASE SQL: CADANGAN MANUAL
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                    Cadangan Manual Server
-                  </span>
-                </div>
-                <h4 className="text-base font-bold text-slate-800">
-                  Cloud SQL (PostgreSQL) / Server Persistent Storage
-                </h4>
-                <p className="text-xs text-slate-600 mt-1">
-                  Database SQL berfungsi sebagai mesin cadangan manual untuk menyimpan snapshot lengkap sistem secara berkala ke database SQL / storage server.
-                </p>
-                <div className="mt-3 flex items-center gap-3">
-                  <button
-                    onClick={handleCreateSqlBackup}
-                    disabled={isProcessing}
-                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-                  >
-                    <UploadCloud className="w-4 h-4" />
-                    Simpan Cadangan ke SQL Sekarang
-                  </button>
-                </div>
-              </div>
-
-              {/* SQL Rolling Backups List */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                  <div>
-                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <History className="w-4 h-4 text-blue-600" />
-                      MENU &amp; DAFTAR SNAPSHOT CADANGAN SQL (3 HARI MAKSIMAL)
-                    </span>
-                    <span className="text-[11px] text-slate-500 font-medium">
-                      {sqlBackups.length} Snapshot SQL Tersimpan
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSyncLatestSnapshot}
-                      disabled={isProcessing}
-                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs hover:shadow transition-all disabled:opacity-50 cursor-pointer"
-                      title="Buka &amp; Sinkronkan Snapshot Database yang Paling Baru"
-                    >
-                      <Star className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
-                      <span>Sinkronkan Snapshot Terakhir</span>
-                    </button>
-
-                    {sqlBackups.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleDeleteAllSqlBackups}
-                        disabled={isProcessing}
-                        className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
-                        title="Hapus Semua Snapshot Cadangan di SQL"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                        <span className="hidden sm:inline">Hapus Semua</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {sqlBackups.length === 0 ? (
-                  <div className="p-6 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-slate-100">
-                    Belum ada snapshot cadangan SQL tersimpan. Klik tombol &quot;Simpan Cadangan ke SQL Sekarang&quot; untuk membuat snapshot baru.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {sqlBackups.map((snap, idx) => (
-                      <div
-                        key={snap.id}
-                        className={`p-3 rounded-xl border text-xs transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                          idx === 0 
-                            ? 'bg-blue-50/40 border-blue-300 shadow-xs' 
-                            : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <div className="font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                            <span>{snap.id}</span>
-                            {idx === 0 && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-500 text-white flex items-center gap-1 shadow-2xs">
-                                <Star className="w-2.5 h-2.5 fill-amber-300 text-amber-300" />
-                                SNAPSHOT SQL TERAKHIR
-                              </span>
-                            )}
-                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
-                              {snap.stats?.transactionsCount || 0} Transaksi
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-normal">
-                              {snap.stats?.productsCount || 0} Produk
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-slate-500 block">
-                            Waktu: <strong>{formatDate(snap.createdAt)}</strong> • Oleh: {snap.savedBy || 'Kasir'}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleRestoreSqlBackup(snap.id)}
-                            disabled={isProcessing}
-                            className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold border border-blue-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
-                            title="Pulihkan snapshot SQL ini"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Pulihkan</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSqlBackup(snap.id)}
-                            disabled={isProcessing}
-                            className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition-colors cursor-pointer text-xs flex items-center gap-1"
-                            title="Hapus Snapshot SQL Ini"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Hapus</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: GOOGLE DRIVE (CADANGAN MANUAL) */}
+          {/* TAB 4: GOOGLE DRIVE (CADANGAN MANUAL) */}
           {activeTab === 'drive' && (
             <div className="space-y-5">
               <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 rounded-2xl p-5 text-center space-y-3">
@@ -1656,17 +1094,48 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                     Anda dapat mencadangkan seluruh data transaksi, produk, kaos, dan laporan kasir secara mandiri ke Google Drive pribadi Anda untuk arsip aman permanen.
                   </p>
                 </div>
-                <div className="pt-2">
+                {onNavigateToDrive && (
                   <button
                     onClick={() => {
                       onClose();
-                      if (onNavigateToDrive) onNavigateToDrive();
+                      onNavigateToDrive();
                     }}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-2 shadow-md hover:shadow-lg"
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-2 shadow-xs"
                   >
                     <HardDrive className="w-4 h-4" />
-                    Buka Panel Cadangan Google Drive
+                    Buka Tab Google Drive
                   </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: FIRESTORE STATUS (NONAKTIF) */}
+          {activeTab === 'firestore' && (
+            <div className="space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500">
+                    <Flame className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">
+                      Integrasi Database Firebase Firestore: Dinonaktifkan
+                    </h4>
+                    <span className="text-[11px] text-slate-500">
+                      Sesuai instruksi konfigurasi, database telah sepenuhnya dialihkan ke Cloud SQL (PostgreSQL).
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-600 space-y-2">
+                  <div className="flex items-center gap-2 text-rose-700 font-bold">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Status Integrasi: Non-Aktif (FIRESTORE_ENABLED = false)</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Sistem kini secara eksklusif menggunakan <strong>Cloud SQL (PostgreSQL)</strong> sebagai database utama untuk menyimpan dan menyinkronkan seluruh produk, transaksi, arus kas, dan kasir aktif dengan dukungan Real-Time Server-Sent Events (SSE).
+                  </p>
                 </div>
               </div>
             </div>
@@ -1674,66 +1143,19 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-100 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>Database Utama: <strong>Firebase Firestore (Real-Time)</strong></span>
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0 text-xs">
+          <div className="flex items-center gap-2 text-slate-500">
+            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+            <span>Cloud SQL Real-Time Central Engine</span>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-white hover:bg-slate-200 border border-slate-300 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold transition-colors cursor-pointer"
           >
             Tutup
           </button>
         </div>
       </div>
-
-      {/* IN-APP CONFIRMATION DIALOG MODAL (Guarantees zero iframe blocking) */}
-      {confirmDialog && confirmDialog.isOpen && (
-        <div className="fixed inset-0 z-[10005] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 text-center space-y-4 animate-in zoom-in-95 duration-150">
-            <div className={`w-14 h-14 rounded-2xl mx-auto flex items-center justify-center shadow-inner ${
-              confirmDialog.isDanger ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
-            }`}>
-              {confirmDialog.isDanger ? (
-                <Trash2 className="w-7 h-7 text-rose-600 animate-pulse" />
-              ) : (
-                <AlertTriangle className="w-7 h-7 text-amber-600" />
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <h4 className="text-base font-bold text-slate-900">
-                {confirmDialog.title}
-              </h4>
-              <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line text-left bg-slate-50 p-3 rounded-xl border border-slate-100">
-                {confirmDialog.message}
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setConfirmDialog(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={confirmDialog.onConfirm}
-                className={`px-5 py-2.5 rounded-xl text-white font-bold text-xs transition-all cursor-pointer shadow-md hover:shadow-lg ${
-                  confirmDialog.isDanger
-                    ? 'bg-rose-600 hover:bg-rose-700 active:scale-98'
-                    : 'bg-emerald-600 hover:bg-emerald-700 active:scale-98'
-                }`}
-              >
-                {confirmDialog.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

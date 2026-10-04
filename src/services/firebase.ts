@@ -48,16 +48,21 @@ import {
  * 3. Gunakan fungsi enableMultiTabIndexedDbPersistence saat inisialisasi Firebase
  * 4. Lakukan signOut(auth) di salah satu browser jika salah satu browser login
  */
-export const FIRESTORE_ENABLED = true;
+/**
+ * FIREBASE FIRESTORE STATUS: NON-AKTIF (DINONAKTIFKAN SESUAI INSTRUKSI PENGGUNA)
+ * Database utama yang digunakan dan diintegrasikan adalah Cloud SQL (PostgreSQL)
+ * dengan real-time sync via Server Sent Events (SSE) dan REST API.
+ */
+export const FIRESTORE_ENABLED = false;
 
-// Initialize Firebase App
+// Initialize Firebase App for Authentication only
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = FIRESTORE_ENABLED ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : (null as any);
 export const googleAuthProvider = new GoogleAuthProvider();
 
-// 3. Gunakan fungsi enableMultiTabIndexedDbPersistence saat inisialisasi Firebase
-if (typeof window !== 'undefined') {
+// IndexedDb Persistence only initialized if Firestore is explicitly enabled
+if (FIRESTORE_ENABLED && typeof window !== 'undefined' && db) {
   enableMultiTabIndexedDbPersistence(db).catch((err) => {
     if (err.code === 'failed-precondition') {
       console.warn('Firestore multi-tab persistence: multiple tabs open.', err.message);
@@ -118,6 +123,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 // Connection Health Check
 export async function testConnection(): Promise<boolean> {
+  if (!FIRESTORE_ENABLED || !db) return false;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     return true;
@@ -161,6 +167,7 @@ export function subscribeToProducts(
   onData: (products: Product[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'products';
   try {
     return onSnapshot(
@@ -184,6 +191,7 @@ export function subscribeToTransactions(
   onData: (transactions: Transaction[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'transactions';
   try {
     return onSnapshot(
@@ -211,6 +219,7 @@ export function subscribeToCashFlow(
   onData: (records: CashFlowRecord[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'cashFlowRecords';
   try {
     return onSnapshot(
@@ -235,6 +244,7 @@ export function subscribeToShifts(
   onData: (shifts: CashierShift[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'shifts';
   try {
     return onSnapshot(
@@ -261,6 +271,7 @@ export function subscribeToActiveShift(
   onData: (shift: CashierShift | null) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'shifts/active_shift';
   try {
     return onSnapshot(
@@ -287,6 +298,7 @@ export function subscribeToKaosStocks(
   onData: (stocks: KaosStockItem[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'kaosStocks';
   try {
     return onSnapshot(
@@ -310,6 +322,7 @@ export function subscribeToCustomers(
   onData: (customers: Customer[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'customers';
   try {
     return onSnapshot(
@@ -333,6 +346,7 @@ export function subscribeToStockMovements(
   onData: (movements: StockMovement[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'stockMovements';
   try {
     return onSnapshot(
@@ -357,6 +371,7 @@ export function subscribeToUsers(
   onData: (users: User[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'users';
   try {
     return onSnapshot(
@@ -381,6 +396,7 @@ export function subscribeToUsers(
 // ---------------------------------------------------------------------------
 
 export async function saveProductToFirestore(product: Product): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `products/${product.id}`;
   try {
     await setDoc(doc(db, 'products', product.id), product, { merge: true });
@@ -390,6 +406,7 @@ export async function saveProductToFirestore(product: Product): Promise<void> {
 }
 
 export async function deleteProductFromFirestore(productId: string): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `products/${productId}`;
   try {
     await deleteDoc(doc(db, 'products', productId));
@@ -399,6 +416,7 @@ export async function deleteProductFromFirestore(productId: string): Promise<voi
 }
 
 export async function saveTransactionToFirestore(transaction: Transaction): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `transactions/${transaction.id}`;
   try {
     await setDoc(doc(db, 'transactions', transaction.id), transaction, { merge: true });
@@ -408,6 +426,7 @@ export async function saveTransactionToFirestore(transaction: Transaction): Prom
 }
 
 export async function deleteTransactionFromFirestore(transactionId: string): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `transactions/${transactionId}`;
   try {
     await deleteDoc(doc(db, 'transactions', transactionId));
@@ -417,6 +436,7 @@ export async function deleteTransactionFromFirestore(transactionId: string): Pro
 }
 
 export async function saveCashFlowToFirestore(record: CashFlowRecord): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `cashFlowRecords/${record.id}`;
   try {
     await setDoc(doc(db, 'cashFlowRecords', record.id), record, { merge: true });
@@ -426,6 +446,7 @@ export async function saveCashFlowToFirestore(record: CashFlowRecord): Promise<v
 }
 
 export async function deleteCashFlowFromFirestore(recordId: string): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `cashFlowRecords/${recordId}`;
   try {
     await deleteDoc(doc(db, 'cashFlowRecords', recordId));
@@ -435,6 +456,7 @@ export async function deleteCashFlowFromFirestore(recordId: string): Promise<voi
 }
 
 export async function saveShiftToFirestore(shift: CashierShift): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `shifts/${shift.id}`;
   try {
     await setDoc(doc(db, 'shifts', shift.id), shift, { merge: true });
@@ -444,6 +466,7 @@ export async function saveShiftToFirestore(shift: CashierShift): Promise<void> {
 }
 
 export async function saveActiveShiftToFirestore(shift: CashierShift): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = 'shifts/active_shift';
   try {
     await setDoc(doc(db, 'shifts', 'active_shift'), shift, { merge: true });
@@ -481,6 +504,9 @@ export async function runFirestoreCheckoutTransaction(input: CheckoutTransaction
   transaction: Transaction;
 }> {
   const { transaction: txData, items, isCashPayment, cashAmountReceived, stockMovements } = input;
+  if (!FIRESTORE_ENABLED || !db) {
+    return { success: true, transaction: txData };
+  }
   const path = `transactions/${txData.id}`;
 
   try {
@@ -559,6 +585,7 @@ export async function runFirestoreCheckoutTransaction(input: CheckoutTransaction
  * - Writes cash flow record doc in a single transaction.
  */
 export async function runFirestoreCashFlowTransaction(record: CashFlowRecord): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `cashFlowRecords/${record.id}`;
   try {
     await runTransaction(db, async (txn) => {
@@ -600,6 +627,7 @@ export async function runFirestoreShiftTransaction(
   shift: CashierShift,
   isClosing: boolean
 ): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = 'shifts/active_shift';
   try {
     await runTransaction(db, async (txn) => {
@@ -625,6 +653,7 @@ export async function runFirestoreShiftTransaction(
 }
 
 export async function saveKaosStockToFirestore(item: KaosStockItem): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `kaosStocks/${item.id}`;
   try {
     await setDoc(doc(db, 'kaosStocks', item.id), item, { merge: true });
@@ -634,7 +663,7 @@ export async function saveKaosStockToFirestore(item: KaosStockItem): Promise<voi
 }
 
 export async function saveMultipleKaosStocksToFirestore(items: KaosStockItem[]): Promise<void> {
-  if (!items || items.length === 0) return;
+  if (!FIRESTORE_ENABLED || !db || !items || items.length === 0) return;
   try {
     const chunkSize = 400;
     for (let i = 0; i < items.length; i += chunkSize) {
@@ -651,7 +680,7 @@ export async function saveMultipleKaosStocksToFirestore(items: KaosStockItem[]):
 }
 
 export async function saveMultipleProductsToFirestore(products: Product[]): Promise<void> {
-  if (!products || products.length === 0) return;
+  if (!FIRESTORE_ENABLED || !db || !products || products.length === 0) return;
   try {
     const chunkSize = 400;
     for (let i = 0; i < products.length; i += chunkSize) {
@@ -668,6 +697,7 @@ export async function saveMultipleProductsToFirestore(products: Product[]): Prom
 }
 
 export async function saveCustomerToFirestore(customer: Customer): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `customers/${customer.id}`;
   try {
     await setDoc(doc(db, 'customers', customer.id), customer, { merge: true });
@@ -677,6 +707,7 @@ export async function saveCustomerToFirestore(customer: Customer): Promise<void>
 }
 
 export async function deleteCustomerFromFirestore(customerId: string): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `customers/${customerId}`;
   try {
     await deleteDoc(doc(db, 'customers', customerId));
@@ -686,6 +717,7 @@ export async function deleteCustomerFromFirestore(customerId: string): Promise<v
 }
 
 export async function saveStockMovementToFirestore(movement: StockMovement): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `stockMovements/${movement.id}`;
   try {
     await setDoc(doc(db, 'stockMovements', movement.id), movement, { merge: true });
@@ -695,7 +727,7 @@ export async function saveStockMovementToFirestore(movement: StockMovement): Pro
 }
 
 export async function saveMultipleStockMovementsToFirestore(movements: StockMovement[]): Promise<void> {
-  if (!movements || movements.length === 0) return;
+  if (!FIRESTORE_ENABLED || !db || !movements || movements.length === 0) return;
   try {
     const chunkSize = 400;
     for (let i = 0; i < movements.length; i += chunkSize) {
@@ -712,6 +744,7 @@ export async function saveMultipleStockMovementsToFirestore(movements: StockMove
 }
 
 export async function saveUserToFirestore(user: User): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `users/${user.id}`;
   try {
     await setDoc(doc(db, 'users', user.id), user, { merge: true });
@@ -721,6 +754,7 @@ export async function saveUserToFirestore(user: User): Promise<void> {
 }
 
 export async function deleteUserFromFirestore(userId: string): Promise<void> {
+  if (!FIRESTORE_ENABLED || !db) return;
   const path = `users/${userId}`;
   try {
     await deleteDoc(doc(db, 'users', userId));
@@ -842,6 +876,19 @@ export async function fetchAllDataFromFirestore(
   users: User[];
   stockMovements: StockMovement[];
 }> {
+  if (!FIRESTORE_ENABLED || !db) {
+    return {
+      products: [],
+      transactions: [],
+      cashFlowRecords: [],
+      shifts: [],
+      activeShift: null,
+      kaosStocks: [],
+      customers: [],
+      users: [],
+      stockMovements: []
+    };
+  }
   try {
     const [
       products,
@@ -914,6 +961,7 @@ export async function recordActiveSession(
 ): Promise<string> {
   const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   localStorage.setItem('athree_active_session_id', sessionId);
+  if (!FIRESTORE_ENABLED || !db) return sessionId;
 
   try {
     await setDoc(
@@ -937,6 +985,7 @@ export async function recordActiveSession(
 export function subscribeToActiveSession(
   onDisplaced: (remoteSession: ActiveSessionData) => void
 ): Unsubscribe {
+  if (!FIRESTORE_ENABLED || !db) return (() => {}) as Unsubscribe;
   const path = 'meta/activeSession';
   try {
     return onSnapshot(
@@ -981,6 +1030,14 @@ export async function syncAllLocalDataToFirestore(data: {
   cashFlowCount: number;
   kaosCount: number;
 }> {
+  if (!FIRESTORE_ENABLED || !db) {
+    return {
+      productsCount: 0,
+      transactionsCount: 0,
+      cashFlowCount: 0,
+      kaosCount: 0
+    };
+  }
   let productsCount = 0;
   let transactionsCount = 0;
   let cashFlowCount = 0;
@@ -1053,10 +1110,10 @@ export async function syncAllLocalDataToFirestore(data: {
 }
 
 // ---------------------------------------------------------------------------
-// Rolling 3-Day Maximum Snapshots in Firestore (Agar Database Lama Tidak Menumpuk)
+// Rolling 14-Day Snapshots in Firestore
 // ---------------------------------------------------------------------------
 
-export const BACKUP_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days maximum
+export const BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
 export interface CloudBackupSnapshotMeta {
   id: string;
@@ -1083,6 +1140,7 @@ export async function saveCloudBackupSnapshot(
 ): Promise<string> {
   const now = Date.now();
   const backupId = `backup_${now}`;
+  if (!FIRESTORE_ENABLED || !db) return backupId;
   const path = `databaseBackups/${backupId}`;
 
   const meta: CloudBackupSnapshotMeta = {
@@ -1091,7 +1149,7 @@ export async function saveCloudBackupSnapshot(
     timestamp: now,
     expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
     expiresTimestamp: now + BACKUP_RETENTION_MS,
-    retentionDays: 3,
+    retentionDays: 14,
     savedBy,
     source,
     stats: {
@@ -1108,7 +1166,7 @@ export async function saveCloudBackupSnapshot(
       ...meta,
       payload: data
     });
-    // Trigger non-blocking pruning of expired backups (> 3 days)
+    // Trigger non-blocking pruning of expired backups
     cleanExpiredBackupsFirestore().catch(() => {});
     return backupId;
   } catch (err) {
@@ -1118,27 +1176,24 @@ export async function saveCloudBackupSnapshot(
 }
 
 export async function fetchCloudBackupSnapshots(): Promise<CloudBackupSnapshotMeta[]> {
+  if (!FIRESTORE_ENABLED || !db) return [];
   const path = 'databaseBackups';
   try {
-    // Non-blocking prune of expired snapshots (> 3 days)
-    cleanExpiredBackupsFirestore().catch(() => {});
-
     const snap = await getDocs(collection(db, path));
     const now = Date.now();
     const list: CloudBackupSnapshotMeta[] = [];
 
     for (const d of snap.docs) {
       const data = d.data();
-      const age = now - (data.timestamp || 0);
-      // Skip expired backups older than 3 days
-      if ((data.expiresTimestamp && data.expiresTimestamp < now) || age > BACKUP_RETENTION_MS) continue;
+      // Skip expired backups
+      if (data.expiresTimestamp && data.expiresTimestamp < now) continue;
       list.push({
         id: data.id || d.id,
         createdAt: data.createdAt,
         timestamp: data.timestamp || 0,
         expiresAt: data.expiresAt,
-        expiresTimestamp: data.expiresTimestamp || (data.timestamp ? data.timestamp + BACKUP_RETENTION_MS : now + BACKUP_RETENTION_MS),
-        retentionDays: data.retentionDays || 3,
+        expiresTimestamp: data.expiresTimestamp || 0,
+        retentionDays: data.retentionDays || 14,
         savedBy: data.savedBy || 'Kasir',
         source: data.source || 'backup',
         stats: data.stats || {
@@ -1160,6 +1215,7 @@ export async function fetchCloudBackupSnapshots(): Promise<CloudBackupSnapshotMe
 }
 
 export async function getCloudBackupSnapshotById(backupId: string): Promise<any | null> {
+  if (!FIRESTORE_ENABLED || !db) return null;
   const path = `databaseBackups/${backupId}`;
   try {
     const snap = await getDoc(doc(db, 'databaseBackups', backupId));
@@ -1173,35 +1229,8 @@ export async function getCloudBackupSnapshotById(backupId: string): Promise<any 
   }
 }
 
-export async function getLatestCloudBackupSnapshot(): Promise<{
-  id: string;
-  timestamp: number;
-  createdAt: string;
-  savedBy: string;
-  payload: any;
-} | null> {
-  try {
-    const list = await fetchCloudBackupSnapshots();
-    if (list && list.length > 0) {
-      const latest = list[0];
-      const payload = await getCloudBackupSnapshotById(latest.id);
-      if (payload) {
-        return {
-          id: latest.id,
-          timestamp: latest.timestamp,
-          createdAt: latest.createdAt,
-          savedBy: latest.savedBy,
-          payload
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to get latest cloud backup snapshot:', err);
-  }
-  return null;
-}
-
 export async function cleanExpiredBackupsFirestore(): Promise<number> {
+  if (!FIRESTORE_ENABLED || !db) return 0;
   try {
     const now = Date.now();
     const snap = await getDocs(collection(db, 'databaseBackups'));
@@ -1210,9 +1239,7 @@ export async function cleanExpiredBackupsFirestore(): Promise<number> {
 
     for (const d of snap.docs) {
       const data = d.data();
-      const age = now - (data.timestamp || 0);
-      const isExpired = (data.expiresTimestamp && data.expiresTimestamp < now) || age > BACKUP_RETENTION_MS;
-      if (isExpired) {
+      if (data.expiresTimestamp && data.expiresTimestamp < now) {
         batch.delete(doc(db, 'databaseBackups', d.id));
         cleaned++;
       }
@@ -1220,53 +1247,9 @@ export async function cleanExpiredBackupsFirestore(): Promise<number> {
 
     if (cleaned > 0) {
       await batch.commit();
-      console.log(`[Firestore Clean] Berhasil menghapus ${cleaned} snapshot kadaluarsa (> 3 hari) agar database tidak menumpuk.`);
     }
     return cleaned;
-  } catch (err) {
-    console.warn('Gagal membersihkan snapshot kadaluarsa di Firestore:', err);
-    return 0;
-  }
-}
-
-export async function deleteCloudBackupSnapshot(backupId: string): Promise<boolean> {
-  const path = `databaseBackups/${backupId}`;
-  try {
-    // 1. Direct delete by ID
-    await deleteDoc(doc(db, 'databaseBackups', backupId));
-    return true;
   } catch {
-    // 2. Fallback: Search matching document in collection
-    try {
-      const snap = await getDocs(collection(db, 'databaseBackups'));
-      for (const d of snap.docs) {
-        if (d.id === backupId || d.data().id === backupId || d.id.includes(backupId) || backupId.includes(d.id)) {
-          await deleteDoc(doc(db, 'databaseBackups', d.id));
-          return true;
-        }
-      }
-    } catch (innerErr) {
-      handleFirestoreError(innerErr, OperationType.DELETE, path);
-    }
-    return false;
-  }
-}
-
-export async function deleteAllCloudBackupSnapshots(): Promise<number> {
-  try {
-    const snap = await getDocs(collection(db, 'databaseBackups'));
-    let count = 0;
-    const batch = writeBatch(db);
-    for (const d of snap.docs) {
-      batch.delete(doc(db, 'databaseBackups', d.id));
-      count++;
-    }
-    if (count > 0) {
-      await batch.commit();
-    }
-    return count;
-  } catch (err) {
-    console.warn('Failed to delete all cloud backup snapshots:', err);
     return 0;
   }
 }

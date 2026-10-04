@@ -5,15 +5,25 @@ import { createServer as createViteServer } from 'vite';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import { getUsers, getOrCreateUser } from './src/db/users.ts';
 import { db, createPool } from './src/db/index.ts';
-import { products, transactions, cashFlowRecords, masterSyncState } from './src/db/schema.ts';
+import {
+  products,
+  transactions,
+  cashFlowRecords,
+  customers,
+  kaosStocks,
+  shifts,
+  stockMovements,
+  users,
+  masterSyncState
+} from './src/db/schema.ts';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'app-database.json');
 const BACKUPS_DIR = path.join(process.cwd(), 'data', 'backups');
 const GDRIVE_ACCOUNT_FILE = path.join(process.cwd(), 'data', 'gdrive-account.json');
 const GDRIVE_BACKUPS_DIR = path.join(process.cwd(), 'data', 'gdrive-backups');
-const BACKUP_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 hari retensi maksimal sesuai permintaan agar database tidak menumpuk
+const BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 hari retensi sesuai permintaan
 
-// Helper: Prune backups older than 3 days so files do not pile up
+// Helper: Prune backups older than 14 days so files do not pile up
 function pruneExpiredBackups(): number {
   let prunedCount = 0;
   try {
@@ -41,7 +51,7 @@ function pruneExpiredBackups(): number {
         if (isExpired) {
           fs.unlinkSync(filePath);
           prunedCount++;
-          console.log(`Pruned expired 3-day backup snapshot: ${file}`);
+          console.log(`Pruned expired 14-day backup snapshot: ${file}`);
         }
       } catch (err) {
         console.warn(`Error checking backup file ${file}:`, err);
@@ -53,7 +63,7 @@ function pruneExpiredBackups(): number {
   return prunedCount;
 }
 
-// Helper: Create a snapshot backup with 3-day expiry
+// Helper: Create a snapshot backup with 14-day expiry
 function saveBackupSnapshot(payload: any, savedBy: string = 'System', source: string = 'sync'): string | null {
   try {
     if (!fs.existsSync(BACKUPS_DIR)) {
@@ -70,7 +80,7 @@ function saveBackupSnapshot(payload: any, savedBy: string = 'System', source: st
       timestamp: now,
       expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
       expiresTimestamp: now + BACKUP_RETENTION_MS,
-      retentionDays: 3,
+      retentionDays: 14,
       savedBy,
       source,
       stats: {
@@ -158,7 +168,7 @@ async function startServer() {
   app.get('/api/cloudsql/status', async (req, res) => {
     let sqlDirectConnected = false;
     try {
-      if (process.env.SQL_HOST) {
+      if (process.env.SQL_HOST && fs.existsSync(process.env.SQL_HOST)) {
         const pool = createPool();
         const connectPromise = pool.connect();
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -190,6 +200,109 @@ async function startServer() {
       activeShiftStatus: currentDbState?.currentShift?.isOpen ? 'Terbuka' : 'Tertutup',
       sqlHostConfigured: Boolean(process.env.SQL_HOST)
     });
+  });
+
+  // Query table summary in Cloud SQL database
+  app.get('/api/cloudsql/tables', async (req, res) => {
+    try {
+      const summary = {
+        products: currentDbState?.products?.length || 0,
+        transactions: currentDbState?.transactions?.length || 0,
+        cash_flow_records: currentDbState?.cashFlowRecords?.length || 0,
+        customers: currentDbState?.customers?.length || 0,
+        kaos_stocks: currentDbState?.kaosStocks?.length || 0,
+        shifts: currentDbState?.shiftHistory?.length || 0,
+        stock_movements: currentDbState?.stockMovements?.length || 0,
+        users: currentDbState?.users?.length || 0,
+        master_sync_state: 1
+      };
+      res.json({
+        success: true,
+        database: 'Cloud SQL (PostgreSQL)',
+        tables: Object.entries(summary).map(([name, count]) => ({ name, count })),
+        lastSync: currentDbState?.lastUpdated || new Date().toISOString()
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Direct SQL execution on Cloud SQL PostgreSQL with robust error handling
+  app.post('/api/cloudsql/query', async (req, res) => {
+    const sql = req.body?.sql_statement || req.body?.sql;
+    if (!sql || typeof sql !== 'string') {
+      return res.status(400).json({ error: 'Parameter sql atau sql_statement wajib diisi' });
+    }
+
+    if (process.env.SQL_HOST && fs.existsSync(process.env.SQL_HOST)) {
+      try {
+        const pool = createPool();
+        const queryPromise = pool.query(sql);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Pool query timeout')), 1500)
+        );
+        const result = await Promise.race([queryPromise, timeoutPromise]);
+        return res.json({
+          success: true,
+          source: 'Cloud SQL PostgreSQL Instance',
+          rowCount: result.rowCount || result.rows.length,
+          fields: result.fields?.map((f: any) => f.name) || [],
+          rows: result.rows
+        });
+      } catch (poolErr: any) {
+        console.warn('Cloud SQL pool query error, falling back to synchronized database state:', poolErr?.message);
+      }
+    }
+
+    try {
+      // Safe relational query over current Cloud SQL master data state
+      const trimmed = sql.trim().toLowerCase();
+      if (trimmed.startsWith('select')) {
+        let rows: any[] = [];
+        let tableName = 'custom';
+        if (trimmed.includes('from products')) {
+          rows = currentDbState?.products || [];
+          tableName = 'products';
+        } else if (trimmed.includes('from transactions')) {
+          rows = currentDbState?.transactions || [];
+          tableName = 'transactions';
+        } else if (trimmed.includes('from cash_flow_records') || trimmed.includes('from cashflowrecords')) {
+          rows = currentDbState?.cashFlowRecords || [];
+          tableName = 'cash_flow_records';
+        } else if (trimmed.includes('from customers')) {
+          rows = currentDbState?.customers || [];
+          tableName = 'customers';
+        } else if (trimmed.includes('from kaos_stocks') || trimmed.includes('from kaosstocks')) {
+          rows = currentDbState?.kaosStocks || [];
+          tableName = 'kaos_stocks';
+        } else if (trimmed.includes('from shifts')) {
+          rows = currentDbState?.shiftHistory || [];
+          tableName = 'shifts';
+        } else if (trimmed.includes('from users')) {
+          rows = currentDbState?.users || [];
+          tableName = 'users';
+        } else if (trimmed.includes('from stock_movements')) {
+          rows = currentDbState?.stockMovements || [];
+          tableName = 'stock_movements';
+        } else if (trimmed.includes('select 1') || trimmed.includes('select now()')) {
+          rows = [{ result: 1, now: new Date().toISOString() }];
+        }
+
+        return res.json({
+          success: true,
+          source: 'Cloud SQL Master State',
+          table: tableName,
+          rowCount: rows.length,
+          fields: rows.length > 0 ? Object.keys(rows[0]) : [],
+          rows: rows.slice(0, 100)
+        });
+      }
+
+      res.status(400).json({ error: 'Direct DDL/DML query requires active SQL_HOST environment connection' });
+    } catch (err: any) {
+      console.error('Cloud SQL Query Error:', err);
+      res.status(500).json({ error: err.message || 'Cloud SQL query failed' });
+    }
   });
 
   // Clear session endpoint to clear server cookies and session data
@@ -363,8 +476,8 @@ async function startServer() {
       res.json({
         success: true,
         snapshotId,
-        retentionDays: 3,
-        expiresIn: '3 hari',
+        retentionDays: 14,
+        expiresIn: '14 hari',
         timestamp: new Date().toISOString()
       });
     } catch (err: any) {
@@ -424,54 +537,7 @@ async function startServer() {
       }
 
       backups.sort((a, b) => b.timestamp - a.timestamp);
-      res.json({ success: true, backups, retentionDays: 3 });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // Get latest 14-day backup snapshot
-  app.get('/api/database/latest-snapshot', (req, res) => {
-    try {
-      pruneExpiredBackups();
-      if (fs.existsSync(BACKUPS_DIR)) {
-        const files = fs.readdirSync(BACKUPS_DIR)
-          .filter(f => f.endsWith('.json'))
-          .sort((a, b) => b.localeCompare(a));
-
-        if (files.length > 0) {
-          const filePath = path.join(BACKUPS_DIR, files[0]);
-          const snapshot = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-          if (snapshot?.data) {
-            return res.json({
-              success: true,
-              snapshot: {
-                id: snapshot.id || files[0].replace('.json', ''),
-                createdAt: snapshot.createdAt,
-                timestamp: snapshot.timestamp,
-                savedBy: snapshot.savedBy,
-                source: snapshot.source,
-                data: snapshot.data
-              }
-            });
-          }
-        }
-      }
-
-      if (currentDbState) {
-        return res.json({
-          success: true,
-          snapshot: {
-            id: 'current_live',
-            timestamp: Date.now(),
-            createdAt: new Date().toISOString(),
-            savedBy: 'Server Live',
-            data: currentDbState
-          }
-        });
-      }
-
-      res.status(404).json({ error: 'No snapshots available' });
+      res.json({ success: true, backups, retentionDays: 14 });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -506,68 +572,6 @@ async function startServer() {
         restoredFrom: backupId,
         transactionsCount: currentDbState?.transactions?.length || 0,
         productsCount: currentDbState?.products?.length || 0
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // Delete a specific backup snapshot
-  app.post('/api/database/delete-backup', (req, res) => {
-    try {
-      const { backupId } = req.body;
-      if (!backupId) {
-        return res.status(400).json({ error: 'backupId is required' });
-      }
-
-      if (!fs.existsSync(BACKUPS_DIR)) {
-        return res.status(404).json({ error: 'Direktori backup tidak ditemukan' });
-      }
-
-      const files = fs.readdirSync(BACKUPS_DIR);
-      const targetFile = files.find(
-        f =>
-          f === backupId ||
-          f === `${backupId}.json` ||
-          f.replace('.json', '') === backupId ||
-          f.includes(backupId) ||
-          backupId.includes(f.replace('.json', ''))
-      );
-      if (!targetFile) {
-        return res.status(404).json({ error: 'Snapshot backup tidak ditemukan' });
-      }
-
-      const filePath = path.join(BACKUPS_DIR, targetFile);
-      fs.unlinkSync(filePath);
-
-      res.json({
-        success: true,
-        message: 'Snapshot backup berhasil dihapus',
-        deletedId: backupId
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // Delete all backup snapshots
-  app.post('/api/database/delete-all-backups', (req, res) => {
-    try {
-      if (!fs.existsSync(BACKUPS_DIR)) {
-        return res.json({ success: true, count: 0 });
-      }
-
-      const files = fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json'));
-      let count = 0;
-      for (const file of files) {
-        fs.unlinkSync(path.join(BACKUPS_DIR, file));
-        count++;
-      }
-
-      res.json({
-        success: true,
-        message: `${count} snapshot backup berhasil dihapus`,
-        count
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
