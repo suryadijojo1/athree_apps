@@ -21,6 +21,10 @@ import {
   diagnoseCloudSqlConnection,
   checkCloudSqlDiagnostics,
   CloudSqlDiagnosticInfo,
+  verboseFetch,
+  getNetworkRequestLogs,
+  clearNetworkRequestLogs,
+  NetworkLogEntry,
   fetchServerDatabase,
   saveServerDatabase,
   subscribeToServerEvents,
@@ -51,7 +55,7 @@ export interface CloudSqlStatus {
  */
 export async function checkCloudSqlStatus(): Promise<CloudSqlStatus> {
   try {
-    const res = await fetch(buildApiUrl('/api/cloudsql/status'), { cache: 'no-store' });
+    const res = await verboseFetch(buildApiUrl('/api/cloudsql/status'), { cache: 'no-store' }, 'CheckCloudSqlStatus');
     if (res.ok) {
       const data = await res.json();
       return {
@@ -71,7 +75,7 @@ export async function checkCloudSqlStatus(): Promise<CloudSqlStatus> {
 
   // Fallback: Check /api/health
   try {
-    const healthRes = await fetch(buildApiUrl('/api/health'), { cache: 'no-store' });
+    const healthRes = await verboseFetch(buildApiUrl('/api/health'), { cache: 'no-store' }, 'CheckHealthFallback');
     if (healthRes.ok) {
       const hData = await healthRes.json();
       return {
@@ -143,6 +147,9 @@ export {
   logCloudSqlDiagnostics,
   diagnoseCloudSqlConnection,
   checkCloudSqlDiagnostics,
+  verboseFetch,
+  getNetworkRequestLogs,
+  clearNetworkRequestLogs,
   fetchServerDatabase,
   saveServerDatabase,
   subscribeToServerEvents,
@@ -156,4 +163,4 @@ export {
   deleteAllServerBackups,
   fetchLatestServerSnapshot
 };
-export type { CloudSqlDiagnosticInfo };
+export type { CloudSqlDiagnosticInfo, NetworkLogEntry };

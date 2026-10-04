@@ -158,6 +158,141 @@ export function buildFullApiUrl(path: string): string {
   return `${cleanBase}${normalizedPath}`;
 }
 
+export interface NetworkLogEntry {
+  id: string;
+  timestamp: string;
+  context: string;
+  method: string;
+  url: string;
+  fullUrl: string;
+  status?: number;
+  statusText?: string;
+  durationMs: number;
+  is404: boolean;
+  success: boolean;
+  error?: string;
+}
+
+const networkLogs: NetworkLogEntry[] = [];
+const MAX_NETWORK_LOGS = 120;
+
+/**
+ * Returns recorded network request logs for developer inspection or diagnostics.
+ */
+export function getNetworkRequestLogs(): NetworkLogEntry[] {
+  return [...networkLogs];
+}
+
+/**
+ * Clears recorded network request logs.
+ */
+export function clearNetworkRequestLogs(): void {
+  networkLogs.length = 0;
+}
+
+/**
+ * Verbose fetch wrapper for Cloud SQL & Server communications.
+ * Logs EVERY outgoing network request and response with execution timing,
+ * and specifically highlights HTTP 404 Not Found errors with full URL, method, and gateway status.
+ */
+export async function verboseFetch(
+  inputUrl: string,
+  init?: RequestInit,
+  contextLabel: string = 'Network Request'
+): Promise<Response> {
+  const fullUrl = buildFullApiUrl(inputUrl);
+  const method = (init?.method || 'GET').toUpperCase();
+  const startTime = Date.now();
+  const logId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  console.log(
+    `%c[ServerSync:REQ] 📡 [${contextLabel}] ${method} %c${fullUrl}`,
+    'color: #0284c7; font-weight: bold; background: #e0f2fe; padding: 1px 5px; border-radius: 3px;',
+    'color: #0369a1; font-weight: 600;'
+  );
+
+  let response: Response;
+  try {
+    response = await fetch(inputUrl, init);
+  } catch (netErr: any) {
+    const durationMs = Date.now() - startTime;
+    const isAbort = netErr.name === 'AbortError';
+    const logItem: NetworkLogEntry = {
+      id: logId,
+      timestamp: new Date().toISOString(),
+      context: contextLabel,
+      method,
+      url: inputUrl,
+      fullUrl,
+      durationMs,
+      is404: false,
+      success: false,
+      error: isAbort ? 'Request Timeout (Aborted)' : netErr.message || String(netErr)
+    };
+    networkLogs.unshift(logItem);
+    if (networkLogs.length > MAX_NETWORK_LOGS) networkLogs.pop();
+
+    console.error(
+      `%c[ServerSync:NET-FAIL] 💥 [${contextLabel}] ${method} ${fullUrl} FAILED after ${durationMs}ms:`,
+      'color: #991b1b; font-weight: bold; background: #fee2e2; padding: 2px 6px; border-radius: 3px;',
+      netErr.message || netErr
+    );
+    throw netErr;
+  }
+
+  const durationMs = Date.now() - startTime;
+  const is404 = response.status === 404;
+
+  const logItem: NetworkLogEntry = {
+    id: logId,
+    timestamp: new Date().toISOString(),
+    context: contextLabel,
+    method,
+    url: inputUrl,
+    fullUrl,
+    status: response.status,
+    statusText: response.statusText,
+    durationMs,
+    is404,
+    success: response.ok
+  };
+  networkLogs.unshift(logItem);
+  if (networkLogs.length > MAX_NETWORK_LOGS) networkLogs.pop();
+
+  if (is404) {
+    console.group(
+      `%c[ServerSync:404 ERROR] ❌ HTTP 404 Not Found on ${method} [${contextLabel}]`,
+      'color: #ffffff; background: #dc2626; font-weight: bold; padding: 2px 8px; border-radius: 4px;'
+    );
+    console.error(`• Full Target URL : %c${fullUrl}%c`, 'color: #dc2626; font-weight: bold;', '');
+    console.error(`• Requested Path  : ${inputUrl}`);
+    console.error(`• HTTP Method     : ${method}`);
+    console.error(`• HTTP Status     : 404 (Not Found)`);
+    console.error(`• Latency         : ${durationMs}ms`);
+    console.error(`• Gateway Base    : ${getServerBaseUrl() || '(none / browser origin)'}`);
+    console.error(`• Full Base URL   : ${getFullServerBaseUrl()}`);
+    console.error(`• Timestamp       : ${new Date().toISOString()}`);
+    console.error(`• Context         : ${contextLabel}`);
+    console.groupEnd();
+  } else if (!response.ok) {
+    console.warn(
+      `%c[ServerSync:HTTP ${response.status}] ⚠ [${contextLabel}] ${method} %c${fullUrl}%c (${durationMs}ms) - ${response.statusText}`,
+      'color: #b45309; font-weight: bold; background: #fef3c7; padding: 1px 5px; border-radius: 3px;',
+      'color: #b45309; font-weight: bold;',
+      'color: inherit;'
+    );
+  } else {
+    console.log(
+      `%c[ServerSync:HTTP ${response.status}] ✔ [${contextLabel}] ${method} %c${fullUrl}%c (${durationMs}ms)`,
+      'color: #15803d; font-weight: bold; background: #dcfce7; padding: 1px 5px; border-radius: 3px;',
+      'color: #15803d;',
+      'color: inherit;'
+    );
+  }
+
+  return response;
+}
+
 export interface CloudSqlDiagnosticInfo {
   fullBaseUrl: string;
   configuredBaseUrl: string;
@@ -227,12 +362,16 @@ export async function diagnoseCloudSqlService(options?: {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      const res = await fetch(fullUrl, {
-        method: 'GET',
-        headers: { Accept: 'application/json', 'X-Client-Id': CLIENT_ID },
-        cache: 'no-store',
-        signal: controller.signal
-      });
+      const res = await verboseFetch(
+        fullUrl,
+        {
+          method: 'GET',
+          headers: { Accept: 'application/json', 'X-Client-Id': CLIENT_ID },
+          cache: 'no-store',
+          signal: controller.signal
+        },
+        `CloudSqlDiagnostic: ${item.name}`
+      );
       clearTimeout(timer);
 
       const elapsed = Date.now() - epStart;
@@ -386,6 +525,10 @@ if (typeof window !== 'undefined') {
   win.getServerBaseUrl = getServerBaseUrl;
   win.buildApiUrl = buildApiUrl;
   win.buildFullApiUrl = buildFullApiUrl;
+  win.verboseFetch = verboseFetch;
+  win.getNetworkRequestLogs = getNetworkRequestLogs;
+  win.clearNetworkRequestLogs = clearNetworkRequestLogs;
+  win.__NETWORK_LOGS__ = networkLogs;
 }
 
 const LEGACY_DUMMY_INVOICES = new Set([
@@ -458,10 +601,14 @@ export async function fetchServerDatabase(): Promise<{
 
   for (const ep of uniqueEndpoints) {
     try {
-      const res = await fetch(ep, {
-        headers: { 'Accept': 'application/json', 'X-Client-Id': CLIENT_ID },
-        cache: 'no-store'
-      });
+      const res = await verboseFetch(
+        ep,
+        {
+          headers: { Accept: 'application/json', 'X-Client-Id': CLIENT_ID },
+          cache: 'no-store'
+        },
+        'FetchServerDatabase'
+      );
       if (res.ok) {
         const json = await res.json();
         return {
@@ -469,11 +616,9 @@ export async function fetchServerDatabase(): Promise<{
           data: json.data || null,
           isRealData: Boolean(json.isRealData)
         };
-      } else if (res.status === 404) {
-        console.warn(`[ServerSync] Endpoint ${ep} returned 404. Full Base URL: ${getFullServerBaseUrl()}`);
       }
     } catch (err) {
-      console.warn(`Failed to fetch database from ${ep}:`, err);
+      console.warn(`[ServerSync] Failed to fetch database from ${ep}:`, err);
     }
   }
   return { success: false, data: null, isRealData: false };
@@ -522,28 +667,51 @@ export async function saveServerDatabase(
   }
   const uniqueEndpoints = Array.from(new Set(endpointsToTry));
 
+  console.log(
+    `%c[ServerSync:SAVE] 💾 Initiating full database push (${fullPayload.transactions?.length || 0} tx, ${fullPayload.products?.length || 0} products). Candidates: [${uniqueEndpoints.join(', ')}]`,
+    'color: #0369a1; font-weight: bold;'
+  );
+
   let lastErrorMsg = 'Server error: Endpoint Cloud SQL tidak merespons';
 
-  for (const ep of uniqueEndpoints) {
+  for (let idx = 0; idx < uniqueEndpoints.length; idx++) {
+    const ep = uniqueEndpoints[idx];
+    const fullUrl = buildFullApiUrl(ep);
+
+    console.log(
+      `%c[ServerSync:SAVE] 🔄 Trying candidate #${idx + 1}/${uniqueEndpoints.length}: %c${ep}%c (Full: ${fullUrl})`,
+      'color: #475569; font-weight: bold;',
+      'color: #0284c7; font-weight: bold;',
+      'color: #64748b;'
+    );
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-      const res = await fetch(ep, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Client-Id': CLIENT_ID,
-          'X-Saved-By': fullPayload.savedBy,
-          'X-Save-Source': fullPayload.source
+      const res = await verboseFetch(
+        ep,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Id': CLIENT_ID,
+            'X-Saved-By': fullPayload.savedBy,
+            'X-Save-Source': fullPayload.source
+          },
+          body: JSON.stringify(fullPayload),
+          signal: controller.signal
         },
-        body: JSON.stringify(fullPayload),
-        signal: controller.signal
-      });
+        `SaveDatabase (Candidate #${idx + 1}: ${ep})`
+      );
 
       clearTimeout(timeoutId);
 
       if (res.ok) {
+        console.log(
+          `%c[ServerSync:SAVE] 🎉 Save successful on candidate #${idx + 1} (${ep})! Full URL: ${fullUrl}`,
+          'color: #15803d; font-weight: bold; background: #dcfce7; padding: 2px 6px;'
+        );
         const json = await res.json().catch(() => ({}));
         return {
           success: true,
@@ -564,7 +732,11 @@ export async function saveServerDatabase(
         }
         break;
       } else {
-        console.warn(`[ServerSync] Database sync endpoint ${ep} returned 404 (Full Base URL: ${getFullServerBaseUrl()}), trying next alternative...`);
+        console.error(
+          `%c[ServerSync:SAVE 404] ❌ Endpoint candidate #${idx + 1} (${ep}) returned HTTP 404 Not Found!%c\n• Full Target URL : ${fullUrl}\n• Status Code     : 404\n• Base URL Config : ${getServerBaseUrl() || '(none / browser origin)'}\n• Full Base URL   : ${getFullServerBaseUrl()}\n• Next step       : Trying next alternative candidate...`,
+          'background: #fee2e2; color: #dc2626; font-weight: bold; padding: 2px 6px;',
+          ''
+        );
         lastErrorMsg = `Server error 404 pada endpoint ${ep}`;
       }
     } catch (err: any) {
@@ -577,6 +749,10 @@ export async function saveServerDatabase(
 
   // If a 404 error occurred on all endpoints, run full diagnostics in the console
   if (lastErrorMsg.includes('404')) {
+    console.error(
+      `%c[ServerSync:SAVE FATAL 404] 💥 All ${uniqueEndpoints.length} candidate endpoints failed with 404! Triggering diagnostic audit...`,
+      'background: #7f1d1d; color: #ffffff; font-weight: bold; padding: 3px 8px; border-radius: 4px;'
+    );
     diagnoseCloudSqlService().catch(() => {});
   }
 
@@ -592,11 +768,15 @@ export async function saveServerBackupSnapshot(
   source: string = 'logout'
 ): Promise<boolean> {
   try {
-    const res = await fetch(buildApiUrl('/api/database/backup-snapshot'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data, savedBy, source })
-    });
+    const res = await verboseFetch(
+      buildApiUrl('/api/database/backup-snapshot'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, savedBy, source })
+      },
+      'SaveServerBackupSnapshot'
+    );
     return res.ok;
   } catch (err) {
     console.warn('Failed to save server backup snapshot:', err);
@@ -609,7 +789,11 @@ export async function saveServerBackupSnapshot(
  */
 export async function fetchServerBackups(): Promise<any[]> {
   try {
-    const res = await fetch(buildApiUrl('/api/database/backups'));
+    const res = await verboseFetch(
+      buildApiUrl('/api/database/backups'),
+      undefined,
+      'FetchServerBackups'
+    );
     if (!res.ok) return [];
     const json = await res.json();
     return json.backups || [];
@@ -624,11 +808,15 @@ export async function fetchServerBackups(): Promise<any[]> {
  */
 export async function restoreServerBackup(backupId: string): Promise<boolean> {
   try {
-    const res = await fetch(buildApiUrl('/api/database/restore-backup'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ backupId })
-    });
+    const res = await verboseFetch(
+      buildApiUrl('/api/database/restore-backup'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backupId })
+      },
+      'RestoreServerBackup'
+    );
     return res.ok;
   } catch (err) {
     console.warn('Failed to restore server backup:', err);
@@ -641,7 +829,11 @@ export async function restoreServerBackup(backupId: string): Promise<boolean> {
  */
 export async function fetchLatestServerSnapshot(): Promise<any | null> {
   try {
-    const res = await fetch(buildApiUrl('/api/database/latest-snapshot'));
+    const res = await verboseFetch(
+      buildApiUrl('/api/database/latest-snapshot'),
+      undefined,
+      'FetchLatestServerSnapshot'
+    );
     if (!res.ok) return null;
     const json = await res.json();
     return json?.snapshot || null;
@@ -656,16 +848,24 @@ export async function fetchLatestServerSnapshot(): Promise<any | null> {
  */
 export async function deleteServerBackup(backupId: string): Promise<{ success: boolean; message?: string }> {
   try {
-    const res = await fetch(buildApiUrl('/api/database/delete-backup'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ backupId })
-    });
+    const res = await verboseFetch(
+      buildApiUrl('/api/database/delete-backup'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backupId })
+      },
+      'DeleteServerBackup'
+    );
     if (!res.ok) {
       // Try RESTful DELETE fallback
-      const restRes = await fetch(buildApiUrl(`/api/database/backups/${encodeURIComponent(backupId)}`), {
-        method: 'DELETE'
-      });
+      const restRes = await verboseFetch(
+        buildApiUrl(`/api/database/backups/${encodeURIComponent(backupId)}`),
+        {
+          method: 'DELETE'
+        },
+        'DeleteServerBackupREST'
+      );
       if (restRes.ok) {
         const json = await restRes.json().catch(() => ({}));
         return { success: true, message: json.message };
@@ -686,10 +886,14 @@ export async function deleteServerBackup(backupId: string): Promise<{ success: b
  */
 export async function deleteAllServerBackups(): Promise<number> {
   try {
-    const res = await fetch(buildApiUrl('/api/database/delete-all-backups'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const res = await verboseFetch(
+      buildApiUrl('/api/database/delete-all-backups'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      },
+      'DeleteAllServerBackups'
+    );
     if (!res.ok) return 0;
     const json = await res.json();
     return json.count || 0;
@@ -715,7 +919,22 @@ export function subscribeToServerEvents(
     if (isClosed) return;
     try {
       if (typeof window !== 'undefined' && typeof (window as any).EventSource === 'function') {
-        eventSource = new EventSource(buildApiUrl('/api/database/events'));
+        const sseUrl = buildApiUrl('/api/database/events');
+        console.log(
+          `%c[ServerSync:SSE] 📡 Connecting to Server-Sent Events stream: %c${buildFullApiUrl(sseUrl)}`,
+          'color: #0284c7; font-weight: bold; background: #e0f2fe; padding: 1px 5px; border-radius: 3px;',
+          'color: #0369a1; font-weight: 600;'
+        );
+
+        eventSource = new EventSource(sseUrl);
+
+        eventSource.onopen = () => {
+          console.log(
+            `%c[ServerSync:SSE] ✔ SSE connection established: %c${buildFullApiUrl(sseUrl)}`,
+            'color: #15803d; font-weight: bold; background: #dcfce7; padding: 1px 5px; border-radius: 3px;',
+            'color: #15803d;'
+          );
+        };
 
         eventSource.onmessage = (e) => {
           try {
@@ -732,11 +951,17 @@ export function subscribeToServerEvents(
               }
             }
           } catch (err) {
-            console.warn('Error parsing SSE database event:', err);
+            console.warn('[ServerSync:SSE] Error parsing SSE database event:', err);
           }
         };
 
         eventSource.onerror = () => {
+          console.warn(
+            `%c[ServerSync:SSE] ⚠ SSE Stream interrupted on %c${buildFullApiUrl(sseUrl)}%c. Reconnecting in 2s...`,
+            'color: #b45309; font-weight: bold;',
+            'color: #b45309; font-weight: bold;',
+            'color: inherit;'
+          );
           if (eventSource) {
             eventSource.close();
             eventSource = null;
@@ -831,15 +1056,19 @@ export async function syncShiftToServer(
   savedBy: string = 'Kasir'
 ): Promise<boolean> {
   try {
-    const res = await fetch(buildApiUrl('/api/shift/update'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Id': CLIENT_ID,
-        'X-Saved-By': savedBy
+    const res = await verboseFetch(
+      buildApiUrl('/api/shift/update'),
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Id': CLIENT_ID,
+          'X-Saved-By': savedBy
+        },
+        body: JSON.stringify({ shift, sourceClient: CLIENT_ID, savedBy })
       },
-      body: JSON.stringify({ shift, sourceClient: CLIENT_ID, savedBy })
-    });
+      'SyncShiftToServer'
+    );
     return res.ok;
   } catch (err) {
     console.warn('Failed to sync shift to server:', err);
@@ -852,13 +1081,17 @@ export async function syncShiftToServer(
  */
 export async function fetchCurrentShiftFromServer(): Promise<CashierShift | null> {
   try {
-    const res = await fetch(buildApiUrl(`/api/shift/current?_t=${Date.now()}`), {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
-      }
-    });
+    const res = await verboseFetch(
+      buildApiUrl(`/api/shift/current?_t=${Date.now()}`),
+      {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache'
+        }
+      },
+      'FetchCurrentShiftFromServer'
+    );
     if (!res.ok) return null;
     const json = await res.json();
     return json.shift || null;
@@ -877,14 +1110,18 @@ export async function analyzeDataViaServer(payload: {
   cashFlowRecords?: CashFlowRecord[];
 }): Promise<any> {
   try {
-    const res = await fetch(buildApiUrl('/api/sql/analyze'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Id': CLIENT_ID
+    const res = await verboseFetch(
+      buildApiUrl('/api/sql/analyze'),
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Id': CLIENT_ID
+        },
+        body: JSON.stringify(payload)
       },
-      body: JSON.stringify(payload)
-    });
+      'AnalyzeDataViaServer'
+    );
     if (!res.ok) throw new Error('Analysis request failed');
     return await res.json();
   } catch (err: any) {
@@ -902,14 +1139,18 @@ export async function executeCloudSqlUpsert(payload: {
   cashFlowRecords?: CashFlowRecord[];
 }): Promise<any> {
   try {
-    const res = await fetch(buildApiUrl('/api/sql/execute-upsert'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Id': CLIENT_ID
+    const res = await verboseFetch(
+      buildApiUrl('/api/sql/execute-upsert'),
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Id': CLIENT_ID
+        },
+        body: JSON.stringify({ ...payload, sourceClient: CLIENT_ID })
       },
-      body: JSON.stringify({ ...payload, sourceClient: CLIENT_ID })
-    });
+      'ExecuteCloudSqlUpsert'
+    );
     if (!res.ok) throw new Error('Execution request failed');
     return await res.json();
   } catch (err: any) {
@@ -923,9 +1164,13 @@ export async function executeCloudSqlUpsert(payload: {
  */
 export async function getLiveSyncStatus(): Promise<any> {
   try {
-    const res = await fetch(buildApiUrl(`/api/sql/sync-status?_t=${Date.now()}`), {
-      cache: 'no-store'
-    });
+    const res = await verboseFetch(
+      buildApiUrl(`/api/sql/sync-status?_t=${Date.now()}`),
+      {
+        cache: 'no-store'
+      },
+      'GetLiveSyncStatus'
+    );
     if (!res.ok) return null;
     return await res.json();
   } catch (err) {
