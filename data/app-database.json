@@ -1,5 +1,5 @@
 {
-  "products": [],
+  "isRealData": true,
   "transactions": [
     {
       "createdAt": "2026-09-30T11:23:39.015Z",
@@ -896,11 +896,42 @@
       "discount": 0,
       "change": 0,
       "amountPaid": 1040000
+    },
+    {
+      "id": "t1",
+      "total": 1000
     }
   ],
-  "cashFlowRecords": [],
-  "shiftHistory": [],
-  "kaosStocks": [],
+  "products": [],
+  "users": [
+    {
+      "id": "u1",
+      "name": "DIMAS",
+      "roleLabel": "Kasir POS",
+      "avatarText": "DI",
+      "pin": "1234",
+      "role": "kasir",
+      "username": "kasir_dimas"
+    },
+    {
+      "avatarText": "AT",
+      "role": "admin",
+      "roleLabel": "Administrator / Pemilik",
+      "id": "u2",
+      "name": "ATHREE(Owner)",
+      "username": "admin_athree",
+      "pin": "1234"
+    },
+    {
+      "avatarText": "BS",
+      "id": "u3",
+      "name": "Budi Santoso",
+      "username": "staff_budi",
+      "roleLabel": "Staf Produksi / Desain",
+      "pin": "1234",
+      "role": "staff"
+    }
+  ],
   "customers": [
     {
       "id": "c-1790247670148",
@@ -968,49 +999,7 @@
       "phone": "0852-3322-1100"
     }
   ],
-  "isRealData": true,
-  "users": [
-    {
-      "id": "u1",
-      "name": "DIMAS",
-      "roleLabel": "Kasir POS",
-      "avatarText": "DI",
-      "pin": "1234",
-      "role": "kasir",
-      "username": "kasir_dimas"
-    },
-    {
-      "avatarText": "AT",
-      "role": "admin",
-      "roleLabel": "Administrator / Pemilik",
-      "id": "u2",
-      "name": "ATHREE(Owner)",
-      "username": "admin_athree",
-      "pin": "1234"
-    },
-    {
-      "avatarText": "BS",
-      "id": "u3",
-      "name": "Budi Santoso",
-      "username": "staff_budi",
-      "roleLabel": "Staf Produksi / Desain",
-      "pin": "1234",
-      "role": "staff"
-    }
-  ],
   "currentShift": {
-    "id": "shift-active",
-    "shiftNumber": 1,
-    "outletName": "athree studio jayapura",
-    "cashierName": "ATHREE(Owner)",
-    "startTime": "-",
-    "startTimestamp": 0,
-    "startingCash": 130000,
-    "cashSales": 0,
-    "nonCashSales": 0,
-    "totalSales": 0,
-    "expectedCash": 130000,
-    "isOpen": false,
-    "notes": "Kasir Harian"
+    "isOpen": true
   }
 }

@@ -73,24 +73,26 @@ export async function fetchServerDatabase(): Promise<{
   data: AppDatabasePayload | null;
   isRealData: boolean;
 }> {
-  try {
-    const res = await fetch('/api/database', {
-      headers: { 'Accept': 'application/json' },
-      cache: 'no-store'
-    });
-    if (!res.ok) {
-      return { success: false, data: null, isRealData: false };
+  const endpoints = ['/api/database', '/api/cloudsql/database', '/api/cloudsql/data'];
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, {
+        headers: { 'Accept': 'application/json', 'X-Client-Id': CLIENT_ID },
+        cache: 'no-store'
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return {
+          success: Boolean(json.success),
+          data: json.data || null,
+          isRealData: Boolean(json.isRealData)
+        };
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch database from ${ep}:`, err);
     }
-    const json = await res.json();
-    return {
-      success: Boolean(json.success),
-      data: json.data || null,
-      isRealData: Boolean(json.isRealData)
-    };
-  } catch (err) {
-    console.warn('Failed to fetch central database from server:', err);
-    return { success: false, data: null, isRealData: false };
   }
+  return { success: false, data: null, isRealData: false };
 }
 
 /**
@@ -118,45 +120,64 @@ export async function saveServerDatabase(
     deletedTransactionIds: options?.deletedTransactionIds || payload.deletedTransactionIds || []
   };
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const endpointsToTry = [
+    '/api/database/save-all',
+    '/api/cloudsql/sync',
+    '/api/cloudsql/save',
+    '/api/database'
+  ];
 
-    const res = await fetch('/api/database/save-all', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Id': CLIENT_ID
-      },
-      body: JSON.stringify(fullPayload),
-      signal: controller.signal
-    });
+  let lastErrorMsg = 'Server error 404';
 
-    clearTimeout(timeoutId);
+  for (const ep of endpointsToTry) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-    if (!res.ok) {
-      let errorMsg = `Server error ${res.status}`;
-      try {
-        const errJson = await res.json();
-        if (errJson?.error) errorMsg = errJson.error;
-      } catch {}
-      return { success: false, error: errorMsg };
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Id': CLIENT_ID,
+          'X-Saved-By': fullPayload.savedBy,
+          'X-Save-Source': fullPayload.source
+        },
+        body: JSON.stringify(fullPayload),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        return {
+          success: true,
+          message: json.message || 'Berhasil disimpan ke Cloud SQL & Server',
+          snapshotId: json?.snapshotId,
+          transactionsCount: json?.transactionsCount
+        };
+      }
+
+      // If it's a specific non-404 error (e.g. 400 or 500), read the error and stop
+      if (res.status !== 404) {
+        try {
+          const errJson = await res.json();
+          if (errJson?.error) lastErrorMsg = errJson.error;
+          else lastErrorMsg = `Server error ${res.status}`;
+        } catch {
+          lastErrorMsg = `Server error ${res.status}`;
+        }
+        break;
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return { success: false, error: 'Koneksi server timeout (12 detik)' };
+      }
+      lastErrorMsg = err.message || 'Koneksi ke server gagal';
     }
-
-    const json = await res.json();
-    return {
-      success: true,
-      message: 'Berhasil disimpan ke Cloud SQL & Server',
-      snapshotId: json?.snapshotId,
-      transactionsCount: json?.transactionsCount
-    };
-  } catch (err: any) {
-    console.warn('Failed to save to central server database:', err);
-    return {
-      success: false,
-      error: err.name === 'AbortError' ? 'Koneksi server timeout (12 detik)' : (err.message || 'Koneksi ke server gagal')
-    };
   }
+
+  return { success: false, error: lastErrorMsg };
 }
 
 /**

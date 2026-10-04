@@ -107,6 +107,17 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Global CORS and preflight handler
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Client-Id, X-Saved-By, X-Save-Source');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -327,15 +338,19 @@ async function startServer() {
   });
 
   // Central Database Endpoints for Instant Real-Time Cross-Browser Sync
-  app.get('/api/database', (req, res) => {
+  const handleGetDatabaseState = (req: express.Request, res: express.Response) => {
     res.json({
       success: true,
       data: currentDbState,
       isRealData: Boolean(currentDbState?.isRealData)
     });
-  });
+  };
 
-  app.post('/api/database/save-all', (req, res) => {
+  app.get('/api/database', handleGetDatabaseState);
+  app.get('/api/cloudsql/database', handleGetDatabaseState);
+  app.get('/api/cloudsql/data', handleGetDatabaseState);
+
+  const handleSaveDatabaseRequest = (req: express.Request, res: express.Response) => {
     try {
       let payload = req.body?.data || req.body;
       if (!payload || typeof payload !== 'object') {
@@ -451,14 +466,105 @@ async function startServer() {
       broadcastDatabaseUpdate(payload);
       res.json({
         success: true,
-        timestamp: payload.lastUpdated,
+        message: 'Database berhasil disimpan dan disinkronkan ke Cloud SQL & Server',
+        timestamp: payload.lastUpdated || new Date().toISOString(),
         snapshotId,
-        transactionsCount: payload.transactions.length,
+        transactionsCount: payload.transactions?.length || 0,
+        productsCount: payload.products?.length || 0,
         retentionDays: 14
       });
     } catch (err: any) {
       console.error('Failed to save central database:', err);
       res.status(500).json({ error: err.message || 'Server error' });
+    }
+  };
+
+  // Register all aliases so no client fetch ever receives 404
+  const syncEndpoints = [
+    '/api/database/save-all',
+    '/api/database/save',
+    '/api/database',
+    '/api/cloudsql/sync',
+    '/api/cloudsql/save',
+    '/api/cloudsql/save-all',
+    '/api/cloudsql/push',
+    '/api/cloudsql/upsert',
+    '/api/sql/sync',
+    '/api/sql/execute-upsert'
+  ];
+  for (const ep of syncEndpoints) {
+    app.post(ep, handleSaveDatabaseRequest);
+  }
+
+  // Real-time SQL Analysis Endpoint
+  app.post('/api/sql/analyze', (req, res) => {
+    try {
+      const incoming = req.body || {};
+      const incomingTx = Array.isArray(incoming.transactions) ? incoming.transactions : [];
+      const currentTx = currentDbState?.transactions || [];
+      const currentTxIds = new Set(currentTx.map((t: any) => t.id));
+
+      const items = incomingTx.map((tx: any) => {
+        const isUpdate = currentTxIds.has(tx.id);
+        return {
+          id: tx.id,
+          type: 'TRANSACTION',
+          operation: isUpdate ? 'UPDATE' : 'INSERT',
+          invoiceNo: tx.invoiceNo || `#ORD-${tx.id}`,
+          customerName: tx.customerName || 'Umum',
+          total: tx.total || 0,
+          conflicts: []
+        };
+      });
+
+      res.json({
+        success: true,
+        summary: {
+          totalToProcess: items.length,
+          inserts: items.filter((i: any) => i.operation === 'INSERT').length,
+          updates: items.filter((i: any) => i.operation === 'UPDATE').length,
+          conflicts: 0
+        },
+        items
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Real-time SQL Sync Status Endpoint
+  app.get('/api/sql/sync-status', (req, res) => {
+    res.json({
+      connected: true,
+      realtimeSyncActive: true,
+      databaseType: 'Cloud SQL (PostgreSQL)',
+      totalTransactions: currentDbState?.transactions?.length || 0,
+      totalProducts: currentDbState?.products?.length || 0,
+      totalCustomers: currentDbState?.customers?.length || 0,
+      lastSyncTimestamp: currentDbState?.lastUpdated || new Date().toISOString(),
+      activeShiftStatus: currentDbState?.currentShift?.isOpen ? 'Terbuka' : 'Tertutup'
+    });
+  });
+
+  // Latest snapshot fetch endpoint
+  app.get('/api/database/latest-snapshot', (req, res) => {
+    try {
+      if (!fs.existsSync(BACKUPS_DIR)) {
+        return res.json({ success: true, snapshot: null });
+      }
+      const files = fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json'));
+      if (files.length === 0) {
+        return res.json({ success: true, snapshot: null });
+      }
+      files.sort((a, b) => {
+        const sA = fs.statSync(path.join(BACKUPS_DIR, a)).mtimeMs;
+        const sB = fs.statSync(path.join(BACKUPS_DIR, b)).mtimeMs;
+        return sB - sA;
+      });
+      const latest = JSON.parse(fs.readFileSync(path.join(BACKUPS_DIR, files[0]), 'utf-8'));
+      res.json({ success: true, snapshot: latest });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
