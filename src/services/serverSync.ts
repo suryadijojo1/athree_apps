@@ -230,17 +230,30 @@ export async function fetchLatestServerSnapshot(): Promise<any | null> {
 /**
  * Delete a specific server backup snapshot
  */
-export async function deleteServerBackup(backupId: string): Promise<boolean> {
+export async function deleteServerBackup(backupId: string): Promise<{ success: boolean; message?: string }> {
   try {
     const res = await fetch('/api/database/delete-backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ backupId })
     });
-    return res.ok;
-  } catch (err) {
+    if (!res.ok) {
+      // Try RESTful DELETE fallback
+      const restRes = await fetch(`/api/database/backups/${encodeURIComponent(backupId)}`, {
+        method: 'DELETE'
+      });
+      if (restRes.ok) {
+        const json = await restRes.json().catch(() => ({}));
+        return { success: true, message: json.message };
+      }
+      const errJson = await res.json().catch(() => ({ error: 'Gagal menghapus snapshot dari storage' }));
+      return { success: false, message: errJson.error || 'Gagal menghapus snapshot dari storage' };
+    }
+    const json = await res.json().catch(() => ({}));
+    return { success: true, message: json.message };
+  } catch (err: any) {
     console.warn('Failed to delete server backup:', err);
-    return false;
+    return { success: false, message: err.message };
   }
 }
 

@@ -543,6 +543,42 @@ async function startServer() {
     }
   });
 
+  // Helper: Find backup file by ID or filename (handles backup_*, snapshot_*, or raw timestamp)
+  function findBackupFile(backupId: string): string | null {
+    if (!fs.existsSync(BACKUPS_DIR)) return null;
+    const files = fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json'));
+    const cleanId = String(backupId || '').trim();
+    if (!cleanId) return null;
+
+    // 1. Exact filename or exact ID match
+    const direct = files.find(f =>
+      f === cleanId ||
+      f === `${cleanId}.json` ||
+      f.replace('.json', '') === cleanId ||
+      f.includes(cleanId)
+    );
+    if (direct) return direct;
+
+    // 2. Numeric timestamp match (e.g. backup_1791103908295 matches snapshot_1791103908295.json)
+    const numericPart = cleanId.replace(/^(backup_|snapshot_)/, '').replace('.json', '');
+    if (numericPart && numericPart.length >= 8) {
+      const numMatch = files.find(f => f.includes(numericPart));
+      if (numMatch) return numMatch;
+    }
+
+    // 3. Inspect JSON file internal ID
+    for (const f of files) {
+      try {
+        const content = JSON.parse(fs.readFileSync(path.join(BACKUPS_DIR, f), 'utf-8'));
+        if (content.id === cleanId || content.fileName === cleanId) {
+          return f;
+        }
+      } catch {}
+    }
+
+    return null;
+  }
+
   // Restore database from a specific 14-day backup snapshot
   app.post('/api/database/restore-backup', (req, res) => {
     try {
@@ -551,8 +587,7 @@ async function startServer() {
         return res.status(400).json({ error: 'backupId is required' });
       }
 
-      const files = fs.readdirSync(BACKUPS_DIR);
-      const targetFile = files.find(f => f.includes(backupId) || f === `${backupId}.json`);
+      const targetFile = findBackupFile(backupId);
       if (!targetFile) {
         return res.status(404).json({ error: 'Backup snapshot tidak ditemukan' });
       }
@@ -570,10 +605,113 @@ async function startServer() {
       res.json({
         success: true,
         restoredFrom: backupId,
+        fileName: targetFile,
         transactionsCount: currentDbState?.transactions?.length || 0,
         productsCount: currentDbState?.products?.length || 0
       });
     } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete a specific 14-day backup snapshot file from storage
+  app.post('/api/database/delete-backup', (req, res) => {
+    try {
+      const { backupId } = req.body;
+      if (!backupId) {
+        return res.status(400).json({ error: 'backupId is required' });
+      }
+
+      if (!fs.existsSync(BACKUPS_DIR)) {
+        return res.status(404).json({ error: 'Folder backups tidak ditemukan' });
+      }
+
+      const targetFile = findBackupFile(backupId);
+      if (!targetFile) {
+        return res.status(404).json({ error: 'File backup snapshot tidak ditemukan di storage server' });
+      }
+
+      const filePath = path.join(BACKUPS_DIR, targetFile);
+      fs.unlinkSync(filePath);
+      console.log(`[Storage] Deleted snapshot backup file: ${targetFile}`);
+
+      const remainingFiles = fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json'));
+      res.json({
+        success: true,
+        message: `Snapshot file ${targetFile} berhasil dihapus dari storage.`,
+        deletedId: backupId,
+        fileName: targetFile,
+        remainingCount: remainingFiles.length
+      });
+    } catch (err: any) {
+      console.error('Failed to delete backup snapshot:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // RESTful endpoint: DELETE /api/database/backups/:id
+  app.delete('/api/database/backups/:id', (req, res) => {
+    try {
+      const backupId = req.params.id;
+      if (!backupId) {
+        return res.status(400).json({ error: 'id is required' });
+      }
+
+      if (!fs.existsSync(BACKUPS_DIR)) {
+        return res.status(404).json({ error: 'Folder backups tidak ditemukan' });
+      }
+
+      const targetFile = findBackupFile(backupId);
+      if (!targetFile) {
+        return res.status(404).json({ error: 'File backup snapshot tidak ditemukan di storage server' });
+      }
+
+      const filePath = path.join(BACKUPS_DIR, targetFile);
+      fs.unlinkSync(filePath);
+      console.log(`[Storage] Deleted snapshot backup file: ${targetFile}`);
+
+      const remainingFiles = fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json'));
+      res.json({
+        success: true,
+        message: `Snapshot file ${targetFile} berhasil dihapus dari storage.`,
+        deletedId: backupId,
+        fileName: targetFile,
+        remainingCount: remainingFiles.length
+      });
+    } catch (err: any) {
+      console.error('Failed to delete backup snapshot:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete all backup snapshots from storage
+  app.post('/api/database/delete-all-backups', (req, res) => {
+    try {
+      if (!fs.existsSync(BACKUPS_DIR)) {
+        return res.json({ success: true, count: 0 });
+      }
+
+      const files = fs.readdirSync(BACKUPS_DIR);
+      let count = 0;
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          try {
+            fs.unlinkSync(path.join(BACKUPS_DIR, file));
+            count++;
+          } catch (e) {
+            console.warn(`Error deleting backup file ${file}:`, e);
+          }
+        }
+      }
+
+      console.log(`[Storage] Deleted all ${count} snapshot backup files.`);
+      res.json({
+        success: true,
+        message: `Semua snapshot (${count} file) berhasil dihapus dari storage.`,
+        count
+      });
+    } catch (err: any) {
+      console.error('Failed to delete all backup snapshots:', err);
       res.status(500).json({ error: err.message });
     }
   });

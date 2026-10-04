@@ -1253,3 +1253,15 @@ export async function cleanExpiredBackupsFirestore(): Promise<number> {
     return 0;
   }
 }
+
+export async function deleteCloudBackupSnapshot(backupId: string): Promise<boolean> {
+  if (!FIRESTORE_ENABLED || !db) return false;
+  const path = `databaseBackups/${backupId}`;
+  try {
+    await deleteDoc(doc(db, 'databaseBackups', backupId));
+    return true;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+    return false;
+  }
+}

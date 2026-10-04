@@ -477,6 +477,7 @@ export default function App() {
 
   // Firebase & Server Cloud Sync State
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
+  const [syncModalInitialTab, setSyncModalInitialTab] = useState<'sql' | 'snapshots' | 'query' | 'local' | 'drive' | 'firestore'>('sql');
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -2664,9 +2665,40 @@ export default function App() {
           onDeleteSales={handleDeleteSales}
           allowCashierDrive={allowCashierDrive}
           onToggleAllowCashierDrive={handleToggleAllowCashierDrive}
+          onOpenFirebaseModal={() => {
+            setSyncModalInitialTab('sql');
+            setIsFirebaseModalOpen(true);
+          }}
+          onOpenSnapshotModal={() => {
+            setSyncModalInitialTab('snapshots');
+            setIsFirebaseModalOpen(true);
+          }}
+          onOpenDataSyncModal={() => {
+            setSyncModalInitialTab('sql');
+            setIsFirebaseModalOpen(true);
+          }}
         />
 
         {/* Modals accessible from Admin Portal */}
+        <CloudSqlSyncModal
+          isOpen={isFirebaseModalOpen}
+          onClose={() => setIsFirebaseModalOpen(false)}
+          products={products}
+          transactions={transactions}
+          cashFlowRecords={cashFlowRecords}
+          shifts={shiftHistory}
+          currentShift={shift}
+          kaosStocks={kaosStocks}
+          customers={customers}
+          users={users}
+          stockMovements={stockMovements}
+          salesList={salesList}
+          onManualSyncSuccess={() => {}}
+          onApplyDatabasePayload={applyFullDatabasePayload}
+          onNavigateToDrive={() => setActiveTab('drive')}
+          initialTab={syncModalInitialTab}
+        />
+
         <UserLoginModal
           users={users}
           currentUser={currentUser}
@@ -3056,6 +3088,7 @@ export default function App() {
         onManualSyncSuccess={() => {}}
         onApplyDatabasePayload={applyFullDatabasePayload}
         onNavigateToDrive={() => setActiveTab('drive')}
+        initialTab={syncModalInitialTab}
       />
 
       {/* Logout Cloud Database Saving Overlay */}
