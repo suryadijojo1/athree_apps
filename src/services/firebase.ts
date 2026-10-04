@@ -1053,10 +1053,10 @@ export async function syncAllLocalDataToFirestore(data: {
 }
 
 // ---------------------------------------------------------------------------
-// Rolling 14-Day Snapshots in Firestore
+// Rolling 3-Day Maximum Snapshots in Firestore (Agar Database Lama Tidak Menumpuk)
 // ---------------------------------------------------------------------------
 
-export const BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+export const BACKUP_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days maximum
 
 export interface CloudBackupSnapshotMeta {
   id: string;
@@ -1091,7 +1091,7 @@ export async function saveCloudBackupSnapshot(
     timestamp: now,
     expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
     expiresTimestamp: now + BACKUP_RETENTION_MS,
-    retentionDays: 14,
+    retentionDays: 3,
     savedBy,
     source,
     stats: {
@@ -1108,7 +1108,7 @@ export async function saveCloudBackupSnapshot(
       ...meta,
       payload: data
     });
-    // Trigger non-blocking pruning of expired backups
+    // Trigger non-blocking pruning of expired backups (> 3 days)
     cleanExpiredBackupsFirestore().catch(() => {});
     return backupId;
   } catch (err) {
@@ -1120,21 +1120,25 @@ export async function saveCloudBackupSnapshot(
 export async function fetchCloudBackupSnapshots(): Promise<CloudBackupSnapshotMeta[]> {
   const path = 'databaseBackups';
   try {
+    // Non-blocking prune of expired snapshots (> 3 days)
+    cleanExpiredBackupsFirestore().catch(() => {});
+
     const snap = await getDocs(collection(db, path));
     const now = Date.now();
     const list: CloudBackupSnapshotMeta[] = [];
 
     for (const d of snap.docs) {
       const data = d.data();
-      // Skip expired backups
-      if (data.expiresTimestamp && data.expiresTimestamp < now) continue;
+      const age = now - (data.timestamp || 0);
+      // Skip expired backups older than 3 days
+      if ((data.expiresTimestamp && data.expiresTimestamp < now) || age > BACKUP_RETENTION_MS) continue;
       list.push({
         id: data.id || d.id,
         createdAt: data.createdAt,
         timestamp: data.timestamp || 0,
         expiresAt: data.expiresAt,
-        expiresTimestamp: data.expiresTimestamp || 0,
-        retentionDays: data.retentionDays || 14,
+        expiresTimestamp: data.expiresTimestamp || (data.timestamp ? data.timestamp + BACKUP_RETENTION_MS : now + BACKUP_RETENTION_MS),
+        retentionDays: data.retentionDays || 3,
         savedBy: data.savedBy || 'Kasir',
         source: data.source || 'backup',
         stats: data.stats || {
@@ -1206,7 +1210,9 @@ export async function cleanExpiredBackupsFirestore(): Promise<number> {
 
     for (const d of snap.docs) {
       const data = d.data();
-      if (data.expiresTimestamp && data.expiresTimestamp < now) {
+      const age = now - (data.timestamp || 0);
+      const isExpired = (data.expiresTimestamp && data.expiresTimestamp < now) || age > BACKUP_RETENTION_MS;
+      if (isExpired) {
         batch.delete(doc(db, 'databaseBackups', d.id));
         cleaned++;
       }
@@ -1214,9 +1220,11 @@ export async function cleanExpiredBackupsFirestore(): Promise<number> {
 
     if (cleaned > 0) {
       await batch.commit();
+      console.log(`[Firestore Clean] Berhasil menghapus ${cleaned} snapshot kadaluarsa (> 3 hari) agar database tidak menumpuk.`);
     }
     return cleaned;
-  } catch {
+  } catch (err) {
+    console.warn('Gagal membersihkan snapshot kadaluarsa di Firestore:', err);
     return 0;
   }
 }
@@ -1224,10 +1232,22 @@ export async function cleanExpiredBackupsFirestore(): Promise<number> {
 export async function deleteCloudBackupSnapshot(backupId: string): Promise<boolean> {
   const path = `databaseBackups/${backupId}`;
   try {
+    // 1. Direct delete by ID
     await deleteDoc(doc(db, 'databaseBackups', backupId));
     return true;
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, path);
+  } catch {
+    // 2. Fallback: Search matching document in collection
+    try {
+      const snap = await getDocs(collection(db, 'databaseBackups'));
+      for (const d of snap.docs) {
+        if (d.id === backupId || d.data().id === backupId || d.id.includes(backupId) || backupId.includes(d.id)) {
+          await deleteDoc(doc(db, 'databaseBackups', d.id));
+          return true;
+        }
+      }
+    } catch (innerErr) {
+      handleFirestoreError(innerErr, OperationType.DELETE, path);
+    }
     return false;
   }
 }

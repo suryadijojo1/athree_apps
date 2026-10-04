@@ -58,6 +58,7 @@ interface AdminDashboardProps {
   onSwitchUser: () => void;
   onLogout?: () => void;
   onOpenFirebaseModal?: () => void;
+  onOpenSnapshotModal?: () => void;
   transactions: Transaction[];
   shift: CashierShift;
   cashFlowRecords: CashFlowRecord[];
@@ -87,6 +88,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSwitchUser,
   onLogout,
   onOpenFirebaseModal,
+  onOpenSnapshotModal,
   transactions,
   shift,
   cashFlowRecords,
@@ -672,6 +674,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Database className="w-4 h-4 text-[#00871f]" />
                 <span>Analisis Data &amp; Cloud SQL</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+              </button>
+            )}
+            {(onOpenSnapshotModal || onOpenFirebaseModal) && (
+              <button
+                type="button"
+                onClick={onOpenSnapshotModal || onOpenFirebaseModal}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-950 px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm shadow-lg hover:shadow-xl transition-all active:scale-95 border border-rose-300 flex items-center gap-1.5 cursor-pointer"
+                title="Kelola, Sinkronkan &amp; Hapus Snapshot Database (Cloud Firestore &amp; SQL)"
+              >
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span>Kelola &amp; Hapus Snapshot</span>
               </button>
             )}
             {shift.isOpen ? (

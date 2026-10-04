@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame, RotateCcw, Database } from 'lucide-react';
+import { Search, Barcode, Calendar, UserCheck, Shield, ChevronDown, CheckCircle2, Home, LogOut, KeyRound, Calculator, Lock, Unlock, Clock, Flame, RotateCcw, Database, Trash2 } from 'lucide-react';
 import { User, CashierShift } from '../types';
 
 interface HeaderProps {
@@ -16,6 +16,7 @@ interface HeaderProps {
   onOpenUserManagement?: () => void;
   onOpenCloudSqlModal?: () => void;
   onOpenFirebaseModal?: () => void;
+  onOpenSnapshotModal?: () => void;
   isFirebaseConnected?: boolean;
   firebaseUser?: any;
 }
@@ -34,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenUserManagement,
   onOpenCloudSqlModal,
   onOpenFirebaseModal,
+  onOpenSnapshotModal,
   isFirebaseConnected,
   firebaseUser
 }) => {
@@ -266,6 +268,25 @@ export const Header: React.FC<HeaderProps> = ({
                       </span>
                       <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
                         {firebaseUser ? 'Online' : 'Cloud'}
+                      </span>
+                    </button>
+                  )}
+
+                  {onOpenSnapshotModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onOpenSnapshotModal();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-medium text-rose-700 hover:bg-rose-50 flex items-center justify-between cursor-pointer border-t border-slate-100"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Trash2 className="w-4 h-4 text-rose-600" />
+                        <span>Kelola &amp; Hapus Snapshot</span>
+                      </span>
+                      <span className="text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-semibold">
+                        Snapshot
                       </span>
                     </button>
                   )}

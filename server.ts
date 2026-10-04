@@ -11,9 +11,9 @@ const DB_FILE_PATH = path.join(process.cwd(), 'data', 'app-database.json');
 const BACKUPS_DIR = path.join(process.cwd(), 'data', 'backups');
 const GDRIVE_ACCOUNT_FILE = path.join(process.cwd(), 'data', 'gdrive-account.json');
 const GDRIVE_BACKUPS_DIR = path.join(process.cwd(), 'data', 'gdrive-backups');
-const BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 hari retensi sesuai permintaan
+const BACKUP_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 hari retensi maksimal sesuai permintaan agar database tidak menumpuk
 
-// Helper: Prune backups older than 14 days so files do not pile up
+// Helper: Prune backups older than 3 days so files do not pile up
 function pruneExpiredBackups(): number {
   let prunedCount = 0;
   try {
@@ -41,7 +41,7 @@ function pruneExpiredBackups(): number {
         if (isExpired) {
           fs.unlinkSync(filePath);
           prunedCount++;
-          console.log(`Pruned expired 14-day backup snapshot: ${file}`);
+          console.log(`Pruned expired 3-day backup snapshot: ${file}`);
         }
       } catch (err) {
         console.warn(`Error checking backup file ${file}:`, err);
@@ -53,7 +53,7 @@ function pruneExpiredBackups(): number {
   return prunedCount;
 }
 
-// Helper: Create a snapshot backup with 14-day expiry
+// Helper: Create a snapshot backup with 3-day expiry
 function saveBackupSnapshot(payload: any, savedBy: string = 'System', source: string = 'sync'): string | null {
   try {
     if (!fs.existsSync(BACKUPS_DIR)) {
@@ -70,7 +70,7 @@ function saveBackupSnapshot(payload: any, savedBy: string = 'System', source: st
       timestamp: now,
       expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
       expiresTimestamp: now + BACKUP_RETENTION_MS,
-      retentionDays: 14,
+      retentionDays: 3,
       savedBy,
       source,
       stats: {
@@ -363,8 +363,8 @@ async function startServer() {
       res.json({
         success: true,
         snapshotId,
-        retentionDays: 14,
-        expiresIn: '14 hari',
+        retentionDays: 3,
+        expiresIn: '3 hari',
         timestamp: new Date().toISOString()
       });
     } catch (err: any) {
@@ -424,7 +424,7 @@ async function startServer() {
       }
 
       backups.sort((a, b) => b.timestamp - a.timestamp);
-      res.json({ success: true, backups, retentionDays: 14 });
+      res.json({ success: true, backups, retentionDays: 3 });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -525,7 +525,14 @@ async function startServer() {
       }
 
       const files = fs.readdirSync(BACKUPS_DIR);
-      const targetFile = files.find(f => f.includes(backupId) || f === `${backupId}.json`);
+      const targetFile = files.find(
+        f =>
+          f === backupId ||
+          f === `${backupId}.json` ||
+          f.replace('.json', '') === backupId ||
+          f.includes(backupId) ||
+          backupId.includes(f.replace('.json', ''))
+      );
       if (!targetFile) {
         return res.status(404).json({ error: 'Snapshot backup tidak ditemukan' });
       }

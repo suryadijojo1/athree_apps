@@ -160,7 +160,7 @@ export async function saveServerDatabase(
 }
 
 /**
- * Save dedicated backup snapshot to the server with 14-day retention
+ * Save dedicated backup snapshot to the server with 3-day maximum retention
  */
 export async function saveServerBackupSnapshot(
   data: any,
@@ -181,7 +181,7 @@ export async function saveServerBackupSnapshot(
 }
 
 /**
- * Fetch 14-day server backup snapshots
+ * Fetch 3-day server backup snapshots
  */
 export async function fetchServerBackups(): Promise<any[]> {
   try {
