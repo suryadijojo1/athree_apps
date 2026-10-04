@@ -4,7 +4,7 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import { getUsers, getOrCreateUser } from './src/db/users.ts';
-import { db, createPool } from './src/db/index.ts';
+import { db, createPool, resolveSqlHost } from './src/db/index.ts';
 import {
   products,
   transactions,
@@ -178,8 +178,9 @@ async function startServer() {
   // Cloud SQL Database & Real-Time Sync Status Check
   app.get('/api/cloudsql/status', async (req, res) => {
     let sqlDirectConnected = false;
+    const activeHost = resolveSqlHost();
     try {
-      if (process.env.SQL_HOST && fs.existsSync(process.env.SQL_HOST)) {
+      if (activeHost && fs.existsSync(activeHost)) {
         const pool = createPool();
         const connectPromise = pool.connect();
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -209,7 +210,7 @@ async function startServer() {
       totalCustomers: currentDbState?.customers?.length || 0,
       lastSyncTimestamp: currentDbState?.lastUpdated || new Date().toISOString(),
       activeShiftStatus: currentDbState?.currentShift?.isOpen ? 'Terbuka' : 'Tertutup',
-      sqlHostConfigured: Boolean(process.env.SQL_HOST)
+      sqlHostConfigured: Boolean(activeHost)
     });
   });
 
@@ -245,7 +246,8 @@ async function startServer() {
       return res.status(400).json({ error: 'Parameter sql atau sql_statement wajib diisi' });
     }
 
-    if (process.env.SQL_HOST && fs.existsSync(process.env.SQL_HOST)) {
+    const activeHost = resolveSqlHost();
+    if (activeHost && fs.existsSync(activeHost)) {
       try {
         const pool = createPool();
         const queryPromise = pool.query(sql);
@@ -346,9 +348,19 @@ async function startServer() {
     });
   };
 
-  app.get('/api/database', handleGetDatabaseState);
-  app.get('/api/cloudsql/database', handleGetDatabaseState);
-  app.get('/api/cloudsql/data', handleGetDatabaseState);
+  const getDatabaseEndpoints = [
+    '/api/database',
+    '/api/database/save-all',
+    '/api/cloudsql/database',
+    '/api/cloudsql/data',
+    '/api/cloudsql/sync',
+    '/api/cloudsql/save',
+    '/api/sql/sync'
+  ];
+  for (const ep of getDatabaseEndpoints) {
+    app.get(ep, handleGetDatabaseState);
+    app.get(`${ep}/`, handleGetDatabaseState);
+  }
 
   const handleSaveDatabaseRequest = (req: express.Request, res: express.Response) => {
     try {
@@ -441,7 +453,8 @@ async function startServer() {
       const snapshotId = saveBackupSnapshot(payload, String(savedBy), String(source));
 
       // Asynchronously attempt to sync to Cloud SQL PostgreSQL masterSyncState
-      if (process.env.SQL_HOST) {
+      const activeSyncHost = resolveSqlHost();
+      if (activeSyncHost && fs.existsSync(activeSyncHost)) {
         (async () => {
           try {
             await db.insert(masterSyncState).values({
@@ -479,7 +492,7 @@ async function startServer() {
     }
   };
 
-  // Register all aliases so no client fetch ever receives 404
+  // Register all aliases (POST, PUT, PATCH with/without trailing slash) so no client fetch ever receives 404
   const syncEndpoints = [
     '/api/database/save-all',
     '/api/database/save',
@@ -494,6 +507,11 @@ async function startServer() {
   ];
   for (const ep of syncEndpoints) {
     app.post(ep, handleSaveDatabaseRequest);
+    app.put(ep, handleSaveDatabaseRequest);
+    app.patch(ep, handleSaveDatabaseRequest);
+    app.post(`${ep}/`, handleSaveDatabaseRequest);
+    app.put(`${ep}/`, handleSaveDatabaseRequest);
+    app.patch(`${ep}/`, handleSaveDatabaseRequest);
   }
 
   // Real-time SQL Analysis Endpoint

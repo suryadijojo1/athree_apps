@@ -1,5 +1,5 @@
 {
-  "isRealData": true,
+  "products": [],
   "transactions": [
     {
       "createdAt": "2026-09-30T11:23:39.015Z",
@@ -902,7 +902,8 @@
       "total": 1000
     }
   ],
-  "products": [],
+  "isRealData": true,
+  "savedBy": "Gateway Test",
   "users": [
     {
       "id": "u1",

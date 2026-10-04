@@ -1,6 +1,7 @@
 /**
  * Utility functions for handling session cleanup, cache clearing, and refresh detection
  */
+import { buildApiUrl } from '../services/serverSync';
 
 /**
  * Checks if the current page load is a result of a user refresh / reload (F5, Ctrl+R, reload button)
@@ -95,7 +96,7 @@ export function clearAllCookies(): void {
 
     // Trigger server-side session and cookie clearance
     try {
-      fetch('/api/clear-session', { method: 'POST' }).catch(() => {});
+      fetch(buildApiUrl('/api/clear-session'), { method: 'POST' }).catch(() => {});
     } catch {}
   } catch (err) {
     console.warn('Error clearing cookies:', err);
@@ -147,7 +148,7 @@ export async function clearAllCachesAndCookies(): Promise<void> {
 
   // Notify server to clear server-side session cookies / cache
   try {
-    await fetch('/api/clear-session', {
+    await fetch(buildApiUrl('/api/clear-session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     }).catch(() => {});

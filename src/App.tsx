@@ -94,7 +94,8 @@ import {
   startLiveShiftSync,
   syncShiftToServer,
   isRealUserData,
-  AppDatabasePayload
+  AppDatabasePayload,
+  buildApiUrl
 } from './services/serverSync';
 import { User as FirebaseUser } from 'firebase/auth';
 import {
@@ -1560,7 +1561,7 @@ export default function App() {
       setIsLoggingOut(false);
       setLogoutSuccess(false);
 
-      fetch('/api/clear-session', { method: 'POST' }).catch(() => {});
+      fetch(buildApiUrl('/api/clear-session'), { method: 'POST' }).catch(() => {});
     }
   };
 

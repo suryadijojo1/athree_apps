@@ -23,6 +23,42 @@ export interface AppDatabasePayload {
 // Client ID for this browser tab/session
 export const CLIENT_ID = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
+/**
+ * Resolves the active Cloud SQL API Gateway base URL.
+ * Automatically checks for custom runtime overrides, Vite environment variables,
+ * or browser location to ensure the request is directed to the active gateway.
+ */
+export function getServerBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const customGateway =
+      (window as any).__CLOUD_SQL_API_GATEWAY__ ||
+      (window as any).__CLOUD_SQL_GATEWAY__ ||
+      (window as any).__API_BASE_URL__;
+    if (customGateway && typeof customGateway === 'string') {
+      return customGateway.replace(/\/+$/, '');
+    }
+  }
+
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+    const env = (import.meta as any).env;
+    const envUrl = env.VITE_API_URL || env.VITE_CLOUD_SQL_GATEWAY || env.VITE_SERVER_URL;
+    if (envUrl && typeof envUrl === 'string') {
+      return envUrl.replace(/\/+$/, '');
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Builds a normalized, fully qualified or relative URL pointing to the Cloud SQL server endpoint.
+ */
+export function buildApiUrl(path: string): string {
+  const base = getServerBaseUrl();
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return base ? `${base}${normalizedPath}` : normalizedPath;
+}
+
 const LEGACY_DUMMY_INVOICES = new Set([
   '#INV/00001',
   '#INV/00002',
@@ -73,8 +109,23 @@ export async function fetchServerDatabase(): Promise<{
   data: AppDatabasePayload | null;
   isRealData: boolean;
 }> {
-  const endpoints = ['/api/database', '/api/cloudsql/database', '/api/cloudsql/data'];
-  for (const ep of endpoints) {
+  const candidatePaths = [
+    '/api/database',
+    '/api/database/save-all',
+    '/api/cloudsql/database',
+    '/api/cloudsql/data',
+    '/api/cloudsql/sync'
+  ];
+
+  const endpoints: string[] = [];
+  const base = getServerBaseUrl();
+  for (const p of candidatePaths) {
+    if (base) endpoints.push(`${base}${p}`);
+    endpoints.push(p);
+  }
+  const uniqueEndpoints = Array.from(new Set(endpoints));
+
+  for (const ep of uniqueEndpoints) {
     try {
       const res = await fetch(ep, {
         headers: { 'Accept': 'application/json', 'X-Client-Id': CLIENT_ID },
@@ -120,16 +171,25 @@ export async function saveServerDatabase(
     deletedTransactionIds: options?.deletedTransactionIds || payload.deletedTransactionIds || []
   };
 
-  const endpointsToTry = [
+  const candidatePaths = [
     '/api/database/save-all',
+    '/api/database',
     '/api/cloudsql/sync',
     '/api/cloudsql/save',
-    '/api/database'
+    '/api/cloudsql/save-all'
   ];
 
-  let lastErrorMsg = 'Server error 404';
+  const endpointsToTry: string[] = [];
+  const base = getServerBaseUrl();
+  for (const p of candidatePaths) {
+    if (base) endpointsToTry.push(`${base}${p}`);
+    endpointsToTry.push(p);
+  }
+  const uniqueEndpoints = Array.from(new Set(endpointsToTry));
 
-  for (const ep of endpointsToTry) {
+  let lastErrorMsg = 'Server error: Endpoint Cloud SQL tidak merespons';
+
+  for (const ep of uniqueEndpoints) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
@@ -168,6 +228,9 @@ export async function saveServerDatabase(
           lastErrorMsg = `Server error ${res.status}`;
         }
         break;
+      } else {
+        console.warn(`Database sync endpoint ${ep} returned 404, trying next alternative...`);
+        lastErrorMsg = `Server error 404 pada endpoint ${ep}`;
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -189,7 +252,7 @@ export async function saveServerBackupSnapshot(
   source: string = 'logout'
 ): Promise<boolean> {
   try {
-    const res = await fetch('/api/database/backup-snapshot', {
+    const res = await fetch(buildApiUrl('/api/database/backup-snapshot'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data, savedBy, source })
@@ -206,7 +269,7 @@ export async function saveServerBackupSnapshot(
  */
 export async function fetchServerBackups(): Promise<any[]> {
   try {
-    const res = await fetch('/api/database/backups');
+    const res = await fetch(buildApiUrl('/api/database/backups'));
     if (!res.ok) return [];
     const json = await res.json();
     return json.backups || [];
@@ -221,7 +284,7 @@ export async function fetchServerBackups(): Promise<any[]> {
  */
 export async function restoreServerBackup(backupId: string): Promise<boolean> {
   try {
-    const res = await fetch('/api/database/restore-backup', {
+    const res = await fetch(buildApiUrl('/api/database/restore-backup'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ backupId })
@@ -238,7 +301,7 @@ export async function restoreServerBackup(backupId: string): Promise<boolean> {
  */
 export async function fetchLatestServerSnapshot(): Promise<any | null> {
   try {
-    const res = await fetch('/api/database/latest-snapshot');
+    const res = await fetch(buildApiUrl('/api/database/latest-snapshot'));
     if (!res.ok) return null;
     const json = await res.json();
     return json?.snapshot || null;
@@ -253,14 +316,14 @@ export async function fetchLatestServerSnapshot(): Promise<any | null> {
  */
 export async function deleteServerBackup(backupId: string): Promise<{ success: boolean; message?: string }> {
   try {
-    const res = await fetch('/api/database/delete-backup', {
+    const res = await fetch(buildApiUrl('/api/database/delete-backup'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ backupId })
     });
     if (!res.ok) {
       // Try RESTful DELETE fallback
-      const restRes = await fetch(`/api/database/backups/${encodeURIComponent(backupId)}`, {
+      const restRes = await fetch(buildApiUrl(`/api/database/backups/${encodeURIComponent(backupId)}`), {
         method: 'DELETE'
       });
       if (restRes.ok) {
@@ -283,7 +346,7 @@ export async function deleteServerBackup(backupId: string): Promise<{ success: b
  */
 export async function deleteAllServerBackups(): Promise<number> {
   try {
-    const res = await fetch('/api/database/delete-all-backups', {
+    const res = await fetch(buildApiUrl('/api/database/delete-all-backups'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     });
@@ -312,7 +375,7 @@ export function subscribeToServerEvents(
     if (isClosed) return;
     try {
       if (typeof window !== 'undefined' && typeof (window as any).EventSource === 'function') {
-        eventSource = new EventSource('/api/database/events');
+        eventSource = new EventSource(buildApiUrl('/api/database/events'));
 
         eventSource.onmessage = (e) => {
           try {
@@ -428,7 +491,7 @@ export async function syncShiftToServer(
   savedBy: string = 'Kasir'
 ): Promise<boolean> {
   try {
-    const res = await fetch('/api/shift/update', {
+    const res = await fetch(buildApiUrl('/api/shift/update'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -449,7 +512,7 @@ export async function syncShiftToServer(
  */
 export async function fetchCurrentShiftFromServer(): Promise<CashierShift | null> {
   try {
-    const res = await fetch(`/api/shift/current?_t=${Date.now()}`, {
+    const res = await fetch(buildApiUrl(`/api/shift/current?_t=${Date.now()}`), {
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -474,7 +537,7 @@ export async function analyzeDataViaServer(payload: {
   cashFlowRecords?: CashFlowRecord[];
 }): Promise<any> {
   try {
-    const res = await fetch('/api/sql/analyze', {
+    const res = await fetch(buildApiUrl('/api/sql/analyze'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -499,7 +562,7 @@ export async function executeCloudSqlUpsert(payload: {
   cashFlowRecords?: CashFlowRecord[];
 }): Promise<any> {
   try {
-    const res = await fetch('/api/sql/execute-upsert', {
+    const res = await fetch(buildApiUrl('/api/sql/execute-upsert'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -520,7 +583,7 @@ export async function executeCloudSqlUpsert(payload: {
  */
 export async function getLiveSyncStatus(): Promise<any> {
   try {
-    const res = await fetch(`/api/sql/sync-status?_t=${Date.now()}`, {
+    const res = await fetch(buildApiUrl(`/api/sql/sync-status?_t=${Date.now()}`), {
       cache: 'no-store'
     });
     if (!res.ok) return null;

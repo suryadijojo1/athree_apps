@@ -1,4 +1,5 @@
 import { getAccessToken, getStoredGoogleDriveAccount } from './googleAuth';
+import { buildApiUrl } from './serverSync';
 import { DriveFile } from '../types';
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
@@ -64,7 +65,7 @@ export async function listDriveFiles(options: {
 
         // Also merge local server backups if not duplicate
         try {
-          const sRes = await fetch('/api/gdrive/backups');
+          const sRes = await fetch(buildApiUrl('/api/gdrive/backups'));
           if (sRes.ok) {
             const sData = await sRes.json();
             if (sData.files) {
@@ -96,7 +97,7 @@ export async function listDriveFiles(options: {
 
   // Fallback to server Google Drive vault for the auto-connected account
   try {
-    const res = await fetch('/api/gdrive/backups');
+    const res = await fetch(buildApiUrl('/api/gdrive/backups'));
     if (res.ok) {
       const data = await res.json();
       if (data.files) {
@@ -199,7 +200,7 @@ export async function uploadFileToDrive(options: {
   // 1. Always persist to server-side Google Drive vault for guaranteed reliability & persistence
   let serverFileObj: any = null;
   try {
-    const sRes = await fetch('/api/gdrive/backups', {
+    const sRes = await fetch(buildApiUrl('/api/gdrive/backups'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -327,7 +328,7 @@ export async function deleteDriveFile(fileId: string): Promise<void> {
 
   // Delete from server vault
   try {
-    await fetch(`/api/gdrive/backups/${fileId}`, { method: 'DELETE' });
+    await fetch(buildApiUrl(`/api/gdrive/backups/${fileId}`), { method: 'DELETE' });
   } catch {}
 
   // Delete from Google Drive API if token is present
@@ -347,7 +348,7 @@ export async function deleteDriveFile(fileId: string): Promise<void> {
 export async function downloadFileContent(fileId: string): Promise<string> {
   // 1. Try server vault first
   try {
-    const sRes = await fetch(`/api/gdrive/backups/${fileId}`);
+    const sRes = await fetch(buildApiUrl(`/api/gdrive/backups/${fileId}`));
     if (sRes.ok) {
       return await sRes.text();
     }

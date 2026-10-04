@@ -32,7 +32,8 @@ import {
   fetchServerDatabase,
   saveServerDatabase,
   checkCloudSqlStatus,
-  CloudSqlStatus
+  CloudSqlStatus,
+  buildApiUrl
 } from '../services/cloudSqlSync';
 import { deleteServerBackup, deleteAllServerBackups } from '../services/serverSync';
 import { deleteCloudBackupSnapshot } from '../services/firebase';
@@ -103,7 +104,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
       setCloudSqlStats(stats);
       const b = await fetchServerBackups();
       if (b && Array.isArray(b)) setSqlBackups(b);
-      const tablesRes = await fetch('/api/cloudsql/tables');
+      const tablesRes = await fetch(buildApiUrl('/api/cloudsql/tables'));
       if (tablesRes.ok) {
         const tData = await tablesRes.json();
         if (tData.tables) setTablesList(tData.tables);
@@ -323,7 +324,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
     setQueryRunning(true);
     setQueryError(null);
     try {
-      const res = await fetch('/api/cloudsql/query', {
+      const res = await fetch(buildApiUrl('/api/cloudsql/query'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql_statement: statement })

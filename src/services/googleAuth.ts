@@ -8,6 +8,7 @@ import {
   signOut
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { buildApiUrl } from './serverSync';
 
 export const SCOPES = [
   'https://www.googleapis.com/auth/drive.file'
@@ -65,7 +66,7 @@ export function getStoredGoogleDriveAccount(): StoredGoogleDriveAccount | null {
  */
 export async function syncWithServerGoogleDriveAccount(): Promise<StoredGoogleDriveAccount | null> {
   try {
-    const res = await fetch('/api/gdrive/account');
+    const res = await fetch(buildApiUrl('/api/gdrive/account'));
     if (res.ok) {
       const data = await res.json();
       if (data && data.connected && data.email) {
@@ -113,7 +114,7 @@ export function saveStoredGoogleDriveAccount(
     localStorage.setItem(GDRIVE_STORAGE_KEY, JSON.stringify(item));
 
     if (syncServer) {
-      fetch('/api/gdrive/account', {
+      fetch(buildApiUrl('/api/gdrive/account'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item)
@@ -130,7 +131,7 @@ export function clearStoredGoogleDriveAccount(): void {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(GDRIVE_STORAGE_KEY);
     }
-    fetch('/api/gdrive/disconnect', { method: 'POST' }).catch(() => {});
+    fetch(buildApiUrl('/api/gdrive/disconnect'), { method: 'POST' }).catch(() => {});
   } catch {}
 }
 

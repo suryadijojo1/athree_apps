@@ -11,6 +11,8 @@ import {
 import {
   AppDatabasePayload,
   CLIENT_ID,
+  getServerBaseUrl,
+  buildApiUrl,
   fetchServerDatabase,
   saveServerDatabase,
   subscribeToServerEvents,
@@ -41,7 +43,7 @@ export interface CloudSqlStatus {
  */
 export async function checkCloudSqlStatus(): Promise<CloudSqlStatus> {
   try {
-    const res = await fetch('/api/cloudsql/status', { cache: 'no-store' });
+    const res = await fetch(buildApiUrl('/api/cloudsql/status'), { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       return {
@@ -61,7 +63,7 @@ export async function checkCloudSqlStatus(): Promise<CloudSqlStatus> {
 
   // Fallback: Check /api/health
   try {
-    const healthRes = await fetch('/api/health', { cache: 'no-store' });
+    const healthRes = await fetch(buildApiUrl('/api/health'), { cache: 'no-store' });
     if (healthRes.ok) {
       const hData = await healthRes.json();
       return {
@@ -124,6 +126,8 @@ export async function pullFromCloudSql(): Promise<AppDatabasePayload | null> {
 // Re-export core serverSync primitives for backward compatibility
 export {
   CLIENT_ID,
+  getServerBaseUrl,
+  buildApiUrl,
   fetchServerDatabase,
   saveServerDatabase,
   subscribeToServerEvents,
