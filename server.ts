@@ -355,6 +355,7 @@ async function startServer() {
     '/api/cloudsql/data',
     '/api/cloudsql/sync',
     '/api/cloudsql/save',
+    '/api/cloudsql/save-all',
     '/api/sql/sync'
   ];
   for (const ep of getDatabaseEndpoints) {
@@ -549,30 +550,12 @@ async function startServer() {
       res.status(500).json({ success: false, error: err.message });
     }
   });
-// ... (ini akhir dari kode catch yang ada di gambar Anda)
-    }
-  }
-}); // <--- Tanda penutup rute lama yang ada di gambar
-
-// TARUH KODE BARU ANDA DI SINI (DI BAWAHNYA):
-app.post('/api/cloudsql/save-all', async (req: any, res: any) => {
-    try {
-        console.log("Data sinkronisasi diterima:", req.body);
-        
-        // Logika bypass sukses agar frontend tidak memunculkan error merah
-        return res.status(200).json({ 
-            success: true, 
-            message: "Sinkronisasi berhasil diterima server!" 
-        });
-    } catch (error) {
-        console.error("Gagal melakukan sinkronisasi:", error);
-        return res.status(500).json({ error: "Gagal menyimpan data" });
-    }
-});
 
   // Dedicated explicit handler for /api/cloudsql/save-all and aliases
+  app.get('/api/cloudsql/save-all', handleGetDatabaseState);
   app.post('/api/cloudsql/save-all', handleSaveDatabaseRequest);
   app.put('/api/cloudsql/save-all', handleSaveDatabaseRequest);
+  app.get('/api/cloudsql/save', handleGetDatabaseState);
   app.post('/api/cloudsql/save', handleSaveDatabaseRequest);
   app.put('/api/cloudsql/save', handleSaveDatabaseRequest);
 
