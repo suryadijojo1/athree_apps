@@ -143,7 +143,8 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   // Distinct sales / pic list from transactions
   const availableSales = useMemo(() => {
     const set = new Set<string>();
-    transactions.forEach((t) => {
+    (transactions || []).forEach((t) => {
+      if (!t) return;
       if (t.orderType) set.add(t.orderType);
       if (t.cashierName) set.add(t.cashierName);
     });
@@ -188,15 +189,22 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
 
     const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    const list = transactions.filter((t) => {
+    const list = (transactions || []).filter((t) => {
+      if (!t || typeof t !== 'object') return false;
       const q = searchQuery.toLowerCase().trim();
+      const invoiceNo = t.invoiceNo || '';
+      const custName = t.customer?.name || '';
+      const custPhone = t.customer?.phone || '';
+      const notes = t.notes || '';
+      const items = Array.isArray(t.items) ? t.items : [];
+
       const matchesSearch =
         !q ||
-        t.invoiceNo.toLowerCase().includes(q) ||
-        t.customer.name.toLowerCase().includes(q) ||
-        (t.customer.phone && t.customer.phone.toLowerCase().includes(q)) ||
-        (t.notes && t.notes.toLowerCase().includes(q)) ||
-        t.items.some((i) => i.name.toLowerCase().includes(q) || (i.notes && i.notes.toLowerCase().includes(q)));
+        invoiceNo.toLowerCase().includes(q) ||
+        custName.toLowerCase().includes(q) ||
+        (custPhone && custPhone.toLowerCase().includes(q)) ||
+        notes.toLowerCase().includes(q) ||
+        items.some((i) => (i?.name || '').toLowerCase().includes(q) || (i?.notes && i.notes.toLowerCase().includes(q)));
 
       if (!matchesSearch) return false;
 
@@ -301,16 +309,17 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   ]);
 
   // Urgent / Overdue count
-  const overdueCount = transactions.filter((t) => {
+  const overdueCount = (transactions || []).filter((t) => {
+    if (!t) return false;
     const days = getDaysDiff(t.dueDate);
     return t.status !== 'Selesai' && days !== null && days < 0;
   }).length;
 
-  const inProgressCount = transactions.filter(
-    (t) => t.status === 'Sedang Dikerjakan' || t.status === 'Menunggu'
+  const inProgressCount = (transactions || []).filter(
+    (t) => t && (t.status === 'Sedang Dikerjakan' || t.status === 'Menunggu')
   ).length;
 
-  const completedCount = transactions.filter((t) => t.status === 'Selesai').length;
+  const completedCount = (transactions || []).filter((t) => t && t.status === 'Selesai').length;
 
   const handleSaveDueDate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -772,7 +781,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         <td className="py-3 px-4 whitespace-nowrap">
                           <div className="flex flex-col">
                             <span className="font-mono font-bold text-[#00871f] group-hover:underline text-xs flex items-center gap-1.5">
-                              {t.invoiceNo}
+                              {t.invoiceNo || `#ORD/${t.id}`}
                             </span>
                             <span className="text-[10px] text-slate-400 mt-0.5">
                               {t.date ? t.date.split(' ')[0] : '-'}
@@ -783,12 +792,12 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         {/* Pelanggan & Sales */}
                         <td className="py-3 px-4">
                           <div className="font-bold text-slate-800 text-xs">
-                            {t.customer.name}
+                            {t.customer?.name || 'Pelanggan Umum'}
                           </div>
                           <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                            <span>{t.customer.phone !== '-' ? t.customer.phone : 'Umum'}</span>
+                            <span>{t.customer?.phone && t.customer.phone !== '-' ? t.customer.phone : 'Umum'}</span>
                             <span className="text-slate-300">&bull;</span>
-                            <span className="text-slate-600 font-medium">Sales: {t.orderType}</span>
+                            <span className="text-slate-600 font-medium">Sales: {t.orderType || t.cashierName || 'Kasir'}</span>
                           </div>
                           {t.vendorName && canViewVendorResolved && (
                             <div className="mt-1">
@@ -806,7 +815,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         {/* Rincian Item */}
                         <td className="py-3 px-4 max-w-xs">
                           <div className="space-y-0.5">
-                            {t.items.slice(0, 2).map((item, idx) => (
+                            {(t.items || []).slice(0, 2).map((item, idx) => (
                               <div key={idx} className="text-xs text-slate-700 truncate flex items-center gap-1">
                                 <span className="font-semibold text-slate-900">{item.quantity}x</span>
                                 <span className="truncate">{item.name}</span>
@@ -817,9 +826,9 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                                 )}
                               </div>
                             ))}
-                            {t.items.length > 2 && (
+                            {(t.items || []).length > 2 && (
                               <span className="text-[10px] text-slate-400 italic">
-                                +{t.items.length - 2} item lainnya
+                                +{(t.items || []).length - 2} item lainnya
                               </span>
                             )}
                           </div>
@@ -998,7 +1007,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         className="font-mono font-bold text-xs text-[#00871f] hover:underline cursor-pointer flex items-center gap-1"
                         title="Klik untuk Preview Pesanan"
                       >
-                        {t.invoiceNo}
+                        {t.invoiceNo || `#ORD/${t.id}`}
                       </button>
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -1009,15 +1018,15 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                             : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {isDone ? 'Selesai' : t.status}
+                        {isDone ? 'Selesai' : (t.status || 'Menunggu')}
                       </span>
                     </div>
 
                     {/* Customer */}
-                    <h3 className="text-sm font-bold text-slate-800">{t.customer.name}</h3>
+                    <h3 className="text-sm font-bold text-slate-800">{t.customer?.name || 'Pelanggan Umum'}</h3>
                     <p className="text-[11px] text-slate-500 mb-2">
-                      {t.customer.phone !== '-' ? t.customer.phone : 'Pelanggan Umum'} &bull;{' '}
-                      <span className="font-semibold text-slate-700">Sales: {t.orderType}</span>
+                      {t.customer?.phone && t.customer.phone !== '-' ? t.customer.phone : 'Pelanggan Umum'} &bull;{' '}
+                      <span className="font-semibold text-slate-700">Sales: {t.orderType || t.cashierName || 'Kasir'}</span>
                     </p>
                     {t.vendorName && canViewVendorResolved && (
                       <div className="mb-2">
@@ -1075,7 +1084,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                       <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
                         Rincian Produksi:
                       </p>
-                      {t.items.map((i, idx) => (
+                      {(t.items || []).map((i, idx) => (
                         <div key={idx} className="text-xs text-slate-700 flex flex-col py-0.5 border-b border-slate-100 last:border-b-0">
                           <div className="flex justify-between">
                             <span className="font-medium">
@@ -1266,22 +1275,22 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                     </div>
                     <div>
                       <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Pemesan</p>
-                      <h4 className="text-sm font-bold text-slate-800">{previewTx.customer.name}</h4>
+                      <h4 className="text-sm font-bold text-slate-800">{previewTx.customer?.name || 'Pelanggan Umum'}</h4>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        No. HP: {previewTx.customer.phone || '-'}
+                        No. HP: {previewTx.customer?.phone || '-'}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {previewTx.customer.phone && previewTx.customer.phone !== '-' && (
+                    {previewTx.customer?.phone && previewTx.customer.phone !== '-' && (
                       <button
                         type="button"
                         onClick={() =>
                           handleOpenWhatsApp(
-                            previewTx.customer.phone,
-                            previewTx.customer.name,
-                            previewTx.invoiceNo
+                            previewTx.customer?.phone || '',
+                            previewTx.customer?.name || 'Pelanggan',
+                            previewTx.invoiceNo || ''
                           )
                         }
                         className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
@@ -1369,7 +1378,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {previewTx.items.map((item, idx) => (
+                        {(previewTx.items || []).map((item, idx) => (
                           <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="py-2.5 px-3 font-semibold text-slate-800">
                               {item.name}
@@ -1778,7 +1787,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100">
             <h3 className="text-base font-bold text-slate-800 mb-1">Ubah Jatuh Tempo Penyelesaian</h3>
             <p className="text-xs text-slate-500 mb-3">
-              {editingDueDateTx.invoiceNo} &bull; {editingDueDateTx.customer.name}
+              {editingDueDateTx.invoiceNo || `#ORD/${editingDueDateTx.id}`} &bull; {editingDueDateTx.customer?.name || 'Pelanggan Umum'}
             </p>
 
             <form onSubmit={handleSaveDueDate} className="space-y-3">

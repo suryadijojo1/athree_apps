@@ -31,6 +31,7 @@ import { PosView } from './components/PosView';
 import { StockManagementView } from './components/StockManagementView';
 import { DailyReportsView } from './components/DailyReportsView';
 import { ProductionOrdersView } from './components/ProductionOrdersView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AdminDashboard } from './components/AdminDashboard';
 import { LoginScreen } from './components/LoginScreen';
 import { UserLoginModal } from './components/UserLoginModal';
@@ -2883,18 +2884,20 @@ export default function App() {
           )}
 
           {activeTab === 'orders' && (
-            <ProductionOrdersView
-              transactions={transactions}
-              onUpdateOrderStatus={handleUpdateOrderStatus}
-              onUpdateDueDate={handleUpdateDueDate}
-              onUpdateCosts={handleUpdateCosts}
-              onViewReceipt={(tx) => setSuccessTx(tx)}
-              onReviseInvoice={(tx) => setRevisingTx(tx)}
-              onDeleteInvoice={(tx) => setDeletingTx(tx)}
-              onPayPiutang={(tx) => setPayingPiutangTx(tx)}
-              isAdmin={currentUser.role === 'admin'}
-              currentUser={currentUser}
-            />
+            <ErrorBoundary fallbackTitle="Daftar Pesanan & Produksi">
+              <ProductionOrdersView
+                transactions={transactions}
+                onUpdateOrderStatus={handleUpdateOrderStatus}
+                onUpdateDueDate={handleUpdateDueDate}
+                onUpdateCosts={handleUpdateCosts}
+                onViewReceipt={(tx) => setSuccessTx(tx)}
+                onReviseInvoice={(tx) => setRevisingTx(tx)}
+                onDeleteInvoice={(tx) => setDeletingTx(tx)}
+                onPayPiutang={(tx) => setPayingPiutangTx(tx)}
+                isAdmin={currentUser.role === 'admin'}
+                currentUser={currentUser}
+              />
+            </ErrorBoundary>
           )}
 
           {activeTab === 'reports' && (
