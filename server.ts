@@ -570,6 +570,12 @@ app.post('/api/cloudsql/save-all', async (req: any, res: any) => {
     }
 });
 
+  // Dedicated explicit handler for /api/cloudsql/save-all and aliases
+  app.post('/api/cloudsql/save-all', handleSaveDatabaseRequest);
+  app.put('/api/cloudsql/save-all', handleSaveDatabaseRequest);
+  app.post('/api/cloudsql/save', handleSaveDatabaseRequest);
+  app.put('/api/cloudsql/save', handleSaveDatabaseRequest);
+
   // Real-time SQL Sync Status Endpoint
   app.get('/api/sql/sync-status', (req, res) => {
     res.json({

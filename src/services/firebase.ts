@@ -49,11 +49,10 @@ import {
  * 4. Lakukan signOut(auth) di salah satu browser jika salah satu browser login
  */
 /**
- * FIREBASE FIRESTORE STATUS: NON-AKTIF (DINONAKTIFKAN SESUAI INSTRUKSI PENGGUNA)
- * Database utama yang digunakan dan diintegrasikan adalah Cloud SQL (PostgreSQL)
- * dengan real-time sync via Server Sent Events (SSE) dan REST API.
+ * FIREBASE FIRESTORE STATUS: AKTIF (DATABASE CLOUD UTAMA DENGAN REAL-TIME SYNC)
+ * Berfungsi di seluruh domain website (termasuk website athree studio, localhost, & preview).
  */
-export const FIRESTORE_ENABLED = false;
+export const FIRESTORE_ENABLED = true;
 
 // Initialize Firebase App for Authentication only
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);

@@ -1,4 +1,12 @@
 import { Transaction, Product, CashFlowRecord, CashierShift, KaosStockItem, StockMovement, Customer, User } from '../types';
+import {
+  FIRESTORE_ENABLED,
+  syncAllLocalDataToFirestore,
+  saveCloudBackupSnapshot,
+  fetchCloudBackupSnapshots,
+  getCloudBackupSnapshotById,
+  fetchAllDataFromFirestore
+} from './firebase';
 
 export interface AppDatabasePayload {
   products: Product[];
@@ -574,7 +582,7 @@ export function isRealUserData(transactions: Transaction[]): boolean {
 }
 
 /**
- * Fetch the master database from the central Express server
+ * Fetch the master database from the central Express server or Firestore cloud fallback
  */
 export async function fetchServerDatabase(): Promise<{
   success: boolean;
@@ -582,11 +590,12 @@ export async function fetchServerDatabase(): Promise<{
   isRealData: boolean;
 }> {
   const candidatePaths = [
+    '/api/cloudsql/save-all',
+    '/api/cloudsql/sync',
     '/api/database',
     '/api/database/save-all',
     '/api/cloudsql/database',
-    '/api/cloudsql/data',
-    '/api/cloudsql/sync'
+    '/api/cloudsql/data'
   ];
 
   const endpointsToTry: string[] = [];
@@ -621,6 +630,36 @@ export async function fetchServerDatabase(): Promise<{
       console.warn(`[ServerSync] Failed to fetch database from ${ep}:`, err);
     }
   }
+
+  // Fallback to Firebase Firestore cloud database if server endpoints returned 404 or failed
+  if (FIRESTORE_ENABLED) {
+    try {
+      console.log('[ServerSync] Server endpoints unavailable. Loading from Firebase Firestore cloud database...');
+      const firestoreData = await fetchAllDataFromFirestore('server-first');
+      if (firestoreData && (firestoreData.products.length > 0 || firestoreData.transactions.length > 0 || firestoreData.customers.length > 0)) {
+        return {
+          success: true,
+          data: {
+            products: firestoreData.products,
+            transactions: firestoreData.transactions,
+            cashFlowRecords: firestoreData.cashFlowRecords,
+            shiftHistory: firestoreData.shifts,
+            currentShift: firestoreData.activeShift || undefined,
+            kaosStocks: firestoreData.kaosStocks,
+            customers: firestoreData.customers,
+            users: firestoreData.users,
+            stockMovements: firestoreData.stockMovements,
+            lastUpdated: new Date().toISOString(),
+            isRealData: true
+          },
+          isRealData: true
+        };
+      }
+    } catch (fsErr) {
+      console.warn('[ServerSync] Firestore fetch fallback error:', fsErr);
+    }
+  }
+
   return { success: false, data: null, isRealData: false };
 }
 
@@ -649,12 +688,31 @@ export async function saveServerDatabase(
     deletedTransactionIds: options?.deletedTransactionIds || payload.deletedTransactionIds || []
   };
 
+  // 1. Parallel Sync to Firebase Firestore Cloud
+  // Direct to Google Cloud (works on any website domain, localhost, and preview without 404)
+  let firestoreSnapshotId: string | undefined;
+  let firestoreSyncSuccess = false;
+  if (FIRESTORE_ENABLED) {
+    try {
+      const [snapId] = await Promise.all([
+        saveCloudBackupSnapshot(fullPayload, fullPayload.savedBy, fullPayload.source),
+        syncAllLocalDataToFirestore(fullPayload)
+      ]);
+      firestoreSnapshotId = snapId;
+      firestoreSyncSuccess = true;
+      console.log('[ServerSync] Successfully synced database to Firebase Firestore cloud:', snapId);
+    } catch (fsErr) {
+      console.warn('[ServerSync] Firebase Firestore cloud sync warning:', fsErr);
+    }
+  }
+
+  // 2. Sync to Central Express Server
   const candidatePaths = [
+    '/api/cloudsql/save-all',
+    '/api/cloudsql/save',
     '/api/database/save-all',
     '/api/database',
-    '/api/cloudsql/sync',
-    '/api/cloudsql/save',
-    '/api/cloudsql/save-all'
+    '/api/cloudsql/sync'
   ];
 
   const endpointsToTry: string[] = [];
@@ -673,6 +731,8 @@ export async function saveServerDatabase(
   );
 
   let lastErrorMsg = 'Server error: Endpoint Cloud SQL tidak merespons';
+  let serverSaved = false;
+  let serverResult: SaveDatabaseResult | null = null;
 
   for (let idx = 0; idx < uniqueEndpoints.length; idx++) {
     const ep = uniqueEndpoints[idx];
@@ -687,7 +747,7 @@ export async function saveServerDatabase(
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const res = await verboseFetch(
         ep,
@@ -713,12 +773,14 @@ export async function saveServerDatabase(
           'color: #15803d; font-weight: bold; background: #dcfce7; padding: 2px 6px;'
         );
         const json = await res.json().catch(() => ({}));
-        return {
+        serverSaved = true;
+        serverResult = {
           success: true,
           message: json.message || 'Berhasil disimpan ke Cloud SQL & Server',
-          snapshotId: json?.snapshotId,
-          transactionsCount: json?.transactionsCount
+          snapshotId: json?.snapshotId || firestoreSnapshotId,
+          transactionsCount: json?.transactionsCount ?? fullPayload.transactions?.length ?? 0
         };
+        break;
       }
 
       // If it's a specific non-404 error (e.g. 400 or 500), read the error and stop
@@ -732,41 +794,58 @@ export async function saveServerDatabase(
         }
         break;
       } else {
-        console.error(
-          `%c[ServerSync:SAVE 404] ❌ Endpoint candidate #${idx + 1} (${ep}) returned HTTP 404 Not Found!%c\n• Full Target URL : ${fullUrl}\n• Status Code     : 404\n• Base URL Config : ${getServerBaseUrl() || '(none / browser origin)'}\n• Full Base URL   : ${getFullServerBaseUrl()}\n• Next step       : Trying next alternative candidate...`,
-          'background: #fee2e2; color: #dc2626; font-weight: bold; padding: 2px 6px;',
-          ''
+        console.warn(
+          `[ServerSync:SAVE 404] Candidate ${ep} returned 404. Trying next candidate...`
         );
         lastErrorMsg = `Server error 404 pada endpoint ${ep}`;
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        return { success: false, error: 'Koneksi server timeout (12 detik)' };
+        lastErrorMsg = 'Koneksi server timeout (10 detik)';
+      } else {
+        lastErrorMsg = err.message || 'Koneksi ke server gagal';
       }
-      lastErrorMsg = err.message || 'Koneksi ke server gagal';
     }
   }
 
-  // If a 404 error occurred on all endpoints, run full diagnostics in the console
-  if (lastErrorMsg.includes('404')) {
-    console.error(
-      `%c[ServerSync:SAVE FATAL 404] 💥 All ${uniqueEndpoints.length} candidate endpoints failed with 404! Triggering diagnostic audit...`,
-      'background: #7f1d1d; color: #ffffff; font-weight: bold; padding: 3px 8px; border-radius: 4px;'
-    );
-    diagnoseCloudSqlService().catch(() => {});
+  // If server responded OK, return the server result
+  if (serverSaved && serverResult) {
+    return serverResult;
+  }
+
+  // If server endpoints failed with 404 (e.g. running on external domain "athree studio" or static hosting)
+  // but Firestore cloud sync succeeded, return SUCCESS!
+  if (firestoreSyncSuccess || (FIRESTORE_ENABLED && firestoreSnapshotId)) {
+    console.log('[ServerSync] Server endpoints returned 404/offline, but database was saved successfully to Firebase Firestore Cloud.');
+    return {
+      success: true,
+      message: `Berhasil disimpan ke Cloud Database (Firebase Firestore)! Data ${fullPayload.transactions?.length || 0} transaksi & ${fullPayload.products?.length || 0} produk tersimpan aman di cloud.`,
+      snapshotId: firestoreSnapshotId,
+      transactionsCount: fullPayload.transactions?.length || 0
+    };
   }
 
   return { success: false, error: lastErrorMsg };
 }
 
 /**
- * Save dedicated backup snapshot to the server with 3-day maximum retention
+ * Save dedicated backup snapshot to the server with 14-day retention & Firestore backup
  */
 export async function saveServerBackupSnapshot(
   data: any,
   savedBy: string = 'Kasir Logout',
   source: string = 'logout'
 ): Promise<boolean> {
+  let fsSuccess = false;
+  if (FIRESTORE_ENABLED) {
+    try {
+      await saveCloudBackupSnapshot(data, savedBy, source);
+      fsSuccess = true;
+    } catch (e) {
+      console.warn('Firestore backup snapshot warning:', e);
+    }
+  }
+
   try {
     const res = await verboseFetch(
       buildApiUrl('/api/database/backup-snapshot'),
@@ -777,34 +856,55 @@ export async function saveServerBackupSnapshot(
       },
       'SaveServerBackupSnapshot'
     );
-    return res.ok;
+    return res.ok || fsSuccess;
   } catch (err) {
     console.warn('Failed to save server backup snapshot:', err);
-    return false;
+    return fsSuccess;
   }
 }
 
 /**
- * Fetch 3-day server backup snapshots
+ * Fetch backup snapshots from server and Firestore cloud
  */
 export async function fetchServerBackups(): Promise<any[]> {
+  const list: any[] = [];
   try {
     const res = await verboseFetch(
       buildApiUrl('/api/database/backups'),
       undefined,
       'FetchServerBackups'
     );
-    if (!res.ok) return [];
-    const json = await res.json();
-    return json.backups || [];
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json.backups)) {
+        list.push(...json.backups);
+      }
+    }
   } catch (err) {
     console.warn('Failed to fetch server backups:', err);
-    return [];
   }
+
+  // Also include or fallback to Firestore cloud backups
+  if (FIRESTORE_ENABLED) {
+    try {
+      const cloudBackups = await fetchCloudBackupSnapshots();
+      const existingIds = new Set(list.map(b => b.id));
+      for (const cb of cloudBackups) {
+        if (!existingIds.has(cb.id)) {
+          list.push(cb);
+        }
+      }
+    } catch (fsErr) {
+      console.warn('Failed to fetch Firestore cloud backups:', fsErr);
+    }
+  }
+
+  list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  return list;
 }
 
 /**
- * Restore server database from a specific snapshot
+ * Restore server database from a specific snapshot (server or Firestore)
  */
 export async function restoreServerBackup(backupId: string): Promise<boolean> {
   try {
@@ -817,11 +917,25 @@ export async function restoreServerBackup(backupId: string): Promise<boolean> {
       },
       'RestoreServerBackup'
     );
-    return res.ok;
+    if (res.ok) return true;
   } catch (err) {
-    console.warn('Failed to restore server backup:', err);
-    return false;
+    console.warn('Failed to restore server backup from server:', err);
   }
+
+  // Fallback to restore from Firestore snapshot
+  if (FIRESTORE_ENABLED) {
+    try {
+      const snapshotData = await getCloudBackupSnapshotById(backupId);
+      if (snapshotData) {
+        await syncAllLocalDataToFirestore(snapshotData);
+        return true;
+      }
+    } catch (e) {
+      console.warn('Failed to restore from Firestore snapshot:', e);
+    }
+  }
+
+  return false;
 }
 
 /**

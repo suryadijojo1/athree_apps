@@ -154,12 +154,12 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
 
       if (res.success) {
         setStatusMessage({
-          text: `Berhasil! Seluruh data disinkronkan ke Cloud SQL (${transactions.length} transaksi, ${products.length} produk). Real-Time SSE aktif.`
+          text: res.message || `Berhasil! Seluruh data disinkronkan ke Cloud (${transactions.length} transaksi, ${products.length} produk). Real-Time aktif.`
         });
         onManualSyncSuccess();
         loadInitialData();
       } else {
-        setStatusMessage({ text: `Gagal sinkron Cloud SQL: ${res.error || 'Server error'}`, isError: true });
+        setStatusMessage({ text: `Gagal sinkron Cloud: ${res.error || 'Server error'}`, isError: true });
         diagnoseCloudSqlService().catch(() => {});
       }
     } catch (err: any) {
@@ -547,7 +547,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-blue-200/90 font-medium">
-                Database Utama: <span className="text-white font-bold">Cloud SQL (PostgreSQL)</span> • Firebase Firestore: <span className="text-rose-300 font-bold">Non-aktif</span>
+                Database Utama: <span className="text-white font-bold">Cloud SQL &amp; Server Pusat</span> • Cloud Sync: <span className="text-emerald-300 font-bold">Aktif (Firestore &amp; SSE)</span>
               </p>
             </div>
           </div>
@@ -634,14 +634,14 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
             onClick={() => setActiveTab('firestore')}
             className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-b-2 whitespace-nowrap ${
               activeTab === 'firestore'
-                ? 'bg-white text-slate-800 border-slate-400 shadow-xs'
-                : 'text-slate-400 hover:text-slate-600 border-transparent hover:bg-slate-100/60'
+                ? 'bg-white text-emerald-800 border-emerald-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
             }`}
           >
-            <Flame className="w-4 h-4 text-slate-400" />
-            <span>Status Firestore</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-rose-100 text-rose-700 font-bold">
-              Non-aktif
+            <Flame className="w-4 h-4 text-emerald-600" />
+            <span>Cloud Database (Firestore)</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-100 text-emerald-700 font-bold">
+              Aktif
             </span>
           </button>
         </div>
@@ -651,26 +651,54 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
           {/* Status / Alert Banner */}
           {statusMessage && (
             <div
-              className={`p-3.5 rounded-2xl flex items-start justify-between gap-3 text-xs font-medium animate-in fade-in slide-in-from-top-1 ${
+              className={`p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-medium animate-in fade-in slide-in-from-top-1 ${
                 statusMessage.isError
                   ? 'bg-rose-50 border border-rose-200 text-rose-800'
                   : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-start gap-2.5 flex-1">
                 {statusMessage.isError ? (
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                 ) : (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                 )}
-                <span>{statusMessage.text}</span>
+                <div className="space-y-1">
+                  <span className="block font-semibold leading-relaxed">{statusMessage.text}</span>
+                  {statusMessage.isError && (
+                    <span className="block text-[11px] text-rose-600/90 font-normal">
+                      Tips: Jika rute baru saja diperbarui, silakan klik tombol <strong>"Coba Sinkron Ulang"</strong> di samping atau segarkan halaman browser (F5) untuk memuat koneksi server terbaru.
+                    </span>
+                  )}
+                </div>
               </div>
-              <button
-                onClick={() => setStatusMessage(null)}
-                className="text-slate-500 hover:text-slate-700 font-bold ml-2 shrink-0 cursor-pointer"
-              >
-                Tutup
-              </button>
+
+              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                {statusMessage.isError && (
+                  <>
+                    <button
+                      onClick={() => handlePushAllToCloudSql()}
+                      disabled={isProcessing}
+                      className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-[11px] rounded-lg shadow-xs transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isProcessing ? 'animate-spin' : ''}`} />
+                      Coba Sinkron Ulang
+                    </button>
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-rose-200 text-rose-700 font-bold text-[11px] rounded-lg shadow-xs transition-all cursor-pointer"
+                    >
+                      Refresh (F5)
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => setStatusMessage(null)}
+                  className="px-2 py-1 text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 rounded-lg font-bold shrink-0 cursor-pointer transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           )}
 
@@ -1394,32 +1422,40 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
             </div>
           )}
 
-          {/* TAB 5: FIRESTORE STATUS (NONAKTIF) */}
+          {/* TAB 5: FIRESTORE STATUS (AKTIF) */}
           {activeTab === 'firestore' && (
             <div className="space-y-4">
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500">
-                    <Flame className="w-5 h-5" />
+              <div className="bg-gradient-to-br from-emerald-50 via-white to-emerald-50/40 border border-emerald-200 rounded-2xl p-5 space-y-4 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-600 shadow-inner shrink-0">
+                    <Flame className="w-6 h-6" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-slate-800">
-                      Integrasi Database Firebase Firestore: Dinonaktifkan
+                    <h4 className="text-base font-bold text-slate-800">
+                      Firebase Firestore Cloud Database: Aktif
                     </h4>
-                    <span className="text-[11px] text-slate-500">
-                      Sesuai instruksi konfigurasi, database telah sepenuhnya dialihkan ke Cloud SQL (PostgreSQL).
+                    <span className="text-xs text-emerald-700 font-medium">
+                      Sinkronisasi multi-perangkat &amp; multi-domain (termasuk website athree studio, HP, tablet, dan desktop).
                     </span>
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-600 space-y-2">
-                  <div className="flex items-center gap-2 text-rose-700 font-bold">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>Status Integrasi: Non-Aktif (FIRESTORE_ENABLED = false)</span>
+                <div className="p-4 bg-white border border-emerald-200 rounded-xl text-xs text-slate-700 space-y-3">
+                  <div className="flex items-center gap-2 text-emerald-800 font-bold">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>Sinkronisasi Otomatis Cloud Firestore Aktif 100%</span>
                   </div>
-                  <p className="text-[11px] leading-relaxed">
-                    Sistem kini secara eksklusif menggunakan <strong>Cloud SQL (PostgreSQL)</strong> sebagai database utama untuk menyimpan dan menyinkronkan seluruh produk, transaksi, arus kas, dan kasir aktif dengan dukungan Real-Time Server-Sent Events (SSE).
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Setiap transaksi, pembaruan stok produk, arus kas, dan perubahan kasir secara otomatis disimpan ke <strong>Google Firebase Firestore</strong> dan <strong>Server Pusat</strong>.
                   </p>
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                    <div className="font-semibold text-slate-800">Keunggulan Integrasi Dual-Cloud:</div>
+                    <ul className="list-disc list-inside space-y-0.5 text-slate-600">
+                      <li>Bekerja langsung di website <strong>athree studio</strong> tanpa membutuhkan proxy backend lokal.</li>
+                      <li>Data transaksi dan katalog produk tetap sinkron secara instan antar perangkat kasir.</li>
+                      <li>Rolling backup snapshot otomatis beretensi 14 hari tersimpan aman di cloud.</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
