@@ -302,6 +302,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       amount: Number(cashFlowAmount),
       description: cashFlowDesc.trim() || 'Operasional / Pengeluaran toko',
       date: fullDate,
+      paymentMethod: 'TUNAI',
       recordedBy: currentUser.name
     });
     setCashFlowAmount(50000);

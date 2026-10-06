@@ -3144,9 +3144,11 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                   amount: Number(cashFlowAmountInput),
                   description: cashFlowDescInput.trim() || 'Operasional / Pengeluaran toko',
                   date: fullDate,
+                  paymentMethod: 'TUNAI',
                   recordedBy: currentUser.name
                 });
                 setShowAddExpenseModal(false);
+                setCashFlowDescInput('');
               }}
               className="space-y-3"
             >

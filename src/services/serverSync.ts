@@ -24,6 +24,7 @@ export interface AppDatabasePayload {
   sourceClient?: string;
   isRealData: boolean;
   deletedTransactionIds?: string[];
+  deletedCashFlowIds?: string[];
   savedBy?: string;
   source?: string;
 }
@@ -676,7 +677,7 @@ export interface SaveDatabaseResult {
 
 export async function saveServerDatabase(
   payload: Omit<AppDatabasePayload, 'lastUpdated' | 'sourceClient'>,
-  options?: { savedBy?: string; source?: string; deletedTransactionIds?: string[] }
+  options?: { savedBy?: string; source?: string; deletedTransactionIds?: string[]; deletedCashFlowIds?: string[] }
 ): Promise<SaveDatabaseResult> {
   const fullPayload: AppDatabasePayload = {
     ...payload,
@@ -685,7 +686,8 @@ export async function saveServerDatabase(
     isRealData: true,
     savedBy: options?.savedBy || payload.savedBy || 'Kasir',
     source: options?.source || payload.source || 'sync',
-    deletedTransactionIds: options?.deletedTransactionIds || payload.deletedTransactionIds || []
+    deletedTransactionIds: options?.deletedTransactionIds || payload.deletedTransactionIds || [],
+    deletedCashFlowIds: options?.deletedCashFlowIds || payload.deletedCashFlowIds || []
   };
 
   // 1. Parallel Sync to Firebase Firestore Cloud

@@ -433,6 +433,21 @@ export default function App() {
     return [];
   });
 
+  const [deletedCashFlowIds, setDeletedCashFlowIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('athree_deleted_cf_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const deletedCashFlowIdsRef = useRef<Set<string>>(new Set(deletedCashFlowIds));
+  useEffect(() => {
+    deletedCashFlowIdsRef.current = new Set(deletedCashFlowIds);
+    localStorage.setItem('athree_deleted_cf_ids', JSON.stringify(deletedCashFlowIds));
+  }, [deletedCashFlowIds]);
+
   // Navigation and UI states
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     return currentUser.role === 'admin' ? 'dashboard' : 'pos';
@@ -551,8 +566,26 @@ export default function App() {
         const cleaned = payload.cashFlowRecords.filter(
           (r) => r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
         );
-        setCashFlowRecords(cleaned);
-        localStorage.setItem('athree_cash_flow', JSON.stringify(cleaned));
+        setCashFlowRecords((prev) => {
+          const deletedSet = deletedCashFlowIdsRef.current;
+          const map = new Map<string, CashFlowRecord>();
+          for (const item of prev) {
+            if (!deletedSet.has(item.id)) {
+              map.set(item.id, item);
+            }
+          }
+          for (const item of cleaned) {
+            if (!deletedSet.has(item.id)) {
+              map.set(item.id, item);
+            }
+          }
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+          );
+          latestStateRef.current.cashFlowRecords = merged;
+          localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
+          return merged;
+        });
       }
       if (payload.shiftHistory && Array.isArray(payload.shiftHistory)) {
         setShiftHistory(payload.shiftHistory);
@@ -622,20 +655,27 @@ export default function App() {
 
     const performSync = () => {
       const currentState = latestStateRef.current;
-      saveServerDatabase({
-        products: currentState.products,
-        categories: currentState.categories,
-        transactions: currentState.transactions,
-        cashFlowRecords: currentState.cashFlowRecords,
-        shiftHistory: currentState.shiftHistory,
-        currentShift: currentState.shift,
-        kaosStocks: currentState.kaosStocks,
-        stockMovements: currentState.stockMovements,
-        customers: currentState.customers,
-        users: currentState.users,
-        salesList: currentState.salesList,
-        isRealData: isRealUserData(currentState.transactions)
-      }).catch((err) => console.warn('Sync to central server error:', err));
+      saveServerDatabase(
+        {
+          products: currentState.products,
+          categories: currentState.categories,
+          transactions: currentState.transactions,
+          cashFlowRecords: currentState.cashFlowRecords,
+          shiftHistory: currentState.shiftHistory,
+          currentShift: currentState.shift,
+          kaosStocks: currentState.kaosStocks,
+          stockMovements: currentState.stockMovements,
+          customers: currentState.customers,
+          users: currentState.users,
+          salesList: currentState.salesList,
+          isRealData: isRealUserData(currentState.transactions)
+        },
+        {
+          deletedCashFlowIds: Array.from(deletedCashFlowIdsRef.current),
+          savedBy: `${currentUser.name} (Auto-sync)`,
+          source: 'auto-sync'
+        }
+      ).catch((err) => console.warn('Sync to central server error:', err));
     };
 
     if (immediate) {
@@ -908,8 +948,26 @@ export default function App() {
       const cleaned = cloudData.cashFlowRecords.filter(
         (r) => r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
       );
-      setCashFlowRecords(cleaned);
-      localStorage.setItem('athree_cash_flow', JSON.stringify(cleaned));
+      setCashFlowRecords((prev) => {
+        const deletedSet = deletedCashFlowIdsRef.current;
+        const map = new Map<string, CashFlowRecord>();
+        for (const item of prev) {
+          if (!deletedSet.has(item.id)) {
+            map.set(item.id, item);
+          }
+        }
+        for (const item of cleaned) {
+          if (!deletedSet.has(item.id)) {
+            map.set(item.id, item);
+          }
+        }
+        const merged = Array.from(map.values()).sort(
+          (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+        );
+        latestStateRef.current.cashFlowRecords = merged;
+        localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
+        return merged;
+      });
     }
     if (cloudData.shifts && cloudData.shifts.length > 0) {
       setShiftHistory(cloudData.shifts);
@@ -1132,32 +1190,46 @@ export default function App() {
       id: cfId,
       transactionId: linkedTxId,
       shiftId: shift?.id,
+      paymentMethod: newRecord.paymentMethod || 'TUNAI',
       createdAt: new Date().toISOString()
     };
-    setCashFlowRecords((prev) => [rec, ...prev]);
 
-    // 2. Gunakan Firestore Transactions (Wajib untuk Data Bersama)
-    runFirestoreCashFlowTransaction(rec).catch((err) => {
-      console.warn('Firestore Cash Flow Transaction warning (fallback):', err);
-      saveCashFlowToFirestore(rec).catch(() => {});
+    // 1. Synchronously update state, latestStateRef, and localStorage
+    setCashFlowRecords((prev) => {
+      const updated = [rec, ...prev.filter((c) => c.id !== cfId)];
+      latestStateRef.current.cashFlowRecords = updated;
+      localStorage.setItem('athree_cash_flow', JSON.stringify(updated));
+      return updated;
     });
-    syncCurrentStateToServer();
+
+    // 2. Persist directly to Firebase Firestore Cloud
+    saveCashFlowToFirestore(rec).catch((err) => {
+      console.warn('Sync cashflow to Firestore error:', err);
+    });
+    runFirestoreCashFlowTransaction(rec).catch(() => {});
+
+    // 3. Immediately sync to central server and trigger cloud backups
+    syncCurrentStateToServer(true);
   };
 
   // Handler: Update / Revisi cash flow (income / expense)
   const handleUpdateCashFlow = (updatedRecord: CashFlowRecord) => {
-    setCashFlowRecords((prev) =>
-      prev.map((c) =>
-        c.id === updatedRecord.id
-          ? {
-              ...updatedRecord,
-              updatedAt: new Date().toISOString(),
-              updatedBy: currentUser.name
-            }
-          : c
-      )
-    );
-    saveCashFlowToFirestore(updatedRecord).catch((err) =>
+    const updatedRecordWithMeta: CashFlowRecord = {
+      ...updatedRecord,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser.name
+    };
+
+    setCashFlowRecords((prev) => {
+      const updated = prev.map((c) =>
+        c.id === updatedRecord.id ? updatedRecordWithMeta : c
+      );
+      latestStateRef.current.cashFlowRecords = updated;
+      localStorage.setItem('athree_cash_flow', JSON.stringify(updated));
+      return updated;
+    });
+
+    saveCashFlowToFirestore(updatedRecordWithMeta).catch((err) =>
       console.warn('Sync cashflow update error:', err)
     );
 
@@ -1258,7 +1330,7 @@ export default function App() {
       }
     }
 
-    syncCurrentStateToServer();
+    syncCurrentStateToServer(true);
   };
 
   // Handler: Hapus cash flow record (income / expense)
@@ -1266,7 +1338,22 @@ export default function App() {
     const target = cashFlowRecords.find((c) => c.id === id);
     if (!target) return;
 
-    setCashFlowRecords((prev) => prev.filter((c) => c.id !== id));
+    // 1. Track deleted cash flow ID so it is never restored by background merge
+    setDeletedCashFlowIds((prev) => {
+      const updated = [...prev, id];
+      deletedCashFlowIdsRef.current.add(id);
+      localStorage.setItem('athree_deleted_cf_ids', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 2. Synchronously remove from state, latestStateRef, and localStorage
+    setCashFlowRecords((prev) => {
+      const updated = prev.filter((c) => c.id !== id);
+      latestStateRef.current.cashFlowRecords = updated;
+      localStorage.setItem('athree_cash_flow', JSON.stringify(updated));
+      return updated;
+    });
+
     deleteCashFlowFromFirestore(id).catch((err) =>
       console.warn('Delete cashflow error:', err)
     );
@@ -1278,7 +1365,31 @@ export default function App() {
       );
     }
 
-    syncCurrentStateToServer();
+    // 3. Immediately inform central server of deletion
+    saveServerDatabase(
+      {
+        products,
+        categories,
+        transactions: target.transactionId
+          ? transactions.filter((t) => t.id !== target.transactionId)
+          : transactions,
+        cashFlowRecords: latestStateRef.current.cashFlowRecords,
+        shiftHistory,
+        currentShift: shift,
+        kaosStocks,
+        stockMovements,
+        customers,
+        users,
+        salesList,
+        isRealData: true
+      },
+      {
+        deletedCashFlowIds: [id],
+        deletedTransactionIds: target.transactionId ? [target.transactionId] : undefined,
+        savedBy: `${currentUser.name} (Hapus Kas)`,
+        source: 'delete-cashflow'
+      }
+    ).catch(() => {});
   };
 
   // Login sync state
@@ -1305,8 +1416,22 @@ export default function App() {
           localStorage.setItem('athree_transactions', JSON.stringify(firestoreData.transactions));
         }
         if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
-          setCashFlowRecords(firestoreData.cashFlowRecords);
-          localStorage.setItem('athree_cash_flow', JSON.stringify(firestoreData.cashFlowRecords));
+          setCashFlowRecords((prev) => {
+            const deletedSet = deletedCashFlowIdsRef.current;
+            const map = new Map<string, CashFlowRecord>();
+            for (const item of prev) {
+              if (!deletedSet.has(item.id)) map.set(item.id, item);
+            }
+            for (const item of firestoreData.cashFlowRecords) {
+              if (!deletedSet.has(item.id)) map.set(item.id, item);
+            }
+            const merged = Array.from(map.values()).sort(
+              (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+            );
+            latestStateRef.current.cashFlowRecords = merged;
+            localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
+            return merged;
+          });
         }
         if (firestoreData.shifts && firestoreData.shifts.length > 0) {
           setShiftHistory(firestoreData.shifts);
@@ -1397,8 +1522,22 @@ export default function App() {
             localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(firestoreData.transactions));
           }
           if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
-            setCashFlowRecords(firestoreData.cashFlowRecords);
-            localStorage.setItem('athree_cash_flow', JSON.stringify(firestoreData.cashFlowRecords));
+            setCashFlowRecords((prev) => {
+              const deletedSet = deletedCashFlowIdsRef.current;
+              const map = new Map<string, CashFlowRecord>();
+              for (const item of prev) {
+                if (!deletedSet.has(item.id)) map.set(item.id, item);
+              }
+              for (const item of firestoreData.cashFlowRecords) {
+                if (!deletedSet.has(item.id)) map.set(item.id, item);
+              }
+              const merged = Array.from(map.values()).sort(
+                (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+              );
+              latestStateRef.current.cashFlowRecords = merged;
+              localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
+              return merged;
+            });
           }
           if (firestoreData.shifts && firestoreData.shifts.length > 0) {
             setShiftHistory(firestoreData.shifts);

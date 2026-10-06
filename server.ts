@@ -439,6 +439,38 @@ async function startServer() {
         payload.currentShift = currentDbState.currentShift;
       }
 
+      // Explicitly deleted cash flow IDs (if any)
+      const deletedCfIds = new Set<string>(
+        Array.isArray(payload.deletedCashFlowIds) ? payload.deletedCashFlowIds : []
+      );
+
+      // Smart cash flow preservation: Merge cash flow records by ID so no expense/income is ever lost
+      if (Array.isArray(currentDbState?.cashFlowRecords) && currentDbState.cashFlowRecords.length > 0) {
+        if ((!payload.cashFlowRecords || payload.cashFlowRecords.length === 0) && deletedCfIds.size === 0) {
+          payload.cashFlowRecords = currentDbState.cashFlowRecords;
+        } else {
+          const cfMap = new Map<string, any>();
+          for (const cf of currentDbState.cashFlowRecords) {
+            if (!deletedCfIds.has(cf.id)) {
+              cfMap.set(cf.id, cf);
+            }
+          }
+          if (Array.isArray(payload.cashFlowRecords)) {
+            for (const cf of payload.cashFlowRecords) {
+              if (!deletedCfIds.has(cf.id)) {
+                cfMap.set(cf.id, cf);
+              }
+            }
+          }
+          payload.cashFlowRecords = Array.from(cfMap.values()).sort(
+            (a: any, b: any) =>
+              new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+          );
+        }
+      } else if (Array.isArray(payload.cashFlowRecords)) {
+        payload.cashFlowRecords = payload.cashFlowRecords.filter((cf: any) => !deletedCfIds.has(cf.id));
+      }
+
       currentDbState = payload;
 
       // Atomically persist master database to disk

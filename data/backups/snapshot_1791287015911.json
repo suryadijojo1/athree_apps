@@ -1,0 +1,1250 @@
+{
+  "id": "backup_1791287015911",
+  "createdAt": "2026-10-06T11:43:35.911Z",
+  "timestamp": 1791287015911,
+  "expiresAt": "2026-10-20T11:43:35.911Z",
+  "expiresTimestamp": 1792496615911,
+  "retentionDays": 14,
+  "savedBy": "Kasir / Sistem",
+  "source": "save-all",
+  "stats": {
+    "transactionsCount": 22,
+    "productsCount": 0,
+    "shiftsCount": 0,
+    "cashFlowCount": 4,
+    "customersCount": 11
+  },
+  "data": {
+    "cashFlowRecords": [
+      {
+        "id": "cf-test-verify-1",
+        "type": "EXPENSE",
+        "category": "Bahan Baku & Tinta",
+        "amount": 25000,
+        "description": "Beli Lakban & Plastik Packing",
+        "date": "2026-10-06 18:30",
+        "paymentMethod": "TUNAI",
+        "recordedBy": "ATHREE(Owner)",
+        "createdAt": "2026-10-06T11:43:00.000Z"
+      },
+      {
+        "id": "cf-1791021602432",
+        "description": "EMEDLUGUN",
+        "transactionId": "tx-pl-1791021602432",
+        "shiftId": "shift-1791021545200",
+        "amount": 35000,
+        "category": "Jasa Maklon Cetak",
+        "type": "INCOME",
+        "recordedBy": "ATHREE(Owner)",
+        "paymentMethod": "TUNAI",
+        "createdAt": "2026-10-03T10:00:02.433Z",
+        "date": "2026-10-03 19:00"
+      },
+      {
+        "id": "cf-1790854107707",
+        "type": "EXPENSE",
+        "amount": 40000,
+        "createdAt": "2026-10-01T11:28:27.707Z",
+        "category": "Gaji / Uang Makan Staf",
+        "date": "2026-10-01 20:28",
+        "recordedBy": "ATHREE(Owner)",
+        "description": "Operasional / Pengeluaran toko",
+        "shiftId": "shift-1790816013711"
+      },
+      {
+        "id": "cf-1790781101197",
+        "category": "Gaji / Uang Makan Staf",
+        "description": "Operasional / Pengeluaran toko",
+        "type": "EXPENSE",
+        "createdAt": "2026-09-30T15:11:41.197Z",
+        "shiftId": "shift-1790734105384",
+        "amount": 40000,
+        "date": "2026-09-30 00:11",
+        "recordedBy": "ATHREE(Owner)"
+      }
+    ],
+    "transactions": [
+      {
+        "id": "tx-pl-1791021602432",
+        "paymentStatus": "LUNAS",
+        "orderType": "Pendapatan Lain",
+        "total": 35000,
+        "discount": 0,
+        "date": "2026-10-03 19:00",
+        "cashierId": "u2",
+        "cashierName": "ATHREE(Owner)",
+        "invoiceNo": "PL-261003-502",
+        "shiftId": "shift-1791021545200",
+        "tax": 0,
+        "notes": "[Pendapatan Lain] Jasa Maklon Cetak: EMEDLUGUN",
+        "amountPaid": 35000,
+        "subtotal": 35000,
+        "paymentMethod": "Tunai",
+        "customer": {
+          "id": "cust-pl-1791021602433",
+          "name": "Pendapatan Lain (Jasa Maklon Cetak)",
+          "phone": "-"
+        },
+        "change": 0,
+        "dueDate": "2026-10-03",
+        "items": [
+          {
+            "quantity": 1,
+            "price": 35000,
+            "productId": "prod-pl-1791021602433",
+            "name": "Jasa Maklon Cetak - EMEDLUGUN",
+            "subtotal": 35000,
+            "sku": "PL"
+          }
+        ],
+        "createdAt": "2026-10-03T10:00:02.433Z",
+        "status": "Selesai"
+      },
+      {
+        "id": "tx-1790817723768",
+        "amountPaid": 1800000,
+        "items": [
+          {
+            "productId": "p2",
+            "price": 135000,
+            "costPrice": 90000,
+            "name": "JERSEY ATASAN (>7PCS)",
+            "quantity": 26,
+            "notes": "",
+            "subtotal": 3510000,
+            "sku": "SKU/00007",
+            "cartItemId": "cart_1790817621737_hjb4"
+          },
+          {
+            "quantity": 4,
+            "notes": "",
+            "sku": "SKU/00003",
+            "subtotal": 80000,
+            "cartItemId": "cart_1790817648649_80wj",
+            "costPrice": 10000,
+            "name": "TAMBAHAN SIZE 2XL-3XL",
+            "price": 20000,
+            "productId": "p11"
+          },
+          {
+            "sku": "SKU/00011",
+            "productId": "p10",
+            "notes": "",
+            "costPrice": 4000,
+            "subtotal": 60000,
+            "name": "TAMBAHAN LENGAN PANJANG",
+            "quantity": 6,
+            "price": 10000,
+            "cartItemId": "cart_1790817655089_px71"
+          }
+        ],
+        "status": "Sedang Dikerjakan",
+        "change": 0,
+        "customer": {
+          "address": "-",
+          "name": "SPENSA",
+          "id": "c-1790817643937",
+          "phone": "081344071621"
+        },
+        "remainingAmount": 1740000,
+        "date": "2026-10-01 10:22",
+        "vendorName": "ENCO",
+        "paymentStatus": "DP",
+        "discount": 110000,
+        "cashierName": "ATHREE(Owner)",
+        "shippingCost": 0,
+        "tax": 0,
+        "shiftId": "shift-1790816013711",
+        "paymentMethod": "Transfer Bank",
+        "subtotal": 3650000,
+        "vendorCost": 1810000,
+        "createdAt": "2026-10-01T01:22:03.768Z",
+        "orderType": "Admin (DEAZBAR)",
+        "notes": "[PIUTANG DP] Bayar: Rp 1.800.000, Sisa Piutang: Rp 1.740.000 (Jatuh Tempo: 2026-10-03 17:00)\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 1/10/2026, 20.26.47]\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 2/10/2026, 12.55.21]",
+        "dueDate": "2026-10-15 17:00",
+        "cashierId": "u2",
+        "invoiceNo": "#INV/69086",
+        "profit": 1730000,
+        "total": 3540000
+      },
+      {
+        "id": "tx-1790816276463",
+        "items": [
+          {
+            "costPrice": 52000,
+            "name": "SABLON + KAOS A3",
+            "sku": "SKU/00002",
+            "subtotal": 180000,
+            "cartItemId": "cart_1790816239218_iesr",
+            "quantity": 2,
+            "productId": "p5",
+            "notes": "",
+            "kaosColor": "Hitam",
+            "price": 90000,
+            "kaosSize": "L"
+          },
+          {
+            "sku": "SKU/00002",
+            "productId": "p5",
+            "notes": "",
+            "costPrice": 52000,
+            "kaosSize": "XL",
+            "subtotal": 90000,
+            "name": "SABLON + KAOS A3",
+            "kaosColor": "Abu Misty",
+            "quantity": 1,
+            "price": 90000,
+            "cartItemId": "cart_1790816248650_zsy3"
+          }
+        ],
+        "vendorCost": 180000,
+        "createdAt": "2026-10-01T00:57:56.463Z",
+        "customer": {
+          "phone": "-",
+          "name": "ibu maya",
+          "id": "c0"
+        },
+        "tax": 0,
+        "cashierId": "u2",
+        "orderType": "Admin (DEAZBAR)",
+        "discount": 0,
+        "paymentStatus": "PIUTANG",
+        "profit": 90000,
+        "invoiceNo": "#INV/92893",
+        "status": "Selesai",
+        "subtotal": 270000,
+        "change": 0,
+        "dueDate": "2026-10-01 17:00",
+        "paymentMethod": "QRIS",
+        "amountPaid": 0,
+        "remainingAmount": 270000,
+        "notes": "[PIUTANG PIUTANG] Bayar: Rp 0, Sisa Piutang: Rp 270.000 (Jatuh Tempo: 2026-10-01 17:00)\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 1/10/2026, 09.58.42]",
+        "shiftId": "shift-1790816013711",
+        "shippingCost": 0,
+        "cashierName": "ATHREE(Owner)",
+        "total": 270000,
+        "date": "2026-10-01 09:57"
+      },
+      {
+        "id": "tx-pl-1790767419015",
+        "customer": {
+          "phone": "-",
+          "id": "cust-pl-1790767419015",
+          "name": "Pendapatan Lain (Jasa Maklon Cetak)"
+        },
+        "items": [
+          {
+            "productId": "prod-pl-1790767419015",
+            "quantity": 1,
+            "name": "Jasa Maklon Cetak - EMEDLUGUN 2 M",
+            "subtotal": 70000,
+            "price": 70000,
+            "sku": "PL"
+          }
+        ],
+        "change": 0,
+        "date": "2026-09-30 19:23",
+        "discount": 0,
+        "paymentMethod": "Transfer Bank",
+        "cashierName": "ATHREE(Owner)",
+        "createdAt": "2026-09-30T11:23:39.015Z",
+        "paymentStatus": "LUNAS",
+        "subtotal": 70000,
+        "tax": 0,
+        "status": "Selesai",
+        "cashierId": "u2",
+        "invoiceNo": "PL-260930-472",
+        "dueDate": "2026-09-30",
+        "orderType": "Pendapatan Lain",
+        "amountPaid": 70000,
+        "shiftId": "shift-1790682302751",
+        "total": 70000,
+        "notes": "[Pendapatan Lain] Jasa Maklon Cetak: EMEDLUGUN 2 M"
+      },
+      {
+        "id": "tx-1790593991644",
+        "customer": {
+          "id": "c2",
+          "address": "Entrop, Jayapura",
+          "name": "EMEDLUGUN Papuan Club",
+          "phone": "0821-9988-1234"
+        },
+        "change": 0,
+        "dueDate": "2026-09-28 22:00",
+        "discount": 0,
+        "shiftId": "shift-1790593900641",
+        "createdAt": "2026-09-28T11:13:11.644Z",
+        "remainingAmount": 0,
+        "subtotal": 70000,
+        "tax": 0,
+        "date": "2026-09-28 11:13",
+        "items": [
+          {
+            "cartItemId": "cart_1790593952177_881v",
+            "notes": "",
+            "productId": "p-1790038208860",
+            "price": 35000,
+            "subtotal": 70000,
+            "quantity": 2,
+            "costPrice": 25000,
+            "name": "MAKLOON",
+            "sku": "SKU/00017"
+          }
+        ],
+        "orderType": "Admin (DEAZBAR)",
+        "cashierId": "u2",
+        "invoiceNo": "#INV/98383",
+        "total": 70000,
+        "status": "Selesai",
+        "notes": "",
+        "amountPaid": 70000,
+        "paymentMethod": "Tunai",
+        "paymentStatus": "LUNAS",
+        "cashierName": "ATHREE(Owner)"
+      },
+      {
+        "id": "tx-1790593948852",
+        "shiftId": "shift-1790593900641",
+        "dueDate": "2026-09-30 17:00",
+        "shippingCost": 0,
+        "remainingAmount": 105000,
+        "cashierName": "ATHREE(Owner)",
+        "date": "2026-09-29 11:12",
+        "paymentStatus": "PIUTANG",
+        "paymentMethod": "Tunai",
+        "items": [
+          {
+            "productId": "p-1790038208860",
+            "sku": "SKU/00017",
+            "notes": "",
+            "name": "MAKLOON",
+            "costPrice": 25000,
+            "cartItemId": "cart_1790593908451_pptg",
+            "price": 35000,
+            "quantity": 3,
+            "subtotal": 105000
+          }
+        ],
+        "invoiceNo": "#INV/92530",
+        "tax": 0,
+        "createdAt": "2026-09-28T11:12:28.852Z",
+        "change": 0,
+        "total": 105000,
+        "notes": "[PIUTANG PIUTANG] Bayar: Rp 0, Sisa Piutang: Rp 105.000 (Jatuh Tempo: 2026-09-30 17:00)\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 29/9/2026, 20.02.01]",
+        "customer": {
+          "id": "c1",
+          "name": "TALSON FC (Jayapura)",
+          "phone": "0812-4899-2311",
+          "address": "Abepura, Jayapura"
+        },
+        "amountPaid": 0,
+        "discount": 0,
+        "profit": 105000,
+        "vendorCost": 0,
+        "cashierId": "u2",
+        "subtotal": 105000,
+        "status": "Selesai",
+        "orderType": "Admin (DEAZBAR)"
+      },
+      {
+        "id": "tx-1790433214716",
+        "items": [
+          {
+            "subtotal": 175000,
+            "productId": "p-1790038208860",
+            "quantity": 5,
+            "cartItemId": "cart_1790433176330_hd68",
+            "notes": "",
+            "price": 35000,
+            "costPrice": 25000,
+            "sku": "SKU/00017",
+            "name": "MAKLOON"
+          }
+        ],
+        "amountPaid": 175000,
+        "createdAt": "2026-09-26T14:33:34.716Z",
+        "shiftId": "shift-2026-09-26",
+        "cashierName": "DIMAS",
+        "dueDate": "2026-09-29 08:00",
+        "change": 0,
+        "tax": 0,
+        "date": "2026-09-26 14:33",
+        "remainingAmount": 0,
+        "subtotal": 175000,
+        "orderType": "Kasir (Dimas)",
+        "notes": "[Revisi oleh KASIR (DIMAS) pd 26/9/2026, 23.33.50]",
+        "discount": 0,
+        "status": "Selesai",
+        "total": 175000,
+        "paymentStatus": "LUNAS",
+        "cashierId": "u1",
+        "invoiceNo": "#INV/66414",
+        "paymentMethod": "Transfer Bank",
+        "customer": {
+          "phone": "-",
+          "id": "c-1790247670148",
+          "address": "-",
+          "name": "TALSON"
+        }
+      },
+      {
+        "id": "tx-1790433095560",
+        "orderType": "Kasir (Dimas)",
+        "total": 7635000,
+        "cashierName": "DIMAS",
+        "paymentMethod": "Transfer Bank",
+        "date": "2026-09-26 14:31",
+        "cashierId": "u1",
+        "shippingCost": 0,
+        "invoiceNo": "#INV/43136",
+        "discount": 460000,
+        "amountPaid": 4000000,
+        "notes": "[Revisi oleh KASIR (DIMAS) pd 26/9/2026, 23.32.11]\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 1/10/2026, 20.27.04]",
+        "customer": {
+          "id": "c0",
+          "name": "SMP 11",
+          "phone": "-"
+        },
+        "vendorName": "NEV",
+        "profit": 7635000,
+        "createdAt": "2026-09-26T14:31:35.560Z",
+        "dueDate": "2026-10-13 08:00",
+        "vendorCost": 0,
+        "remainingAmount": 3635000,
+        "change": 0,
+        "status": "Sedang Dikerjakan",
+        "shiftId": "shift-2026-09-26",
+        "tax": 0,
+        "subtotal": 8095000,
+        "paymentStatus": "DP",
+        "items": [
+          {
+            "quantity": 50,
+            "subtotal": 6750000,
+            "cartItemId": "cart_1790432911461_a0sm",
+            "price": 135000,
+            "notes": "",
+            "costPrice": 90000,
+            "productId": "p2",
+            "name": "JERSEY ATASAN (>7PCS)",
+            "sku": "SKU/00007"
+          },
+          {
+            "cartItemId": "cart_1790432939828_6e4e",
+            "costPrice": 4000,
+            "name": "TAMBAHAN LENGAN PANJANG",
+            "notes": "",
+            "productId": "p10",
+            "quantity": 19,
+            "sku": "SKU/00011",
+            "price": 10000,
+            "subtotal": 190000
+          },
+          {
+            "quantity": 4,
+            "price": 20000,
+            "subtotal": 80000,
+            "name": "TAMBAHAN SIZE 2XL-3XL",
+            "sku": "SKU/00003",
+            "costPrice": 10000,
+            "notes": "",
+            "cartItemId": "cart_1790432960933_p5zz",
+            "productId": "p11"
+          },
+          {
+            "price": 25000,
+            "notes": "",
+            "quantity": 3,
+            "productId": "p12",
+            "subtotal": 75000,
+            "sku": "SKU/00004",
+            "costPrice": 15000,
+            "cartItemId": "cart_1790432967531_83eg",
+            "name": "TAMBAHAN SIZE 4XL"
+          },
+          {
+            "price": 20000,
+            "name": "TAMBAHAN KERAH POLO",
+            "cartItemId": "cart_1790432996921_qndh",
+            "sku": "SKU/00010",
+            "subtotal": 1000000,
+            "productId": "p7",
+            "costPrice": 20000,
+            "quantity": 50,
+            "notes": ""
+          }
+        ]
+      },
+      {
+        "id": "tx-1790432879821",
+        "tax": 0,
+        "amountPaid": 0,
+        "cashierName": "DIMAS",
+        "createdAt": "2026-09-26T14:27:59.821Z",
+        "customer": {
+          "name": "ASA DIGITAL",
+          "phone": "-",
+          "id": "c0"
+        },
+        "paymentStatus": "PIUTANG",
+        "status": "Sedang Dikerjakan",
+        "cashierId": "u1",
+        "items": [
+          {
+            "cartItemId": "cart_1790432839624_0iw4",
+            "costPrice": 120000,
+            "productId": "p3",
+            "notes": "",
+            "name": "JERSEY FULL PRINTING (ATASAN + CELANA)",
+            "quantity": 2,
+            "sku": "SKU/00008",
+            "price": 185000,
+            "subtotal": 370000
+          }
+        ],
+        "change": 0,
+        "orderType": "Kasir (Dimas)",
+        "discount": 0,
+        "date": "2026-09-26 14:27",
+        "remainingAmount": 370000,
+        "invoiceNo": "#INV/57858",
+        "vendorName": "NEV",
+        "notes": "[PIUTANG PIUTANG] Bayar: Rp 0, Sisa Piutang: Rp 370.000 (Jatuh Tempo: 2026-10-13 08:00)\n[Revisi oleh KASIR (DIMAS) pd 26/9/2026, 23.32.39]\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 1/10/2026, 20.27.13]",
+        "subtotal": 370000,
+        "dueDate": "2026-10-13 08:00",
+        "vendorCost": 0,
+        "profit": 370000,
+        "total": 370000,
+        "shiftId": "shift-2026-09-26",
+        "paymentMethod": "Tunai",
+        "shippingCost": 0
+      },
+      {
+        "id": "tx-1790432682396",
+        "amountPaid": 555000,
+        "items": [
+          {
+            "price": 165000,
+            "cartItemId": "cart_1790432595159_rzmw",
+            "name": "JERSEY ATASAN (SATUAN)",
+            "sku": "SKU/00006",
+            "subtotal": 495000,
+            "productId": "p1",
+            "costPrice": 105000,
+            "quantity": 3,
+            "notes": "JERSEY EDEN DAN AKPER"
+          },
+          {
+            "price": 20000,
+            "notes": "",
+            "quantity": 1,
+            "productId": "p11",
+            "subtotal": 20000,
+            "sku": "SKU/00003",
+            "costPrice": 10000,
+            "name": "TAMBAHAN SIZE 2XL-3XL",
+            "cartItemId": "cart_1790432647352_vuxl"
+          },
+          {
+            "sku": "CUSTOM/ADHOC",
+            "name": "KERAH TALI",
+            "costPrice": 15000,
+            "quantity": 2,
+            "productId": "custom-1790374168045",
+            "price": 25000,
+            "subtotal": 50000
+          }
+        ],
+        "customer": {
+          "phone": "-",
+          "id": "c0",
+          "name": "JORDY"
+        },
+        "paymentStatus": "LUNAS",
+        "discount": 10000,
+        "date": "2026-09-26 14:24",
+        "remainingAmount": 0,
+        "vendorName": "NEV",
+        "status": "Sedang Dikerjakan",
+        "change": 0,
+        "profit": 555000,
+        "subtotal": 565000,
+        "dueDate": "2026-10-07 13:00",
+        "invoiceNo": "#INV/39467",
+        "shippingCost": 0,
+        "cashierName": "DIMAS",
+        "cashierId": "u1",
+        "orderType": "Kasir (Dimas)",
+        "vendorCost": 0,
+        "createdAt": "2026-09-26T14:24:42.396Z",
+        "tax": 0,
+        "shiftId": "shift-2026-09-26",
+        "total": 555000,
+        "paymentMethod": "Tunai",
+        "notes": "[Revisi oleh KASIR (DIMAS) pd 26/9/2026, 23.26.42]\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 1/10/2026, 20.27.24]"
+      },
+      {
+        "id": "tx-1790432573214",
+        "discount": 90000,
+        "paymentStatus": "DP",
+        "notes": "[PIUTANG DP] Bayar: Rp 1.000.000, Sisa Piutang: Rp 1.260.000 (Jatuh Tempo: 2026-10-07 08:00)\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 1/10/2026, 20.27.34]",
+        "amountPaid": 1000000,
+        "cashierName": "DIMAS",
+        "total": 2260000,
+        "date": "2026-09-26 14:22",
+        "tax": 0,
+        "customer": {
+          "address": "-",
+          "id": "c-1790247811946",
+          "phone": "-",
+          "name": "DRS SPEED"
+        },
+        "vendorName": "NEV",
+        "profit": 2260000,
+        "remainingAmount": 1260000,
+        "change": 0,
+        "createdAt": "2026-09-26T14:22:53.214Z",
+        "status": "Sedang Dikerjakan",
+        "vendorCost": 0,
+        "shiftId": "shift-2026-09-26",
+        "subtotal": 2350000,
+        "invoiceNo": "#INV/28542",
+        "items": [
+          {
+            "price": 135000,
+            "name": "JERSEY ATASAN (>7PCS)",
+            "cartItemId": "cart_1790432465012_bp1b",
+            "sku": "SKU/00007",
+            "costPrice": 90000,
+            "subtotal": 1890000,
+            "quantity": 14,
+            "notes": "",
+            "productId": "p2"
+          },
+          {
+            "productId": "p7",
+            "sku": "SKU/00010",
+            "cartItemId": "cart_1790432484620_03cx",
+            "price": 20000,
+            "costPrice": 20000,
+            "name": "TAMBAHAN KERAH POLO",
+            "notes": "",
+            "quantity": 14,
+            "subtotal": 280000
+          },
+          {
+            "sku": "SKU/00020",
+            "quantity": 14,
+            "notes": "",
+            "subtotal": 140000,
+            "name": "+ EMBOS",
+            "costPrice": 10000,
+            "cartItemId": "cart_1790432507860_231c",
+            "price": 10000,
+            "productId": "p-1790248004688"
+          },
+          {
+            "sku": "SKU/00003",
+            "notes": "",
+            "quantity": 2,
+            "productId": "p11",
+            "name": "TAMBAHAN SIZE 2XL-3XL",
+            "cartItemId": "cart_1790432521658_m80n",
+            "subtotal": 40000,
+            "price": 20000,
+            "costPrice": 10000
+          }
+        ],
+        "cashierId": "u1",
+        "shippingCost": 0,
+        "dueDate": "2026-10-07 08:00",
+        "paymentMethod": "Tunai",
+        "orderType": "Kasir (Dimas)"
+      },
+      {
+        "id": "tx-1790374317989",
+        "subtotal": 180000,
+        "tax": 0,
+        "cashierName": "DIMAS",
+        "shiftId": "shift-1790290494947",
+        "dueDate": "2026-09-29 08:00",
+        "createdAt": "2026-09-25T22:11:57.989Z",
+        "items": [
+          {
+            "kaosColor": "Hitam",
+            "name": "SABLON + KAOS A3",
+            "costPrice": 52000,
+            "sku": "SKU/00002",
+            "quantity": 1,
+            "subtotal": 90000,
+            "kaosSize": "M",
+            "cartItemId": "cart_1790374254702_xgsu",
+            "price": 90000,
+            "productId": "p5",
+            "notes": ""
+          },
+          {
+            "cartItemId": "cart_1790374282369_izux",
+            "price": 90000,
+            "productId": "p5",
+            "subtotal": 90000,
+            "kaosSize": "L",
+            "name": "SABLON + KAOS A3",
+            "notes": "",
+            "quantity": 1,
+            "kaosColor": "Hitam",
+            "sku": "SKU/00002",
+            "costPrice": 52000
+          }
+        ],
+        "customer": {
+          "address": "-",
+          "name": "WOBS ROBERT",
+          "phone": "-",
+          "id": "c-1790374315956"
+        },
+        "amountPaid": 100000,
+        "discount": 0,
+        "remainingAmount": 80000,
+        "status": "Selesai",
+        "notes": "[PIUTANG DP] Bayar: Rp 100.000, Sisa Piutang: Rp 80.000 (Jatuh Tempo: 2026-09-29 08:00)",
+        "date": "2026-09-25 22:11",
+        "total": 180000,
+        "paymentStatus": "DP",
+        "paymentMethod": "Tunai",
+        "change": 0,
+        "invoiceNo": "#INV/31136",
+        "cashierId": "u1",
+        "orderType": "Kasir (Dimas)"
+      },
+      {
+        "id": "tx-1790060077632",
+        "total": 420000,
+        "notes": "[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 15.55.16]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 17.36.03]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.44.47: TRF BNI DEWI]",
+        "date": "2026-09-22 06:54",
+        "orderType": "Admin (DEAZBAR)",
+        "tax": 0,
+        "invoiceNo": "#ORD/41438",
+        "cashierId": "u2",
+        "cashierName": "ADMIN",
+        "change": 0,
+        "remainingAmount": 0,
+        "amountPaid": 420000,
+        "discount": 0,
+        "customer": {
+          "address": "-",
+          "name": "TALSON",
+          "phone": "-",
+          "id": "c-1790038296403"
+        },
+        "items": [
+          {
+            "price": 35000,
+            "sku": "SKU/00017",
+            "name": "MAKLOON",
+            "productId": "p-1790038208860",
+            "costPrice": 25000,
+            "quantity": 12,
+            "subtotal": 420000,
+            "notes": ""
+          }
+        ],
+        "paymentStatus": "LUNAS",
+        "paymentMethod": "Transfer Bank",
+        "subtotal": 420000,
+        "dueDate": "2026-09-22 17:00",
+        "status": "Selesai"
+      },
+      {
+        "id": "tx-1790038792998",
+        "change": 0,
+        "discount": 0,
+        "status": "Selesai",
+        "date": "2026-09-22 00:59",
+        "vendorCost": 60000,
+        "shippingCost": 0,
+        "items": [
+          {
+            "sku": "SKU/00002",
+            "notes": "HITAM XL",
+            "costPrice": 52000,
+            "subtotal": 90000,
+            "name": "SABLON + KAOS A3",
+            "productId": "p5",
+            "quantity": 1,
+            "price": 90000
+          }
+        ],
+        "amountPaid": 90000,
+        "paymentMethod": "Transfer Bank",
+        "notes": "",
+        "invoiceNo": "#INV/82687",
+        "subtotal": 90000,
+        "tax": 0,
+        "vendorName": "A3",
+        "cashierId": "u1",
+        "customer": {
+          "phone": "-",
+          "address": "-",
+          "name": "EMEDLUGUN",
+          "id": "c-1790038296403"
+        },
+        "dueDate": "2026-09-22 08:00",
+        "cashierName": "DIMAS",
+        "total": 90000,
+        "orderType": "Kasir (Dimas)",
+        "profit": 30000
+      },
+      {
+        "id": "tx-1790038522800",
+        "total": 4145000,
+        "date": "2026-09-22 00:55",
+        "subtotal": 4185000,
+        "vendorCost": 2530000,
+        "invoiceNo": "#ORD/86871",
+        "cashierId": "u1",
+        "amountPaid": 2070000,
+        "paymentMethod": "Transfer Bank",
+        "customer": {
+          "address": "-",
+          "phone": "-",
+          "name": "MELANESIA SENTANI",
+          "id": "c-1790038296403"
+        },
+        "profit": 1120000,
+        "remainingAmount": 2075000,
+        "shippingCost": 495000,
+        "orderType": "Kasir (Dimas)",
+        "notes": "[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 09.57.09]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 09.59.01: Baru DP 2.070.000]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 10.00.15]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 10.08.13]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.43.31]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.01.42]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.03.07]\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 29/9/2026, 16.28.31]\n[Revisi oleh ADMIN (ATHREE(Owner)) pd 1/10/2026, 20.27.46]",
+        "discount": 40000,
+        "paymentStatus": "DP",
+        "vendorName": "ENCO",
+        "change": 0,
+        "status": "Sedang Dikerjakan",
+        "tax": 0,
+        "dueDate": "2026-10-02 14:00",
+        "cashierName": "DIMAS",
+        "items": [
+          {
+            "costPrice": 100000,
+            "notes": "",
+            "subtotal": 4125000,
+            "sku": "SKU/00016",
+            "quantity": 25,
+            "name": "JERSEY HALF PRINTING + CELANA",
+            "price": 165000,
+            "productId": "p-1790038147864"
+          },
+          {
+            "productId": "p9",
+            "name": "TAMBAHAN LENGAN PANJANG",
+            "price": 20000,
+            "sku": "SKU/00005",
+            "subtotal": 20000,
+            "quantity": 1,
+            "costPrice": 10000
+          },
+          {
+            "price": 20000,
+            "quantity": 2,
+            "name": "TAMBAHAN SIZE 2XL-3XL",
+            "costPrice": 10000,
+            "productId": "p11",
+            "sku": "SKU/00003",
+            "subtotal": 40000
+          }
+        ]
+      },
+      {
+        "id": "tx-1790038449729",
+        "paymentMethod": "Transfer Bank",
+        "total": 235000,
+        "notes": "",
+        "tax": 0,
+        "amountPaid": 235000,
+        "change": 0,
+        "items": [
+          {
+            "price": 35000,
+            "name": "MAKLOON",
+            "sku": "SKU/00017",
+            "costPrice": 25000,
+            "notes": "",
+            "quantity": 6,
+            "productId": "p-1790038208860",
+            "subtotal": 210000
+          },
+          {
+            "sku": "SKU/00018",
+            "notes": "",
+            "name": "SABLON A4",
+            "costPrice": 20000,
+            "productId": "p-1790038260380",
+            "price": 30000,
+            "subtotal": 30000,
+            "quantity": 1
+          }
+        ],
+        "customer": {
+          "address": "-",
+          "name": "EMEDLUGUN",
+          "id": "c-1790038296403",
+          "phone": "-"
+        },
+        "discount": 5000,
+        "cashierName": "DIMAS",
+        "date": "2026-09-22 00:54",
+        "dueDate": "2026-09-22 08:00",
+        "cashierId": "u1",
+        "invoiceNo": "#INV/92817",
+        "status": "Selesai",
+        "subtotal": 240000,
+        "orderType": "Kasir (Dimas)"
+      },
+      {
+        "id": "tx-1790038332681",
+        "notes": "",
+        "total": 210000,
+        "status": "Selesai",
+        "subtotal": 210000,
+        "dueDate": "2026-09-22 08:00",
+        "discount": 0,
+        "customer": {
+          "id": "c-1790038296403",
+          "name": "EMEDLUGUN",
+          "address": "-",
+          "phone": "-"
+        },
+        "paymentMethod": "Transfer Bank",
+        "change": 0,
+        "date": "2026-09-22 00:52",
+        "amountPaid": 210000,
+        "orderType": "Kasir (Dimas)",
+        "items": [
+          {
+            "notes": "",
+            "name": "MAKLOON",
+            "subtotal": 210000,
+            "costPrice": 25000,
+            "sku": "SKU/00017",
+            "price": 35000,
+            "productId": "p-1790038208860",
+            "quantity": 6
+          }
+        ],
+        "tax": 0,
+        "cashierName": "DIMAS",
+        "cashierId": "u1",
+        "invoiceNo": "#INV/60356"
+      },
+      {
+        "id": "tx-1790038368425",
+        "amountPaid": 30000,
+        "cashierName": "DIMAS",
+        "cashierId": "u1",
+        "invoiceNo": "#INV/91862",
+        "change": 0,
+        "total": 30000,
+        "orderType": "Kasir (Dimas)",
+        "notes": "",
+        "subtotal": 30000,
+        "paymentMethod": "Transfer Bank",
+        "items": [
+          {
+            "notes": "",
+            "name": "SABLON A4",
+            "quantity": 1,
+            "subtotal": 30000,
+            "costPrice": 20000,
+            "price": 30000,
+            "productId": "p-1790038260380",
+            "sku": "SKU/00018"
+          }
+        ],
+        "dueDate": "2026-09-22 08:00",
+        "status": "Selesai",
+        "customer": {
+          "id": "c0",
+          "phone": "-",
+          "name": "Pelanggan Umum (Walk-in)"
+        },
+        "tax": 0,
+        "discount": 0,
+        "date": "2026-09-22 00:52"
+      },
+      {
+        "id": "tx-1790037953737",
+        "shippingCost": 165000,
+        "remainingAmount": 0,
+        "items": [
+          {
+            "productId": "p2",
+            "price": 135000,
+            "costPrice": 90000,
+            "name": "JERSEY ATASAN (>7PCS)",
+            "subtotal": 1755000,
+            "sku": "SKU/00007",
+            "quantity": 13,
+            "notes": "Untuk nmr punggung dan ukuran baju 1. ‎No. 18/L 2. ‎No. 32/L 3. ‎No. 13/L 4. ‎No. 32/XL 5. ‎No. 1/L 6. ‎No. 40/XL 7. ‎No. 11/L 8. ‎No. 3/L 9. ‎No. 12/l 10. ‎No. 21/XL 11. ‎No. 9/L 12. ‎No. 6/L 13. ‎No. 14/L"
+          }
+        ],
+        "dueDate": "2026-09-29 08:00",
+        "invoiceNo": "#ORD/55962",
+        "piutangPaidDate": "2026-09-29 11:08",
+        "profit": 745000,
+        "date": "2026-09-22 00:45",
+        "paymentStatus": "LUNAS",
+        "subtotal": 1755000,
+        "paymentMethod": "Transfer Bank",
+        "status": "Selesai",
+        "discount": 0,
+        "customer": {
+          "address": "SENTANI",
+          "id": "c-1790037852448",
+          "name": "MEI POL AIR",
+          "phone": "-"
+        },
+        "vendorCost": 845000,
+        "piutangPayments": [
+          {
+            "recordedBy": "ATHREE(Owner)",
+            "id": "pp-1790734143725",
+            "notes": "TRF BNI DEWI",
+            "amount": 527000,
+            "date": "2026-09-29 11:08",
+            "paymentMethod": "Transfer Bank",
+            "createdAt": "2026-09-30T02:09:03.725Z"
+          }
+        ],
+        "amountPaid": 1755000,
+        "orderType": "Kasir (Dimas)",
+        "cashierName": "DIMAS",
+        "cashierId": "u1",
+        "tax": 0,
+        "notes": "[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.45.06]\n[Revisi oleh ADMIN (ADMIN) pd 22/9/2026, 18.45.41]\n[Revisi oleh KASIR (DIMAS) pd 22/9/2026, 20.01.52]\n[Pelunasan Piutang: Rp 527.000 via Transfer Bank pd 2026-09-29 11:08 oleh ATHREE(Owner)]",
+        "total": 1755000,
+        "change": 0
+      },
+      {
+        "id": "tx-39983",
+        "remainingAmount": 0,
+        "orderType": "Admin (DEAZBAR)",
+        "subtotal": 1240000,
+        "invoiceNo": "#INV/39983",
+        "cashierId": "u2",
+        "discount": 40000,
+        "status": "Selesai",
+        "tax": 0,
+        "total": 1200000,
+        "customer": {
+          "address": "Abepura, Jayapura",
+          "phone": "0812-4899-2311",
+          "name": "FC Garuda Jayapura (Bpk. Yohan)",
+          "id": "c4"
+        },
+        "date": "2026-09-20 04:50",
+        "notes": "Selesai tepat waktu",
+        "cashierName": "ATHREE(Owner)",
+        "paymentMethod": "Transfer Bank",
+        "amountPaid": 1200000,
+        "items": [
+          {
+            "sku": "SKU/00007",
+            "quantity": 8,
+            "subtotal": 1080000,
+            "productId": "p2",
+            "costPrice": 90000,
+            "notes": "Jersey Atasan Garuda Jayapura",
+            "name": "JERSEY ATASAN (>7PCS)",
+            "price": 135000
+          },
+          {
+            "costPrice": 9000,
+            "sku": "SKU/00010",
+            "productId": "p7",
+            "notes": "Kerah Polo variasi",
+            "quantity": 8,
+            "name": "TAMBAHAN KERAH POLO",
+            "subtotal": 160000,
+            "price": 20000
+          }
+        ],
+        "change": 0,
+        "dueDate": "2026-09-21 16:00"
+      },
+      {
+        "id": "tx-18529",
+        "amountPaid": 150000,
+        "change": 20000,
+        "cashierName": "DIMAS",
+        "items": [
+          {
+            "price": 65000,
+            "subtotal": 130000,
+            "name": "KAOS POLOS COTTON COMBED 30S",
+            "quantity": 2,
+            "sku": "SKU/00014",
+            "productId": "p13",
+            "notes": "Kaos polos hitam & putih",
+            "costPrice": 42000
+          }
+        ],
+        "paymentMethod": "Tunai",
+        "remainingAmount": 0,
+        "customer": {
+          "name": "Pelanggan Umum (Walk-in)",
+          "phone": "-",
+          "id": "c0"
+        },
+        "dueDate": "2026-09-18 12:00",
+        "total": 130000,
+        "notes": "Pembelian langsung walk-in",
+        "status": "Selesai",
+        "discount": 0,
+        "date": "2026-09-18 07:20",
+        "orderType": "Kasir (Dimas)",
+        "subtotal": 130000,
+        "cashierId": "u1",
+        "invoiceNo": "#INV/18529",
+        "tax": 0
+      },
+      {
+        "id": "tx-11028",
+        "paymentMethod": "Transfer Bank",
+        "remainingAmount": 0,
+        "orderType": "Admin (DEAZBAR)",
+        "cashierId": "u2",
+        "invoiceNo": "#INV/11028",
+        "items": [
+          {
+            "price": 260000,
+            "sku": "SKU/00008",
+            "name": "JERSEY FULL PRINTING (ATASAN + CELANA)",
+            "costPrice": 165000,
+            "productId": "p3",
+            "quantity": 4,
+            "notes": "Jersey Touring Komunitas Motor Noken",
+            "subtotal": 1040000
+          }
+        ],
+        "tax": 0,
+        "change": 0,
+        "date": "2026-09-17 05:39",
+        "cashierName": "ATHREE(Owner)",
+        "subtotal": 1040000,
+        "amountPaid": 1040000,
+        "dueDate": "2026-09-18 16:00",
+        "status": "Selesai",
+        "customer": {
+          "name": "Komunitas Motor Noken",
+          "phone": "0821-9988-1234",
+          "id": "c5",
+          "address": "Entrop, Jayapura"
+        },
+        "discount": 0,
+        "notes": "Lunas Transfer Bank",
+        "total": 1040000
+      }
+    ],
+    "isRealData": true,
+    "users": [
+      {
+        "id": "u1",
+        "name": "DIMAS",
+        "avatarText": "DI",
+        "role": "kasir",
+        "username": "kasir_dimas",
+        "pin": "1234",
+        "roleLabel": "Kasir POS"
+      },
+      {
+        "id": "u2",
+        "username": "admin_athree",
+        "pin": "1234",
+        "avatarText": "AT",
+        "role": "admin",
+        "roleLabel": "Administrator / Pemilik",
+        "name": "ATHREE(Owner)"
+      },
+      {
+        "id": "u3",
+        "role": "staff",
+        "roleLabel": "Staf Produksi / Desain",
+        "pin": "1234",
+        "username": "staff_budi",
+        "name": "Budi Santoso",
+        "avatarText": "BS"
+      }
+    ],
+    "customers": [
+      {
+        "id": "c-1790247670148",
+        "phone": "-",
+        "address": "-",
+        "name": "KEYZIA"
+      },
+      {
+        "id": "c-1790247811946",
+        "phone": "-",
+        "address": "-",
+        "name": "DRS SPEED"
+      },
+      {
+        "id": "c-1790374315956",
+        "phone": "-",
+        "address": "-",
+        "name": "WOBS ROBERT"
+      },
+      {
+        "id": "c0",
+        "phone": "-",
+        "name": "Pelanggan Umum (Walk-in)"
+      },
+      {
+        "id": "c1",
+        "address": "Abepura, Jayapura",
+        "phone": "0812-4899-2311",
+        "name": "TALSON FC (Jayapura)"
+      },
+      {
+        "id": "c2",
+        "phone": "0821-9988-1234",
+        "address": "Entrop, Jayapura",
+        "name": "EMEDLUGUN Papuan Club"
+      },
+      {
+        "id": "c3",
+        "phone": "0813-4455-6677",
+        "name": "MELANESIA SENTANI",
+        "address": "Sentani, Jayapura"
+      },
+      {
+        "id": "c4",
+        "address": "Abepura, Jayapura",
+        "name": "FC Garuda Jayapura (Bpk. Yohan)",
+        "phone": "0812-4899-2311"
+      },
+      {
+        "id": "c5",
+        "address": "Entrop, Jayapura",
+        "phone": "0821-9988-1234",
+        "name": "Komunitas Motor Noken"
+      },
+      {
+        "id": "c6",
+        "address": "Dok V, Kota Jayapura",
+        "phone": "0813-4455-6677",
+        "name": "Dinas Pariwisata Papua"
+      },
+      {
+        "id": "c7",
+        "phone": "0852-3322-1100",
+        "name": "SMA Negeri 1 Jayapura (OSIS)",
+        "address": "Kotaraja"
+      }
+    ],
+    "currentShift": {
+      "isOpen": true
+    }
+  }
+}
