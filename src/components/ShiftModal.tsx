@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { CashierShift, User, Transaction, CashFlowRecord, CashDenomination } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
+import { resolveLastClosingCash, parseDateString } from '../utils/shiftUtils';
 
 interface ShiftModalProps {
   shift: CashierShift;
@@ -143,7 +144,29 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
   // Admin starting cash revision
   const [isEditingStartingCash, setIsEditingStartingCash] = useState<boolean>(false);
   const [revisedStartingCash, setRevisedStartingCash] = useState<number>(shift.startingCash);
-  const [startingCashInput, setStartingCashInput] = useState<number>(500000);
+
+  // Helper to determine last closed shift's closing cash balance
+  const getLastClosingCash = (): { amount: number; shiftInfo: string } => {
+    const res = resolveLastClosingCash({
+      shiftHistory,
+      currentShift: shift
+    });
+    return {
+      amount: res.amount,
+      shiftInfo: res.shiftInfo
+    };
+  };
+
+  const lastClosing = useMemo(() => getLastClosingCash(), [shiftHistory, shift]);
+  const [startingCashInput, setStartingCashInput] = useState<number>(() => lastClosing.amount);
+
+  // When switching to open_shift mode, ensure startingCashInput is prefilled with latest closing cash
+  useEffect(() => {
+    if (viewMode === 'open_shift') {
+      const latest = getLastClosingCash();
+      setStartingCashInput(latest.amount);
+    }
+  }, [viewMode, shiftHistory, shift]);
 
   // Helper to parse date strings in various formats safely
   const parseDateString = (dateStr?: string): number | null => {

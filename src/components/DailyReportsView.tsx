@@ -38,6 +38,7 @@ import {
   Lock
 } from 'lucide-react';
 import { Transaction, User, CashierShift, CashFlowRecord } from '../types';
+import { resolveLastClosingCash, getShiftTimestamp, isMockOrTestShift } from '../utils/shiftUtils';
 import {
   formatCurrency,
   exportSalesToExcel,
@@ -60,6 +61,7 @@ interface DailyReportsViewProps {
   onPayPiutang?: (transaction: Transaction) => void;
   shift?: CashierShift;
   onUpdateShift?: (shift: CashierShift) => void;
+  shiftHistory?: CashierShift[];
   cashFlowRecords?: CashFlowRecord[];
   onAddCashFlow?: (record: Omit<CashFlowRecord, 'id'>) => void;
   onUpdateCashFlow?: (record: CashFlowRecord) => void;
@@ -77,6 +79,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   onPayPiutang,
   shift,
   onUpdateShift,
+  shiftHistory = [],
   cashFlowRecords = [],
   onAddCashFlow,
   onUpdateCashFlow,
@@ -174,7 +177,57 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     }
   });
 
-  const currentStartingCash = dailyStartingCashMap[selectedReviewDate] ?? shift?.startingCash ?? 500000;
+  // Dynamic starting cash resolution:
+  // 1. Manual revision from dailyStartingCashMap
+  // 2. Active shift startingCash if viewing today and shift is open
+  // 3. Shift on selectedReviewDate from shiftHistory
+  // 4. Closing balance of previous closed shift before selectedReviewDate
+  // 5. Unified resolver from shiftUtils (checks last closed shift, server, localStorage, fallback)
+  const currentStartingCash = useMemo(() => {
+    if (dailyStartingCashMap[selectedReviewDate] !== undefined) {
+      return dailyStartingCashMap[selectedReviewDate];
+    }
+    if (selectedReviewDate === todayIsoStr && shift?.isOpen && shift?.startingCash !== undefined) {
+      return shift.startingCash;
+    }
+    if (Array.isArray(shiftHistory) && shiftHistory.length > 0) {
+      const matchThisDate = shiftHistory.find((s) => {
+        const sDate = s.startTime || s.endTime || '';
+        return (
+          sDate.includes(selectedReviewDate) ||
+          (s.startTimestamp && new Date(s.startTimestamp).toISOString().startsWith(selectedReviewDate))
+        );
+      });
+      if (matchThisDate && matchThisDate.startingCash !== undefined) {
+        return matchThisDate.startingCash;
+      }
+
+      // Find closed shifts prior to review date
+      const reviewTime = new Date(`${selectedReviewDate} 23:59:59`).getTime();
+      const prevShifts = shiftHistory
+        .filter((s) => {
+          if (s.isOpen) return false;
+          if (isMockOrTestShift(s)) return false;
+          const sTime = getShiftTimestamp(s);
+          return sTime > 0 && sTime <= reviewTime;
+        })
+        .sort((a, b) => getShiftTimestamp(b) - getShiftTimestamp(a));
+
+      if (prevShifts.length > 0) {
+        const prev = prevShifts[0];
+        return prev.actualCash !== undefined ? prev.actualCash : (prev.expectedCash || 500000);
+      }
+    }
+
+    // Fallback to unified resolver
+    const resolved = resolveLastClosingCash({
+      shiftHistory,
+      currentShift: shift,
+      targetDate: selectedReviewDate,
+      dailyMap: dailyStartingCashMap
+    });
+    return resolved.amount;
+  }, [dailyStartingCashMap, selectedReviewDate, shift, shiftHistory, todayIsoStr]);
   const [showRevisiSaldoModal, setShowRevisiSaldoModal] = useState(false);
   const [newSaldoInput, setNewSaldoInput] = useState<number>(currentStartingCash);
   const [revisiNoteInput, setRevisiNoteInput] = useState<string>('');

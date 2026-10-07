@@ -15,6 +15,8 @@ export interface AppDatabasePayload {
   cashFlowRecords: CashFlowRecord[];
   shiftHistory: CashierShift[];
   currentShift?: CashierShift;
+  lastClosingCash?: number;
+  lastClosedShift?: CashierShift;
   kaosStocks: KaosStockItem[];
   stockMovements: StockMovement[];
   customers: Customer[];
@@ -1214,6 +1216,36 @@ export async function fetchCurrentShiftFromServer(): Promise<CashierShift | null
   } catch (err) {
     console.warn('Failed to fetch current shift from server:', err);
     return null;
+  }
+}
+
+export async function fetchCurrentShiftAndClosingFromServer(): Promise<{
+  shift: CashierShift | null;
+  lastClosingCash?: number | null;
+  lastClosedShift?: CashierShift | null;
+}> {
+  try {
+    const res = await verboseFetch(
+      buildApiUrl(`/api/shift/current?_t=${Date.now()}`),
+      {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache'
+        }
+      },
+      'FetchCurrentShiftAndClosingFromServer'
+    );
+    if (!res.ok) return { shift: null };
+    const json = await res.json();
+    return {
+      shift: json.shift || null,
+      lastClosingCash: json.lastClosingCash || null,
+      lastClosedShift: json.lastClosedShift || null
+    };
+  } catch (err) {
+    console.warn('Failed to fetch current shift and closing from server:', err);
+    return { shift: null };
   }
 }
 

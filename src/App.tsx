@@ -108,6 +108,12 @@ import {
   markPageForRefresh,
   clearRefreshMark
 } from './utils/sessionCleaner';
+import {
+  resolveLastClosingCash,
+  getShiftTimestamp,
+  parseDateString,
+  isMockOrTestShift
+} from './utils/shiftUtils';
 
 // Helper to check if incoming remote shift has real-time changes
 // CRITICAL: Apabila operator kasir/admin belum menutup kasir maka kasir TIDAK tertutup!
@@ -125,21 +131,34 @@ const shouldApplyRemoteShift = (remoteShift: CashierShift, prevShift: CashierShi
   }
 
   // RULE 2: If local cashier is currently OPEN (prevShift.isOpen === true),
-  // NEVER close it automatically unless the remote shift has an EXPLICIT closure with endTime
+  // NEVER close it unless the remote shift is an EXPLICIT closure of THIS SAME SHIFT:
   if (prevShift.isOpen && !remoteShift.isOpen) {
-    const isExplicitClose = Boolean(remoteShift.endTime) && (
-      remoteShift.id === prevShift.id ||
-      (Boolean(remoteShift.endTimestamp) && Boolean(prevShift.startTimestamp) && Number(remoteShift.endTimestamp) >= Number(prevShift.startTimestamp))
-    );
-    if (!isExplicitClose) {
-      console.log('Real-Time Protection: Ignored remote shift closure because local cashier is still OPEN and operator/admin has not closed it.');
+    // A remote shift with a DIFFERENT ID can NEVER close the currently open shift!
+    if (remoteShift.id !== prevShift.id) {
+      console.log('Real-Time Protection: Ignored remote closed shift with different ID because local cashier is currently OPEN.');
       return false;
     }
+    // Check timestamps: an older closed shift from yesterday/earlier must NEVER close a newer open shift
+    const endTs = getShiftTimestamp(remoteShift);
+    const startTs = getShiftTimestamp(prevShift);
+    if (startTs > 0 && endTs > 0 && endTs < startTs) {
+      console.log('Real-Time Protection: Ignored remote closed shift because end time is earlier than current open shift start time.');
+      return false;
+    }
+    // For the same shift ID, only accept closure if it has an explicit endTime or endTimestamp
+    const isExplicitClose = Boolean(remoteShift.endTime) || Boolean(remoteShift.endTimestamp);
+    if (!isExplicitClose) {
+      console.log('Real-Time Protection: Ignored remote shift closure because endTime is missing.');
+      return false;
+    }
+    return true;
   }
 
   // If local shift is already open, do not overwrite with an older shift
   if (prevShift.isOpen && remoteShift.isOpen) {
-    if (remoteShift.startTimestamp && prevShift.startTimestamp && remoteShift.startTimestamp < prevShift.startTimestamp) {
+    const remoteStart = getShiftTimestamp(remoteShift);
+    const localStart = getShiftTimestamp(prevShift);
+    if (remoteStart > 0 && localStart > 0 && remoteStart < localStart) {
       return false;
     }
   }
@@ -200,9 +219,22 @@ export default function App() {
     const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
     if (!isAuth) return false;
 
+    // Check if there is an active open cashier shift
+    let hasOpenShift = false;
+    try {
+      const activePersistent =
+        localStorage.getItem('athree_shift_active_persistent') ||
+        localStorage.getItem('athree_shift');
+      if (activePersistent) {
+        const parsed = JSON.parse(activePersistent);
+        if (parsed && parsed.isOpen) hasOpenShift = true;
+      }
+    } catch {}
+
     const lastActive = Number(localStorage.getItem('athree_last_active_time') || 0);
-    if (lastActive > 0 && Date.now() - lastActive >= ONE_HOUR_TIMEOUT_MS) {
-      // Lebih dari 1 jam tidak dibuka / tidak aktif -> otomatis logout
+    // If cashier shift is open, never auto-logout so cashier stays open on duty
+    if (!hasOpenShift && lastActive > 0 && Date.now() - lastActive >= ONE_HOUR_TIMEOUT_MS) {
+      // Lebih dari 1 jam tidak dibuka / tidak aktif & shift tertutup -> otomatis logout
       localStorage.setItem('athree_is_authenticated', 'false');
       sessionStorage.removeItem('athree_session_active');
       const notice = 'Sesi Anda telah keluar otomatis karena aplikasi tidak dibuka / tidak aktif selama lebih dari 1 jam. Seluruh database penjualan telah otomatis tersimpan aman di Cloud & Server.';
@@ -352,6 +384,47 @@ export default function App() {
     setSalesList((prev) => prev.filter((s) => s !== salesName));
   };
 
+  const [shiftHistory, setShiftHistory] = useState<CashierShift[]>(() => {
+    const saved =
+      localStorage.getItem('athree_shift_history') ||
+      localStorage.getItem('athree_shifts');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return [
+      {
+        id: 'shift-1',
+        shiftNumber: 1,
+        outletName: 'Default Outlet',
+        cashierName: 'DIMAS',
+        startTime: '16 Sep 2026, 08:00',
+        endTime: '16 Sep 2026, 17:00',
+        startingCash: 500000,
+        cashSales: 1250000,
+        nonCashSales: 1800000,
+        totalSales: 3050000,
+        expectedCash: 1750000,
+        actualCash: 1750000,
+        difference: 0,
+        isOpen: false,
+        notes: 'Shift #1 ditutup balance 100%',
+        totalTransactions: 6,
+        totalDiscount: 25000,
+        unpaidCount: 0,
+        unpaidAmount: 0,
+        paymentMethodBreakdown: {
+          cash: 1250000,
+          transfer: 1000000,
+          qris: 800000,
+          other: 0
+        }
+      }
+    ];
+  });
+
   const [shift, setShift] = useState<CashierShift>(() => {
     const saved = localStorage.getItem('athree_shift') || localStorage.getItem('athree_shift_active_persistent');
     const todayFormatted = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -365,6 +438,18 @@ export default function App() {
         }
       } catch {}
     }
+
+    // Determine initial starting cash based on last closed shift balance
+    let initialStartingCash = 500000;
+    try {
+      const savedHist = localStorage.getItem('athree_shift_history') || localStorage.getItem('athree_shifts');
+      const hist = savedHist ? JSON.parse(savedHist) : [];
+      const resolved = resolveLastClosingCash({ shiftHistory: hist });
+      if (resolved && resolved.amount >= 0) {
+        initialStartingCash = resolved.amount;
+      }
+    } catch {}
+
     return {
       id: `shift-active`,
       shiftNumber: 1,
@@ -372,49 +457,14 @@ export default function App() {
       cashierName: 'DIMAS',
       startTime: '-',
       startTimestamp: 0,
-      startingCash: 500000,
+      startingCash: initialStartingCash,
       cashSales: 0,
       nonCashSales: 0,
       totalSales: 0,
-      expectedCash: 500000,
+      expectedCash: initialStartingCash,
       isOpen: false,
       notes: `Kasir Harian - ${todayFormatted}`
     };
-  });
-
-  const [shiftHistory, setShiftHistory] = useState<CashierShift[]>(() => {
-    const saved = localStorage.getItem('athree_shift_history');
-    return saved
-      ? JSON.parse(saved)
-      : [
-          {
-            id: 'shift-1',
-            shiftNumber: 1,
-            outletName: 'Default Outlet',
-            cashierName: 'DIMAS',
-            startTime: '16 Sep 2026, 08:00',
-            endTime: '16 Sep 2026, 17:00',
-            startingCash: 500000,
-            cashSales: 1250000,
-            nonCashSales: 1800000,
-            totalSales: 3050000,
-            expectedCash: 1750000,
-            actualCash: 1750000,
-            difference: 0,
-            isOpen: false,
-            notes: 'Shift #1 ditutup balance 100%',
-            totalTransactions: 6,
-            totalDiscount: 25000,
-            unpaidCount: 0,
-            unpaidAmount: 0,
-            paymentMethodBreakdown: {
-              cash: 1250000,
-              transfer: 1000000,
-              qris: 800000,
-              other: 0
-            }
-          }
-        ];
   });
 
   const [cashFlowRecords, setCashFlowRecords] = useState<CashFlowRecord[]>(() => {
@@ -589,20 +639,41 @@ export default function App() {
       }
       if (payload.shiftHistory && Array.isArray(payload.shiftHistory)) {
         setShiftHistory(payload.shiftHistory);
+        latestStateRef.current.shiftHistory = payload.shiftHistory;
         localStorage.setItem('athree_shift_history', JSON.stringify(payload.shiftHistory));
+        localStorage.setItem('athree_shifts', JSON.stringify(payload.shiftHistory));
+      }
+      if (typeof payload.lastClosingCash === 'number' && payload.lastClosingCash > 0) {
+        localStorage.setItem('athree_last_closing_cash', String(payload.lastClosingCash));
       }
       // Apply active shift state from server / remote browser in real-time
       if (payload.currentShift) {
         const remoteShift = payload.currentShift;
         setShift((prevShift) => {
           if (shouldApplyRemoteShift(remoteShift, prevShift)) {
+            const mergedShift: CashierShift = {
+              ...remoteShift,
+              startingCash: remoteShift.startingCash || prevShift.startingCash || 500000,
+              cashierName: remoteShift.cashierName || prevShift.cashierName || 'DIMAS',
+              startTime: remoteShift.startTime || prevShift.startTime || '-'
+            };
             console.log('Real-Time Sync: Updating active shift from central database:', {
-              isOpen: remoteShift.isOpen,
-              startTime: remoteShift.startTime,
-              cashierName: remoteShift.cashierName
+              isOpen: mergedShift.isOpen,
+              startTime: mergedShift.startTime,
+              cashierName: mergedShift.cashierName
             });
-            localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
-            return remoteShift;
+            localStorage.setItem('athree_shift', JSON.stringify(mergedShift));
+            if (mergedShift.isOpen) {
+              localStorage.setItem('athree_shift_active_persistent', JSON.stringify(mergedShift));
+            } else {
+              localStorage.removeItem('athree_shift_active_persistent');
+              if (mergedShift.actualCash !== undefined || mergedShift.expectedCash !== undefined) {
+                const c = mergedShift.actualCash !== undefined ? mergedShift.actualCash : mergedShift.expectedCash;
+                localStorage.setItem('athree_last_closing_cash', String(c));
+              }
+            }
+            latestStateRef.current.shift = mergedShift;
+            return mergedShift;
           }
           return prevShift;
         });
@@ -694,19 +765,29 @@ export default function App() {
       if (!isSubscribed || !remoteShift) return;
       setShift((prevShift) => {
         if (shouldApplyRemoteShift(remoteShift, prevShift)) {
+          const mergedShift: CashierShift = {
+            ...remoteShift,
+            startingCash: remoteShift.startingCash || prevShift.startingCash || 500000,
+            cashierName: remoteShift.cashierName || prevShift.cashierName || 'DIMAS',
+            startTime: remoteShift.startTime || prevShift.startTime || '-'
+          };
           console.log('Real-Time Live Shift: Syncing active shift from Cloud SQL Server:', {
-            isOpen: remoteShift.isOpen,
-            startTime: remoteShift.startTime,
-            cashierName: remoteShift.cashierName
+            isOpen: mergedShift.isOpen,
+            startTime: mergedShift.startTime,
+            cashierName: mergedShift.cashierName
           });
-          localStorage.setItem('athree_shift', JSON.stringify(remoteShift));
-          if (remoteShift.isOpen) {
-            localStorage.setItem('athree_shift_active_persistent', JSON.stringify(remoteShift));
+          localStorage.setItem('athree_shift', JSON.stringify(mergedShift));
+          if (mergedShift.isOpen) {
+            localStorage.setItem('athree_shift_active_persistent', JSON.stringify(mergedShift));
           } else {
             localStorage.removeItem('athree_shift_active_persistent');
+            if (mergedShift.actualCash !== undefined || mergedShift.expectedCash !== undefined) {
+              const c = mergedShift.actualCash !== undefined ? mergedShift.actualCash : mergedShift.expectedCash;
+              localStorage.setItem('athree_last_closing_cash', String(c));
+            }
           }
-          latestStateRef.current.shift = remoteShift;
-          return remoteShift;
+          latestStateRef.current.shift = mergedShift;
+          return mergedShift;
         } else if (prevShift.isOpen && (!remoteShift.isOpen || remoteShift.id !== prevShift.id)) {
           // Local browser has open cashier, ensure server knows about this active open shift
           syncShiftToServer(prevShift, `${currentUser.name} (Buka Kasir Aktif)`).catch(() => {});
@@ -822,9 +903,21 @@ export default function App() {
       if (isSubscribed) setFirebaseUser(user);
     });
 
-    // 4. Lakukan signOut(auth) di salah satu browser jika salah satu browser login
+    // 4. Lakukan signOut(auth) di salah satu browser jika akun yang sama login di browser lain
     const unsubSession = subscribeToActiveSession((remoteSession) => {
       if (!isSubscribed) return;
+      // CRITICAL GUARD: Kasir yang sedang bertugas dan kasir aktif terbuka JANGAN PERNAH dikeluarkan / tertutup sendiri!
+      if (latestStateRef.current.shift?.isOpen) {
+        console.log(`[Multi-Browser Auth] Shift kasir sedang aktif terbuka (${latestStateRef.current.shift.cashierName}), kasir dilindungi dan tetap bertugas.`);
+        return;
+      }
+      // Jika login berasal dari role berbeda (misal Owner di HP/Laptop vs Kasir di PC toko), biarkan berjalan bersamaan
+      const myUser = latestStateRef.current.users.find((u) => u.name === currentUser.name) || currentUser;
+      if (remoteSession.userId !== myUser.id && remoteSession.role !== myUser.role) {
+        console.log(`[Multi-Browser Auth] User role berbeda (${remoteSession.role} vs ${myUser.role}) diperbolehkan login.`);
+        return;
+      }
+
       console.warn(`[Multi-Browser Auth] Akun telah login di browser/perangkat lain oleh ${remoteSession.userName}. Melakukan signOut(auth)...`);
       signOutFirebase().catch(() => {});
       localStorage.removeItem('athree_is_authenticated');
@@ -1112,11 +1205,29 @@ export default function App() {
   };
 
   const handleSaveShiftToHistory = (closedShift: CashierShift) => {
-    setShiftHistory((prev) => {
-      const exists = prev.some((s) => s.id === closedShift.id && s.endTime);
-      if (exists) return prev;
-      return [closedShift, ...prev];
-    });
+    // 1. Record closing cash balance permanently for next day / next shift starting cash
+    const closingCash = closedShift.actualCash !== undefined ? closedShift.actualCash : (closedShift.expectedCash || 0);
+    localStorage.setItem('athree_last_closing_cash', String(closingCash));
+
+    try {
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+      const savedMap = localStorage.getItem('athree_daily_starting_cash');
+      const map = savedMap ? JSON.parse(savedMap) : {};
+      map[tomorrowStr] = closingCash;
+      localStorage.setItem('athree_daily_starting_cash', JSON.stringify(map));
+    } catch {}
+
+    // CRITICAL: Immediately update state, latestStateRef and localStorage BEFORE server save
+    const currentHist = latestStateRef.current.shiftHistory || shiftHistory || [];
+    const newHistory = [closedShift, ...currentHist.filter((s) => s.id !== closedShift.id)];
+    setShiftHistory(newHistory);
+    latestStateRef.current.shiftHistory = newHistory;
+    localStorage.setItem('athree_shift_history', JSON.stringify(newHistory));
+    localStorage.setItem('athree_shifts', JSON.stringify(newHistory));
+
     // Immediately synchronize closed shift state across all browsers
     handleUpdateShift(closedShift);
     saveShiftToFirestore(closedShift).catch((err) => console.warn('Sync shift error:', err));
@@ -1435,16 +1546,34 @@ export default function App() {
         }
         if (firestoreData.shifts && firestoreData.shifts.length > 0) {
           setShiftHistory(firestoreData.shifts);
+          latestStateRef.current.shiftHistory = firestoreData.shifts;
+          localStorage.setItem('athree_shift_history', JSON.stringify(firestoreData.shifts));
           localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
         }
         if (firestoreData.activeShift) {
-          setShift(firestoreData.activeShift);
-          localStorage.setItem('athree_shift', JSON.stringify(firestoreData.activeShift));
-          if (firestoreData.activeShift.isOpen) {
-            localStorage.setItem('athree_shift_active_persistent', JSON.stringify(firestoreData.activeShift));
-          } else {
-            localStorage.removeItem('athree_shift_active_persistent');
-          }
+          setShift((prevShift) => {
+            if (shouldApplyRemoteShift(firestoreData.activeShift!, prevShift)) {
+              const mergedShift: CashierShift = {
+                ...firestoreData.activeShift!,
+                startingCash: firestoreData.activeShift!.startingCash || prevShift.startingCash || 500000,
+                cashierName: firestoreData.activeShift!.cashierName || prevShift.cashierName || 'DIMAS',
+                startTime: firestoreData.activeShift!.startTime || prevShift.startTime || '-'
+              };
+              localStorage.setItem('athree_shift', JSON.stringify(mergedShift));
+              if (mergedShift.isOpen) {
+                localStorage.setItem('athree_shift_active_persistent', JSON.stringify(mergedShift));
+              } else {
+                localStorage.removeItem('athree_shift_active_persistent');
+                if (mergedShift.actualCash !== undefined || mergedShift.expectedCash !== undefined) {
+                  const c = mergedShift.actualCash !== undefined ? mergedShift.actualCash : mergedShift.expectedCash;
+                  localStorage.setItem('athree_last_closing_cash', String(c));
+                }
+              }
+              latestStateRef.current.shift = mergedShift;
+              return mergedShift;
+            }
+            return prevShift;
+          });
         }
         if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
           setKaosStocks(firestoreData.kaosStocks);
@@ -1541,16 +1670,34 @@ export default function App() {
           }
           if (firestoreData.shifts && firestoreData.shifts.length > 0) {
             setShiftHistory(firestoreData.shifts);
+            latestStateRef.current.shiftHistory = firestoreData.shifts;
+            localStorage.setItem('athree_shift_history', JSON.stringify(firestoreData.shifts));
             localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
           }
           if (firestoreData.activeShift) {
-            setShift(firestoreData.activeShift);
-            localStorage.setItem('athree_shift', JSON.stringify(firestoreData.activeShift));
-            if (firestoreData.activeShift.isOpen) {
-              localStorage.setItem('athree_shift_active_persistent', JSON.stringify(firestoreData.activeShift));
-            } else {
-              localStorage.removeItem('athree_shift_active_persistent');
-            }
+            setShift((prevShift) => {
+              if (shouldApplyRemoteShift(firestoreData.activeShift!, prevShift)) {
+                const mergedShift: CashierShift = {
+                  ...firestoreData.activeShift!,
+                  startingCash: firestoreData.activeShift!.startingCash || prevShift.startingCash || 500000,
+                  cashierName: firestoreData.activeShift!.cashierName || prevShift.cashierName || 'DIMAS',
+                  startTime: firestoreData.activeShift!.startTime || prevShift.startTime || '-'
+                };
+                localStorage.setItem('athree_shift', JSON.stringify(mergedShift));
+                if (mergedShift.isOpen) {
+                  localStorage.setItem('athree_shift_active_persistent', JSON.stringify(mergedShift));
+                } else {
+                  localStorage.removeItem('athree_shift_active_persistent');
+                  if (mergedShift.actualCash !== undefined || mergedShift.expectedCash !== undefined) {
+                    const c = mergedShift.actualCash !== undefined ? mergedShift.actualCash : mergedShift.expectedCash;
+                    localStorage.setItem('athree_last_closing_cash', String(c));
+                  }
+                }
+                latestStateRef.current.shift = mergedShift;
+                return mergedShift;
+              }
+              return prevShift;
+            });
           }
           if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
             setKaosStocks(firestoreData.kaosStocks);
@@ -1783,6 +1930,13 @@ export default function App() {
     const ONE_HOUR_MS = 60 * 60 * 1000; // 1 Jam
 
     const checkInactivityTimeout = () => {
+      // CRITICAL POS PROTECTION: Jika kasir sedang bertugas & status kasir masih TERBUKA (shift.isOpen === true),
+      // JANGAN PERNAH otomatis logout kasir! Kasir toko harus tetap aktif dan standby melayani transaksi.
+      if (latestStateRef.current.shift?.isOpen) {
+        localStorage.setItem('athree_last_active_time', String(Date.now()));
+        return;
+      }
+
       const lastActiveStr = localStorage.getItem('athree_last_active_time');
       const now = Date.now();
       if (!lastActiveStr) {
@@ -1792,7 +1946,7 @@ export default function App() {
 
       const lastActive = Number(lastActiveStr);
       if (now - lastActive >= ONE_HOUR_MS) {
-        console.log('Aplikasi tidak terbuka / tidak aktif >= 1 jam. Menjalankan auto-save dan auto-logout...');
+        console.log('Aplikasi tidak terbuka / tidak aktif >= 1 jam & kasir tertutup. Menjalankan auto-save dan auto-logout...');
         handleAutoInactivityLogout();
       }
     };
@@ -3049,6 +3203,7 @@ export default function App() {
               onPayPiutang={(tx) => setPayingPiutangTx(tx)}
               shift={shift}
               onUpdateShift={handleUpdateShift}
+              shiftHistory={shiftHistory}
               cashFlowRecords={cashFlowRecords}
               onAddCashFlow={handleAddCashFlow}
               onUpdateCashFlow={handleUpdateCashFlow}

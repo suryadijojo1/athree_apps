@@ -419,24 +419,67 @@ async function startServer() {
         }
       }
 
+      // Ensure shiftHistory array exists
+      if (!Array.isArray(currentDbState?.shiftHistory)) {
+        if (currentDbState) currentDbState.shiftHistory = [];
+      }
+
       // Safeguard: Preserve existing active shift state if incoming payload doesn't close it explicitly
       if (currentDbState?.currentShift?.isOpen === true) {
         if (!payload.currentShift) {
           payload.currentShift = currentDbState.currentShift;
         } else if (payload.currentShift.isOpen === false) {
           // Check if this is an explicit valid closure of the current open shift
+          const currentStartTs = Number(currentDbState.currentShift.startTimestamp || 0);
+          const payloadEndTs = Number(payload.currentShift.endTimestamp || 0);
           const isExplicitClose = Boolean(payload.currentShift.endTime) && (
             payload.currentShift.id === currentDbState.currentShift.id ||
-            (Boolean(payload.currentShift.endTimestamp) && Boolean(currentDbState.currentShift.startTimestamp) &&
-             Number(payload.currentShift.endTimestamp) >= Number(currentDbState.currentShift.startTimestamp))
+            (payloadEndTs > 0 && currentStartTs > 0 && payloadEndTs >= currentStartTs)
           );
           if (!isExplicitClose) {
             // Incoming payload has an old or unrelated closed shift - preserve the active OPEN shift!
             payload.currentShift = currentDbState.currentShift;
+          } else {
+            const closingVal = payload.currentShift.actualCash !== undefined
+              ? payload.currentShift.actualCash
+              : (payload.currentShift.expectedCash || 0);
+            currentDbState.lastClosingCash = closingVal;
+            currentDbState.lastClosedShift = payload.currentShift;
           }
         }
       } else if (!payload.currentShift && currentDbState?.currentShift) {
         payload.currentShift = currentDbState.currentShift;
+      } else if (payload.currentShift && payload.currentShift.isOpen === false) {
+        const closingVal = payload.currentShift.actualCash !== undefined
+          ? payload.currentShift.actualCash
+          : (payload.currentShift.expectedCash || 0);
+        if (closingVal > 0 && currentDbState) {
+          currentDbState.lastClosingCash = closingVal;
+          currentDbState.lastClosedShift = payload.currentShift;
+        }
+      }
+
+      // Safeguard: Preserve existing shiftHistory so historical closed shifts and balances are never lost
+      const shiftMap = new Map<string, any>();
+      if (Array.isArray(currentDbState?.shiftHistory)) {
+        for (const s of currentDbState.shiftHistory) {
+          shiftMap.set(s.id, s);
+        }
+      }
+      if (Array.isArray(payload.shiftHistory)) {
+        for (const s of payload.shiftHistory) {
+          shiftMap.set(s.id, s);
+        }
+      }
+      // If currentShift in payload is closed, also guarantee it is registered in shiftHistory
+      if (payload.currentShift && payload.currentShift.isOpen === false && payload.currentShift.id) {
+        shiftMap.set(payload.currentShift.id, payload.currentShift);
+      }
+      payload.shiftHistory = Array.from(shiftMap.values()).sort(
+        (a: any, b: any) => (b.endTimestamp || b.startTimestamp || 0) - (a.endTimestamp || a.startTimestamp || 0)
+      );
+      if (currentDbState) {
+        currentDbState.shiftHistory = payload.shiftHistory;
       }
 
       // Explicitly deleted cash flow IDs (if any)
@@ -933,6 +976,8 @@ async function startServer() {
       res.json({
         success: true,
         shift: currentDbState?.currentShift || null,
+        lastClosingCash: currentDbState?.lastClosingCash || null,
+        lastClosedShift: currentDbState?.lastClosedShift || null,
         timestamp: Date.now()
       });
     } catch (err: any) {
@@ -947,26 +992,39 @@ async function startServer() {
         return res.status(400).json({ error: 'Shift data required' });
       }
 
+      const closingVal = shift.isOpen === false
+        ? (shift.actualCash !== undefined ? shift.actualCash : (shift.expectedCash || 0))
+        : undefined;
+
       if (!currentDbState) {
         currentDbState = {
           products: [],
           transactions: [],
           cashFlowRecords: [],
-          shiftHistory: [],
+          shiftHistory: shift.isOpen === false ? [shift] : [],
           currentShift: shift,
           kaosStocks: [],
           stockMovements: [],
           customers: [],
           lastUpdated: new Date().toISOString(),
-          isRealData: true
+          isRealData: true,
+          lastClosingCash: closingVal,
+          lastClosedShift: shift.isOpen === false ? shift : undefined
         };
       } else {
         currentDbState.currentShift = shift;
-        // If shift is closed (isOpen: false), ensure it is also recorded in shiftHistory if not already there
-        if (shift.isOpen === false && Array.isArray(currentDbState.shiftHistory)) {
-          const exists = currentDbState.shiftHistory.some((s: any) => s.id === shift.id && s.endTime);
-          if (!exists) {
-            currentDbState.shiftHistory = [shift, ...currentDbState.shiftHistory];
+        if (!Array.isArray(currentDbState.shiftHistory)) {
+          currentDbState.shiftHistory = [];
+        }
+        // If shift is closed (isOpen: false), ensure it is recorded in shiftHistory and update lastClosingCash
+        if (shift.isOpen === false) {
+          currentDbState.lastClosingCash = closingVal;
+          currentDbState.lastClosedShift = shift;
+          const idx = currentDbState.shiftHistory.findIndex((s: any) => s.id === shift.id);
+          if (idx >= 0) {
+            currentDbState.shiftHistory[idx] = shift;
+          } else {
+            currentDbState.shiftHistory.unshift(shift);
           }
         }
         currentDbState.lastUpdated = new Date().toISOString();
