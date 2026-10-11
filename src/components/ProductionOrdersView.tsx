@@ -38,6 +38,7 @@ import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUt
 import { printTransactionDirectly } from '../utils/printUtils';
 import { PrintReceiptModal } from './PrintReceiptModal';
 import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
+import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
 
 interface ProductionOrdersViewProps {
   transactions: Transaction[];
@@ -81,7 +82,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   const [filterDateRange, setFilterDateRange] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'LAST_7_DAYS' | 'THIS_MONTH' | 'CUSTOM'>('ALL');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [sortBy, setSortBy] = useState<'DUE_DATE_ASC' | 'DUE_DATE_DESC' | 'DATE_DESC' | 'TOTAL_DESC' | 'PIUTANG_DESC'>('DUE_DATE_ASC');
+  const [sortBy, setSortBy] = useState<'DATE_DESC' | 'DUE_DATE_ASC' | 'DUE_DATE_DESC' | 'TOTAL_DESC' | 'PIUTANG_DESC'>('DATE_DESC');
 
   // Direct Printer Modal State
   const [printModalTx, setPrintModalTx] = useState<Transaction | null>(null);
@@ -159,7 +160,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
     if (filterPaymentStatus !== 'ALL') count++;
     if (filterSales !== 'ALL') count++;
     if (filterDateRange !== 'ALL') count++;
-    if (sortBy !== 'DUE_DATE_ASC') count++;
+    if (sortBy !== 'DATE_DESC') count++;
     return count;
   }, [filterStatus, filterDueDateWindow, filterPaymentStatus, filterSales, filterDateRange, sortBy]);
 
@@ -171,7 +172,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
     setFilterDateRange('ALL');
     setCustomStartDate('');
     setCustomEndDate('');
-    setSortBy('DUE_DATE_ASC');
+    setSortBy('DATE_DESC');
     setSearchQuery('');
   };
 
@@ -281,9 +282,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
         return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
       }
       if (sortBy === 'DATE_DESC') {
-        const timeA = new Date(a.createdAt || a.date).getTime();
-        const timeB = new Date(b.createdAt || b.date).getTime();
-        return timeB - timeA;
+        return compareTransactionsByLatestDate(a, b);
       }
       if (sortBy === 'TOTAL_DESC') {
         return b.total - a.total;
@@ -291,7 +290,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
       if (sortBy === 'PIUTANG_DESC') {
         return (b.remainingAmount || 0) - (a.remainingAmount || 0);
       }
-      return 0;
+      return compareTransactionsByLatestDate(a, b);
     });
 
     return list;
@@ -623,9 +622,9 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                   onChange={(e) => setSortBy(e.target.value as any)}
                   className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#00871f] focus:outline-none"
                 >
+                  <option value="DATE_DESC">Tanggal Faktur/Invoice Terbaru (Paling Atas)</option>
                   <option value="DUE_DATE_ASC">Deadline Terdekat (Mendesak)</option>
                   <option value="DUE_DATE_DESC">Deadline Terjauh</option>
-                  <option value="DATE_DESC">Pesanan Masuk Terbaru</option>
                   <option value="TOTAL_DESC">Total Nilai Terbesar</option>
                   <option value="PIUTANG_DESC">Sisa Piutang Terbesar</option>
                 </select>

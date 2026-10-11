@@ -48,6 +48,7 @@ import {
 import { PrintReceiptModal } from './PrintReceiptModal';
 import { ReviseCashFlowModal } from './ReviseCashFlowModal';
 import { calculateProfit, isAdminOrOwner } from '../utils/profitUtils';
+import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
 import { uploadFileToDrive, getOrCreateBackupFolder } from '../services/googleDriveService';
 import { getAccessToken, googleSignIn } from '../services/googleAuth';
 import { SalesProfitReportView } from './SalesProfitReportView';
@@ -645,22 +646,23 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     };
   }, [dateFilteredTransactions, availablePaymentMethods, datePreset, todayIsoStr, yesterdayIsoStr, sevenDaysAgoIsoStr, thirtyDaysAgoIsoStr, currentMonthPrefix, lastMonthPrefix, startDate, endDate]);
 
-  // Stage 2 Filter: Final transactions filtered by selected Payment Method
+  // Stage 2 Filter: Final transactions filtered by selected Payment Method and sorted by latest invoice date (terbaru paling atas)
   const filteredTransactions = useMemo(() => {
-    if (paymentFilter === 'all') return dateFilteredTransactions;
+    let result = dateFilteredTransactions;
     if (paymentFilter === 'non_cash') {
-      return dateFilteredTransactions.filter((t) => {
+      result = dateFilteredTransactions.filter((t) => {
         const fin = getTxRangeFinancials(t);
         return fin.totalNonCash > 0 || (fin.isOrderInActiveRange && t.paymentMethod !== 'Tunai');
       });
-    }
-    if (paymentFilter === 'Tunai') {
-      return dateFilteredTransactions.filter((t) => {
+    } else if (paymentFilter === 'Tunai') {
+      result = dateFilteredTransactions.filter((t) => {
         const fin = getTxRangeFinancials(t);
         return fin.totalCash > 0 || (fin.isOrderInActiveRange && t.paymentMethod === 'Tunai');
       });
+    } else if (paymentFilter !== 'all') {
+      result = dateFilteredTransactions.filter((t) => t.paymentMethod === paymentFilter);
     }
-    return dateFilteredTransactions.filter((t) => t.paymentMethod === paymentFilter);
+    return [...result].sort(compareTransactionsByLatestDate);
   }, [dateFilteredTransactions, paymentFilter, datePreset, todayIsoStr, yesterdayIsoStr, sevenDaysAgoIsoStr, thirtyDaysAgoIsoStr, currentMonthPrefix, lastMonthPrefix, startDate, endDate]);
 
   // Aggregate Metrics for Filtered Sales

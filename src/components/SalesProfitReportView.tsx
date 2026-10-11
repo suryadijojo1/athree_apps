@@ -30,6 +30,7 @@ import {
   SalesProfitSummaryItem
 } from '../utils/exportUtils';
 import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
+import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
 
 interface SalesProfitReportViewProps {
   transactions: Transaction[];
@@ -176,19 +177,22 @@ export const SalesProfitReportView: React.FC<SalesProfitReportViewProps> = ({
     });
   }, [periodTransactions, selectedSalesSet]);
 
-  // Further filter activeTransactions by search query
+  // Further filter activeTransactions by search query and sort by latest invoice date (terbaru paling atas)
   const searchedTransactions = useMemo(() => {
-    if (!searchQuery.trim()) return activeTransactions;
-    const q = searchQuery.toLowerCase();
-    return activeTransactions.filter((t) => {
-      return (
-        t.invoiceNo.toLowerCase().includes(q) ||
-        (t.customer?.name || '').toLowerCase().includes(q) ||
-        (t.orderType || '').toLowerCase().includes(q) ||
-        (t.vendorName || '').toLowerCase().includes(q) ||
-        t.items.some((i) => i.name.toLowerCase().includes(q))
-      );
-    });
+    let result = activeTransactions;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = activeTransactions.filter((t) => {
+        return (
+          t.invoiceNo.toLowerCase().includes(q) ||
+          (t.customer?.name || '').toLowerCase().includes(q) ||
+          (t.orderType || '').toLowerCase().includes(q) ||
+          (t.vendorName || '').toLowerCase().includes(q) ||
+          t.items.some((i) => i.name.toLowerCase().includes(q))
+        );
+      });
+    }
+    return [...result].sort(compareTransactionsByLatestDate);
   }, [activeTransactions, searchQuery]);
 
   // Per-Sales Breakdown Summary Table

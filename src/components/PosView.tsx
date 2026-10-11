@@ -49,6 +49,7 @@ import type {
 } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
 import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
+import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
 import { AddSalesModal } from './AddSalesModal';
 import { STANDARD_KAOS_COLORS, STANDARD_KAOS_SIZES } from '../data/mockData';
 import { isSablonKaosProduct, getKaosStockQty } from '../utils/kaosStockUtils';
@@ -102,6 +103,22 @@ export const PosView: React.FC<PosViewProps> = ({
 }) => {
   // Modal state for selecting an invoice to revise
   const [showSelectInvoiceModal, setShowSelectInvoiceModal] = useState<boolean>(false);
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState<string>('');
+
+  // Urutkan daftar invoice sesuai tgl inv terbaru paling atas
+  const sortedRecentTransactions = useMemo(() => {
+    let list = [...recentTransactions].sort(compareTransactionsByLatestDate);
+    if (invoiceSearchQuery.trim()) {
+      const q = invoiceSearchQuery.toLowerCase().trim();
+      list = list.filter(
+        (tx) =>
+          tx.invoiceNo.toLowerCase().includes(q) ||
+          tx.customer?.name.toLowerCase().includes(q) ||
+          tx.date?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [recentTransactions, invoiceSearchQuery]);
   // Modal state for draft invoice preview (Khusus Admin & Kasir)
   const [showDraftPreviewModal, setShowDraftPreviewModal] = useState<boolean>(false);
   // Catalog View Mode: 'grid' | 'list'
@@ -1759,17 +1776,40 @@ export const PosView: React.FC<PosViewProps> = ({
               </button>
             </div>
 
+            {/* Search Input for Quick Invoice Finding */}
+            <div className="mb-3 relative">
+              <input
+                type="text"
+                value={invoiceSearchQuery}
+                onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+                placeholder="Cari nomor faktur / pelanggan / tanggal..."
+                className="w-full pl-3 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+              {invoiceSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setInvoiceSearchQuery('')}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+
             <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
-              {recentTransactions.length === 0 ? (
+              {sortedRecentTransactions.length === 0 ? (
                 <div className="text-center py-8 text-slate-400">
-                  <p className="text-xs">Belum ada transaksi invoice yang tersimpan.</p>
+                  <p className="text-xs">
+                    {invoiceSearchQuery ? 'Tidak ada invoice yang cocok dengan pencarian.' : 'Belum ada transaksi invoice yang tersimpan.'}
+                  </p>
                 </div>
               ) : (
-                recentTransactions.map((tx) => (
+                sortedRecentTransactions.map((tx) => (
                   <div
                     key={tx.id}
                     onClick={() => {
                       setShowSelectInvoiceModal(false);
+                      setInvoiceSearchQuery('');
                       if (onReviseInvoice) {
                         onReviseInvoice(tx);
                       }

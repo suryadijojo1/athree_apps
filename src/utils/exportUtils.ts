@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Transaction, Product, CashFlowRecord, KaosStockItem } from '../types';
+import { sortTransactionsByLatestDate } from './transactionUtils';
 
 export const formatCurrency = (val: number): string => {
   return 'Rp ' + (val || 0).toLocaleString('id-ID');
@@ -33,7 +34,8 @@ export const exportSalesToExcel = (
   cashFlows?: CashFlowRecord[],
   isAdmin = false
 ) => {
-  const data = transactions.map((t, idx) => {
+  const sortedTransactions = sortTransactionsByLatestDate(transactions);
+  const data = sortedTransactions.map((t, idx) => {
     const row: Record<string, any> = {
       No: idx + 1,
       'No Faktur': t.invoiceNo,
@@ -136,7 +138,8 @@ export const exportSalesToPDF = (
   doc.text(summaryText, 14, 35);
 
   // Table
-  const tableData = transactions.map((t, idx) => [
+  const sortedTransactions = sortTransactionsByLatestDate(transactions);
+  const tableData = sortedTransactions.map((t, idx) => [
     idx + 1,
     t.invoiceNo,
     t.date,
@@ -632,7 +635,8 @@ export const exportSalesProfitToExcel = (
   });
 
   // Sheet 2: Rincian Faktur Transaksi
-  const detailRows = transactions.map((t, idx) => {
+  const sortedTransactions = sortTransactionsByLatestDate(transactions);
+  const detailRows = sortedTransactions.map((t, idx) => {
     const vCost = t.vendorCost || 0;
     const sCost = t.shippingCost || 0;
     const profit = t.total - (vCost + sCost);

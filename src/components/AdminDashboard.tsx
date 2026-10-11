@@ -43,6 +43,7 @@ import {
 import type { Transaction, CashFlowRecord, CashierShift, User } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
 import { calculateProfit } from '../utils/profitUtils';
+import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
 import adminBackdrop from '../assets/images/admin_studio_backdrop_1789623254700.jpg';
 import { UserManagementModal } from './UserManagementModal';
 import { AddSalesModal } from './AddSalesModal';
@@ -217,10 +218,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [cashFlowRecords, jurnalDateFilter]);
 
   const filteredTxForJurnal = useMemo(() => {
-    if (jurnalDateFilter === 'all') return transactions.filter((t) => t.status !== 'BATAL');
-    return transactions.filter(
-      (t) => t.status !== 'BATAL' && t.date && t.date.startsWith(jurnalDateFilter)
-    );
+    const list = jurnalDateFilter === 'all'
+      ? transactions.filter((t) => t.status !== 'BATAL')
+      : transactions.filter((t) => t.status !== 'BATAL' && t.date && t.date.startsWith(jurnalDateFilter));
+    return [...list].sort(compareTransactionsByLatestDate);
   }, [transactions, jurnalDateFilter]);
 
   const jurnalPemasukanKasir = useMemo(() => {
@@ -256,10 +257,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
   }, [filteredTxForJurnal]);
 
-  // Saved / in-progress orders
-  const pendingOrders = transactions.filter(
-    (t) => t.status === 'Sedang Dikerjakan' || t.status === 'Menunggu'
-  );
+  // Saved / in-progress orders (urutkan invoice terbaru paling atas)
+  const pendingOrders = useMemo(() => {
+    return transactions
+      .filter((t) => t.status === 'Sedang Dikerjakan' || t.status === 'Menunggu')
+      .sort(compareTransactionsByLatestDate);
+  }, [transactions]);
 
   const handleSavePendapatan = (e: React.FormEvent) => {
     e.preventDefault();

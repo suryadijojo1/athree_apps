@@ -48,6 +48,7 @@ import { KaosStockManagementView } from './components/KaosStockManagementView';
 import { CloudSqlSyncModal } from './components/CloudSqlSyncModal';
 import { CloudUpload, CheckCircle2, Flame } from 'lucide-react';
 import { calculateProfit } from './utils/profitUtils';
+import { sortTransactionsByLatestDate, compareTransactionsByLatestDate } from './utils/transactionUtils';
 import {
   subscribeToAuth,
   signOutFirebase,
@@ -306,11 +307,11 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return sortTransactionsByLatestDate(parsed);
         }
       } catch {}
     }
-    return INITIAL_TRANSACTIONS;
+    return sortTransactionsByLatestDate(INITIAL_TRANSACTIONS);
   });
 
   useEffect(() => {
@@ -604,9 +605,7 @@ export default function App() {
           for (const tx of payload.transactions) {
             map.set(tx.id, tx);
           }
-          const merged = Array.from(map.values()).sort(
-            (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-          );
+          const merged = sortTransactionsByLatestDate(Array.from(map.values()));
           localStorage.setItem('athree_transactions', JSON.stringify(merged));
           localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(merged));
           return merged;
@@ -1034,8 +1033,9 @@ export default function App() {
       localStorage.setItem('athree_products', JSON.stringify(cloudData.products));
     }
     if (cloudData.transactions && cloudData.transactions.length > 0) {
-      setTransactions(cloudData.transactions);
-      localStorage.setItem('athree_transactions', JSON.stringify(cloudData.transactions));
+      const sorted = sortTransactionsByLatestDate(cloudData.transactions);
+      setTransactions(sorted);
+      localStorage.setItem('athree_transactions', JSON.stringify(sorted));
     }
     if (cloudData.cashFlowRecords && cloudData.cashFlowRecords.length > 0) {
       const cleaned = cloudData.cashFlowRecords.filter(
@@ -1523,8 +1523,9 @@ export default function App() {
           localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
         }
         if (firestoreData.transactions && firestoreData.transactions.length > 0) {
-          setTransactions(firestoreData.transactions);
-          localStorage.setItem('athree_transactions', JSON.stringify(firestoreData.transactions));
+          const sorted = sortTransactionsByLatestDate(firestoreData.transactions);
+          setTransactions(sorted);
+          localStorage.setItem('athree_transactions', JSON.stringify(sorted));
         }
         if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
           setCashFlowRecords((prev) => {
@@ -1646,9 +1647,10 @@ export default function App() {
             localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
           }
           if (firestoreData.transactions && firestoreData.transactions.length > 0) {
-            setTransactions(firestoreData.transactions);
-            localStorage.setItem('athree_transactions', JSON.stringify(firestoreData.transactions));
-            localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(firestoreData.transactions));
+            const sorted = sortTransactionsByLatestDate(firestoreData.transactions);
+            setTransactions(sorted);
+            localStorage.setItem('athree_transactions', JSON.stringify(sorted));
+            localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(sorted));
           }
           if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
             setCashFlowRecords((prev) => {
@@ -2073,7 +2075,7 @@ export default function App() {
     }
 
     // 3. Add to transactions list & execute atomic Firestore Transaction
-    setTransactions((prev) => [newTx, ...prev]);
+    setTransactions((prev) => sortTransactionsByLatestDate([newTx, ...prev]));
 
     // 2. Gunakan Firestore Transactions (Wajib untuk Data Bersama)
     runFirestoreCheckoutTransaction({
@@ -2180,7 +2182,7 @@ export default function App() {
       setStockMovements((prev) => [...newMovements, ...prev]);
     }
 
-    setTransactions((prev) => [newTx, ...prev]);
+    setTransactions((prev) => sortTransactionsByLatestDate([newTx, ...prev]));
     saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync pending transaction error:', err));
   };
 
@@ -2188,7 +2190,9 @@ export default function App() {
   const handleSaveRevisionInvoice = (updatedTransaction: Transaction, oldTransaction: Transaction) => {
     // 1. Update transactions & Firestore
     setTransactions((prev) =>
-      prev.map((t) => (t.id === updatedTransaction.id ? updatedTransaction : t))
+      sortTransactionsByLatestDate(
+        prev.map((t) => (t.id === updatedTransaction.id ? updatedTransaction : t))
+      )
     );
     saveTransactionToFirestore(updatedTransaction).catch((err) => console.warn('Sync revise invoice error:', err));
 
@@ -2860,9 +2864,10 @@ export default function App() {
     const newCats = data.categories && Array.isArray(data.categories) ? data.categories : categories;
 
     if (data.transactions) {
-      setTransactions(newTx);
-      localStorage.setItem('athree_transactions', JSON.stringify(newTx));
-      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(newTx));
+      const sorted = sortTransactionsByLatestDate(newTx);
+      setTransactions(sorted);
+      localStorage.setItem('athree_transactions', JSON.stringify(sorted));
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(sorted));
     }
     if (data.products) {
       setProducts(newProd);
