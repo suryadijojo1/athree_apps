@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   LayoutGrid,
   List,
@@ -135,15 +135,16 @@ export const PosView: React.FC<PosViewProps> = ({
     return salesList[0] || 'Kasir (Dimas)';
   });
   const [showAddSalesModal, setShowAddSalesModal] = useState<boolean>(false);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(customers[0]?.id || 'c0');
-  const [customerName, setCustomerName] = useState<string>(() => {
-    return customers[0]?.name || 'Pelanggan Umum';
-  });
-  const [customerPhone, setCustomerPhone] = useState<string>(() => {
-    return customers[0]?.phone && customers[0].phone !== '-' ? customers[0].phone : '';
-  });
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [customerName, setCustomerName] = useState<string>('');
+  const [customerPhone, setCustomerPhone] = useState<string>('');
+  const [customerNameError, setCustomerNameError] = useState<boolean>(false);
+  const customerInputRef = useRef<HTMLInputElement>(null);
 
   const handleCustomerNameChange = (val: string) => {
+    if (customerNameError && val.trim()) {
+      setCustomerNameError(false);
+    }
     setCustomerName(val);
     const matched = customers.find((c) => c.name.trim().toLowerCase() === val.trim().toLowerCase());
     if (matched) {
@@ -399,11 +400,21 @@ export const PosView: React.FC<PosViewProps> = ({
 
   // Cancel / Clear Cart
   const handleClearCart = () => {
-    if (cartItems.length > 0) {
+    if (cartItems.length > 0 || customerName) {
       if (window.confirm('Batalkan dan kosongkan semua rincian pesanan?')) {
         setCartItems([]);
+        setCustomerName('');
+        setSelectedCustomerId('');
+        setCustomerPhone('');
+        setCustomerNameError(false);
         setDiscountAmount(0);
         setCashGiven(0);
+        setNonCashGiven(0);
+        setHasEditedNonCash(false);
+        setVendorName('');
+        setVendorCost(0);
+        setShippingCost(0);
+        setOrderNotes('');
       }
     }
   };
@@ -457,7 +468,14 @@ export const PosView: React.FC<PosViewProps> = ({
       return;
     }
 
-    const finalCustName = customerName.trim() || 'Pelanggan Umum';
+    if (!customerName.trim()) {
+      setCustomerNameError(true);
+      customerInputRef.current?.focus();
+      alert('Nama pelanggan wajib diisi! Silakan masukkan nama pelanggan sebelum memproses transaksi.');
+      return;
+    }
+
+    const finalCustName = customerName.trim();
     const matchedCustomer = customers.find(
       (c) => c.name.trim().toLowerCase() === finalCustName.toLowerCase()
     );
@@ -525,8 +543,12 @@ export const PosView: React.FC<PosViewProps> = ({
       notes: finalNotes
     });
 
-    // Reset cart
+    // Reset cart & customer for next transaction
     setCartItems([]);
+    setCustomerName('');
+    setSelectedCustomerId('');
+    setCustomerPhone('');
+    setCustomerNameError(false);
     setDiscountAmount(0);
     setVendorName('');
     setVendorCost(0);
@@ -550,7 +572,14 @@ export const PosView: React.FC<PosViewProps> = ({
       return;
     }
 
-    const finalCustName = customerName.trim() || 'Pelanggan Umum';
+    if (!customerName.trim()) {
+      setCustomerNameError(true);
+      customerInputRef.current?.focus();
+      alert('Nama pelanggan wajib diisi! Silakan masukkan nama pelanggan sebelum menyimpan pesanan.');
+      return;
+    }
+
+    const finalCustName = customerName.trim();
     const matchedCustomer = customers.find(
       (c) => c.name.trim().toLowerCase() === finalCustName.toLowerCase()
     );
@@ -617,6 +646,10 @@ export const PosView: React.FC<PosViewProps> = ({
 
     alert(`Pesanan berhasil disimpan ke Antrean Produksi dengan Jatuh Tempo: ${formattedDueDate}${remainingAmount > 0 ? ` (Sisa Piutang: ${formatCurrency(remainingAmount)})` : ''}`);
     setCartItems([]);
+    setCustomerName('');
+    setSelectedCustomerId('');
+    setCustomerPhone('');
+    setCustomerNameError(false);
     setDiscountAmount(0);
     setVendorName('');
     setVendorCost(0);
@@ -861,9 +894,10 @@ export const PosView: React.FC<PosViewProps> = ({
           {/* Pelanggan */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+              <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
                 <UserIcon className="w-3 h-3 text-[#00871f]" />
                 Pelanggan (Ketik Manual / Pilih)
+                <span className="text-red-500 font-bold ml-0.5">*Wajib</span>
               </span>
               <div className="flex items-center gap-2">
                 {customerName !== 'Pelanggan Umum' && (
@@ -871,11 +905,12 @@ export const PosView: React.FC<PosViewProps> = ({
                     type="button"
                     onClick={() => {
                       setCustomerName('Pelanggan Umum');
+                      setCustomerNameError(false);
                       setSelectedCustomerId(customers[0]?.id || 'c0');
                       setCustomerPhone('');
                     }}
                     className="text-[10px] font-medium text-slate-500 hover:text-[#00871f] underline cursor-pointer"
-                    title="Reset ke Pelanggan Umum"
+                    title="Set Pelanggan Umum"
                   >
                     Set Umum
                   </button>
@@ -895,12 +930,17 @@ export const PosView: React.FC<PosViewProps> = ({
             <div className="flex items-center gap-1.5">
               <div className="flex-1 relative">
                 <input
+                  ref={customerInputRef}
                   type="text"
                   list="pos-customer-datalist"
                   value={customerName}
                   onChange={(e) => handleCustomerNameChange(e.target.value)}
-                  placeholder="Ketik nama pelanggan..."
-                  className="w-full text-xs font-bold py-1.5 pl-2.5 pr-7 bg-white border border-slate-200 hover:border-slate-300 focus:border-[#00871f] focus:ring-1 focus:ring-[#00871f] rounded-lg text-slate-800 focus:outline-none shadow-2xs transition-all"
+                  placeholder="Ketik nama pelanggan (wajib diisi)..."
+                  className={`w-full text-xs font-bold py-1.5 pl-2.5 pr-7 bg-white border rounded-lg text-slate-800 focus:outline-none shadow-2xs transition-all ${
+                    customerNameError
+                      ? 'border-red-500 ring-2 ring-red-200 bg-red-50/40 placeholder:text-red-400'
+                      : 'border-slate-200 hover:border-slate-300 focus:border-[#00871f] focus:ring-1 focus:ring-[#00871f]'
+                  }`}
                   autoComplete="off"
                 />
                 <datalist id="pos-customer-datalist">
@@ -935,6 +975,11 @@ export const PosView: React.FC<PosViewProps> = ({
                 />
               </div>
             </div>
+            {customerNameError && (
+              <p className="text-[10px] text-red-600 font-bold flex items-center gap-1 mt-0.5">
+                <span>⚠️ Nama pelanggan wajib diisi sebelum memproses transaksi</span>
+              </p>
+            )}
           </div>
 
           {/* Sales */}

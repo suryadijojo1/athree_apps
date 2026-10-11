@@ -261,6 +261,10 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       alert('Nomor faktur/invoice tidak boleh kosong.');
       return;
     }
+    if (!customerName.trim()) {
+      alert('Nama pelanggan wajib diisi!');
+      return;
+    }
     if (items.length === 0) {
       alert('Invoice harus memiliki minimal 1 item.');
       return;
