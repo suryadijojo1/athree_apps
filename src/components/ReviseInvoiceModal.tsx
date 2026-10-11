@@ -22,7 +22,7 @@ import {
   Lock,
   Building2
 } from 'lucide-react';
-import { Transaction, OrderItem, PaymentMethod, OrderStatus, OrderType, Product } from '../types';
+import { Transaction, OrderItem, PaymentMethod, OrderStatus, OrderType, Product, Customer } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
 import { calculateProfit, calculateProfitMargin, isAdminOrOwner } from '../utils/profitUtils';
 import { AddSalesModal } from './AddSalesModal';
@@ -41,6 +41,7 @@ interface ReviseInvoiceModalProps {
   salesList?: string[];
   onAddSales?: (newSalesName: string) => void;
   onDeleteSales?: (salesName: string) => void;
+  customers?: Customer[];
 }
 
 export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
@@ -54,7 +55,8 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   onDeleteInvoice,
   salesList = ['Kasir (Dimas)', 'Admin (DEAZBAR)'],
   onAddSales,
-  onDeleteSales
+  onDeleteSales,
+  customers = []
 }) => {
   // Editable fields initialized safely from existing transaction
   const [invoiceNo, setInvoiceNo] = useState<string>(transaction?.invoiceNo || '');
@@ -273,15 +275,28 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       ? `${transaction.notes}\n${auditStamp}`
       : auditStamp;
 
+    const nowIso = new Date().toISOString();
+    const cleanCustName = customerName.trim() || 'Pelanggan Umum';
+    const cleanCustPhone = customerPhone.trim() || '-';
+
+    // Match customer from master customer list or create/preserve id
+    const matchedCust = customers.find((c) => c.name.trim().toLowerCase() === cleanCustName.toLowerCase());
+    const finalCustId = matchedCust
+      ? matchedCust.id
+      : transaction.customer?.name !== cleanCustName && (!transaction.customer?.id || transaction.customer.id === 'c0')
+        ? `cust-${Date.now()}`
+        : (transaction.customer?.id || `cust-${Date.now()}`);
+
     const updatedTx: Transaction = {
       ...transaction,
       invoiceNo: invoiceNo.trim(),
       date: formattedTransactionDate,
       customer: {
-        ...transaction.customer,
-        name: customerName.trim() || 'Pelanggan Umum',
-        phone: customerPhone.trim() || '-'
+        id: finalCustId,
+        name: cleanCustName,
+        phone: cleanCustPhone
       },
+      updatedAt: nowIso,
       orderType,
       dueDate: formattedDueDate,
       paymentMethod,
@@ -450,15 +465,35 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Nama Pelanggan
+                Nama Pelanggan (Ketik Manual / Pilih)
               </label>
               <input
                 type="text"
+                list="revise-customer-datalist"
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Nama pelanggan..."
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerName(val);
+                  if (customers && customers.length > 0) {
+                    const match = customers.find((c) => c.name.trim().toLowerCase() === val.trim().toLowerCase());
+                    if (match && match.phone && match.phone !== '-') {
+                      setCustomerPhone(match.phone);
+                    }
+                  }
+                }}
+                placeholder="Ketik / pilih nama pelanggan..."
                 className="w-full text-xs font-medium px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00871f] focus:outline-none"
+                autoComplete="off"
               />
+              {customers && customers.length > 0 && (
+                <datalist id="revise-customer-datalist">
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.phone && c.phone !== '-' ? `${c.name} (${c.phone})` : c.name}
+                    </option>
+                  ))}
+                </datalist>
+              )}
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">

@@ -603,11 +603,22 @@ export default function App() {
             map.set(tx.id, tx);
           }
           for (const tx of payload.transactions) {
-            map.set(tx.id, tx);
+            const existing = map.get(tx.id);
+            if (!existing) {
+              map.set(tx.id, tx);
+            } else {
+              // Ensure we never overwrite a newer revision with an older snapshot
+              const existingTs = new Date(existing.updatedAt || existing.date || existing.createdAt || 0).getTime();
+              const incomingTs = new Date(tx.updatedAt || tx.date || tx.createdAt || 0).getTime();
+              if (incomingTs >= existingTs) {
+                map.set(tx.id, tx);
+              }
+            }
           }
           const merged = sortTransactionsByLatestDate(Array.from(map.values()));
           localStorage.setItem('athree_transactions', JSON.stringify(merged));
           localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(merged));
+          latestStateRef.current.transactions = merged;
           return merged;
         });
       }
@@ -686,8 +697,21 @@ export default function App() {
         localStorage.setItem('athree_stock_movements', JSON.stringify(payload.stockMovements));
       }
       if (payload.customers && Array.isArray(payload.customers) && payload.customers.length > 0) {
-        setCustomers(payload.customers);
-        localStorage.setItem('athree_customers', JSON.stringify(payload.customers));
+        setCustomers((prev) => {
+          const map = new Map<string, Customer>();
+          for (const c of prev) {
+            map.set(c.id, c);
+          }
+          for (const c of payload.customers) {
+            if (!map.has(c.id)) {
+              map.set(c.id, c);
+            }
+          }
+          const merged = Array.from(map.values());
+          localStorage.setItem('athree_customers', JSON.stringify(merged));
+          latestStateRef.current.customers = merged;
+          return merged;
+        });
       }
       if (payload.users && Array.isArray(payload.users) && payload.users.length > 0) {
         setUsers(payload.users);
@@ -2010,8 +2034,20 @@ export default function App() {
 
   // Handler: Add customer
   const handleAddCustomer = (newCust: Customer) => {
-    setCustomers((prev) => [newCust, ...prev]);
+    setCustomers((prev) => {
+      const matchIdx = prev.findIndex((c) => c.name.toLowerCase() === newCust.name.toLowerCase() || c.id === newCust.id);
+      let updated: Customer[];
+      if (matchIdx >= 0) {
+        updated = prev.map((c, i) => (i === matchIdx ? newCust : c));
+      } else {
+        updated = [newCust, ...prev];
+      }
+      localStorage.setItem('athree_customers', JSON.stringify(updated));
+      latestStateRef.current.customers = updated;
+      return updated;
+    });
     saveCustomerToFirestore(newCust).catch((err) => console.warn('Sync customer error:', err));
+    syncCurrentStateToServer(true);
   };
 
   // Handler: Complete Payment
@@ -2188,13 +2224,37 @@ export default function App() {
 
   // Handler: Save Revision of Transaction Invoice (Accessible by Admin and Cashier)
   const handleSaveRevisionInvoice = (updatedTransaction: Transaction, oldTransaction: Transaction) => {
-    // 1. Update transactions & Firestore
-    setTransactions((prev) =>
-      sortTransactionsByLatestDate(
-        prev.map((t) => (t.id === updatedTransaction.id ? updatedTransaction : t))
-      )
+    // 1. Update transactions state, localStorage, backup, and latestStateRef
+    const updatedTransactions = sortTransactionsByLatestDate(
+      transactions.map((t) => (t.id === updatedTransaction.id ? updatedTransaction : t))
     );
+    setTransactions(updatedTransactions);
+    localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
+    localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
+    latestStateRef.current.transactions = updatedTransactions;
     saveTransactionToFirestore(updatedTransaction).catch((err) => console.warn('Sync revise invoice error:', err));
+
+    // 2. Synchronize customer name if modified
+    if (updatedTransaction.customer?.name) {
+      const custName = updatedTransaction.customer.name.trim();
+      const custPhone = updatedTransaction.customer.phone || '-';
+      const custId = updatedTransaction.customer.id || `cust-${Date.now()}`;
+      if (custName && custName !== 'Pelanggan Umum') {
+        setCustomers((prev) => {
+          const matchIdx = prev.findIndex((c) => c.name.toLowerCase() === custName.toLowerCase() || c.id === custId);
+          let newCustList: Customer[];
+          if (matchIdx >= 0) {
+            newCustList = prev.map((c, idx) => idx === matchIdx ? { ...c, name: custName, phone: custPhone !== '-' ? custPhone : c.phone } : c);
+          } else {
+            newCustList = [{ id: custId, name: custName, phone: custPhone }, ...prev];
+          }
+          localStorage.setItem('athree_customers', JSON.stringify(newCustList));
+          latestStateRef.current.customers = newCustList;
+          return newCustList;
+        });
+        saveCustomerToFirestore({ id: custId, name: custName, phone: custPhone }).catch(() => {});
+      }
+    }
 
     // 2. Adjust inventory stock based on quantity differences
     const oldQtyMap = new Map<string, number>();
@@ -2275,6 +2335,9 @@ export default function App() {
     if (successTx && successTx.id === updatedTransaction.id) {
       setSuccessTx(updatedTransaction);
     }
+
+    // Immediately sync all updated state to central server and trigger broadcast
+    syncCurrentStateToServer(true);
   };
 
   // Handler: Delete Invoice (Accessible ONLY by Admin)
@@ -3053,6 +3116,7 @@ export default function App() {
           salesList={salesList}
           onAddSales={handleAddSales}
           onDeleteSales={handleDeleteSales}
+          customers={customers}
         />
 
         <DeleteInvoiceModal
@@ -3351,6 +3415,7 @@ export default function App() {
         salesList={salesList}
         onAddSales={handleAddSales}
         onDeleteSales={handleDeleteSales}
+        customers={customers}
       />
 
       <DeleteInvoiceModal

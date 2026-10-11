@@ -89,6 +89,7 @@ export interface Transaction {
   cashierId: string;
   notes?: string;
   createdAt?: string;
+  updatedAt?: string;
   shiftId?: string;
 }
 

@@ -136,6 +136,25 @@ export const PosView: React.FC<PosViewProps> = ({
   });
   const [showAddSalesModal, setShowAddSalesModal] = useState<boolean>(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(customers[0]?.id || 'c0');
+  const [customerName, setCustomerName] = useState<string>(() => {
+    return customers[0]?.name || 'Pelanggan Umum';
+  });
+  const [customerPhone, setCustomerPhone] = useState<string>(() => {
+    return customers[0]?.phone && customers[0].phone !== '-' ? customers[0].phone : '';
+  });
+
+  const handleCustomerNameChange = (val: string) => {
+    setCustomerName(val);
+    const matched = customers.find((c) => c.name.trim().toLowerCase() === val.trim().toLowerCase());
+    if (matched) {
+      setSelectedCustomerId(matched.id);
+      if (matched.phone && matched.phone !== '-') {
+        setCustomerPhone(matched.phone);
+      }
+    } else {
+      setSelectedCustomerId('');
+    }
+  };
   const [orderNotes, setOrderNotes] = useState<string>('');
 
   // Format date to local YYYY-MM-DDTHH:mm string without timezone shifts
@@ -401,6 +420,8 @@ export const PosView: React.FC<PosViewProps> = ({
     };
     onAddCustomer(newCust);
     setSelectedCustomerId(newCust.id);
+    setCustomerName(newCust.name);
+    setCustomerPhone(newCust.phone !== '-' ? newCust.phone : '');
     setNewCustName('');
     setNewCustPhone('');
     setNewCustAddress('');
@@ -436,7 +457,19 @@ export const PosView: React.FC<PosViewProps> = ({
       return;
     }
 
-    const customer = customers.find((c) => c.id === selectedCustomerId) || customers[0];
+    const finalCustName = customerName.trim() || 'Pelanggan Umum';
+    const matchedCustomer = customers.find(
+      (c) => c.name.trim().toLowerCase() === finalCustName.toLowerCase()
+    );
+    const finalCustPhone = customerPhone.trim() || (matchedCustomer?.phone && matchedCustomer.phone !== '-' ? matchedCustomer.phone : '-');
+    const customer: Customer = {
+      id: matchedCustomer ? matchedCustomer.id : `cust-${Date.now()}`,
+      name: finalCustName,
+      phone: finalCustPhone
+    };
+    if (!matchedCustomer && finalCustName !== 'Pelanggan Umum') {
+      onAddCustomer(customer);
+    }
     const finalPaymentMethod: PaymentMethod =
       paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType;
 
@@ -517,7 +550,19 @@ export const PosView: React.FC<PosViewProps> = ({
       return;
     }
 
-    const customer = customers.find((c) => c.id === selectedCustomerId) || customers[0];
+    const finalCustName = customerName.trim() || 'Pelanggan Umum';
+    const matchedCustomer = customers.find(
+      (c) => c.name.trim().toLowerCase() === finalCustName.toLowerCase()
+    );
+    const finalCustPhone = customerPhone.trim() || (matchedCustomer?.phone && matchedCustomer.phone !== '-' ? matchedCustomer.phone : '-');
+    const customer: Customer = {
+      id: matchedCustomer ? matchedCustomer.id : `cust-${Date.now()}`,
+      name: finalCustName,
+      phone: finalCustPhone
+    };
+    if (!matchedCustomer && finalCustName !== 'Pelanggan Umum') {
+      onAddCustomer(customer);
+    }
     const finalPaymentMethod: PaymentMethod =
       paymentMethodTab === 'Tunai' ? 'Tunai' : nonCashType;
 
@@ -814,33 +859,82 @@ export const PosView: React.FC<PosViewProps> = ({
         {/* Customer & Sales Selector dropdowns */}
         <div className="px-3 py-2 border-b border-slate-200 space-y-2 bg-slate-50/50">
           {/* Pelanggan */}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 mb-0.5">
-                <UserIcon className="w-3 h-3 text-slate-400" />
-                Pelanggan
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <UserIcon className="w-3 h-3 text-[#00871f]" />
+                Pelanggan (Ketik Manual / Pilih)
               </span>
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="w-full text-xs font-medium py-1.5 pl-2 pr-6 bg-white border border-slate-200 rounded-lg text-slate-800 focus:ring-1 focus:ring-[#00871f] focus:outline-none shadow-2xs"
-              >
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.phone !== '-' ? `(${c.phone})` : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                {customerName !== 'Pelanggan Umum' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomerName('Pelanggan Umum');
+                      setSelectedCustomerId(customers[0]?.id || 'c0');
+                      setCustomerPhone('');
+                    }}
+                    className="text-[10px] font-medium text-slate-500 hover:text-[#00871f] underline cursor-pointer"
+                    title="Reset ke Pelanggan Umum"
+                  >
+                    Set Umum
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(true)}
+                  title="Buka form input data pelanggan baru"
+                  className="text-[10px] font-bold text-[#00871f] hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  Data Baru
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowAddCustomerModal(true)}
-              title="Tambah Pelanggan Baru"
-              className="mt-3.5 p-1.5 text-[#00871f] hover:bg-emerald-50 border border-emerald-300 rounded-lg text-xs font-medium flex items-center gap-1 cursor-pointer bg-white shrink-0 shadow-2xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Pelanggan</span>
-            </button>
+
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  list="pos-customer-datalist"
+                  value={customerName}
+                  onChange={(e) => handleCustomerNameChange(e.target.value)}
+                  placeholder="Ketik nama pelanggan..."
+                  className="w-full text-xs font-bold py-1.5 pl-2.5 pr-7 bg-white border border-slate-200 hover:border-slate-300 focus:border-[#00871f] focus:ring-1 focus:ring-[#00871f] rounded-lg text-slate-800 focus:outline-none shadow-2xs transition-all"
+                  autoComplete="off"
+                />
+                <datalist id="pos-customer-datalist">
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.phone && c.phone !== '-' ? `${c.name} (${c.phone})` : c.name}
+                    </option>
+                  ))}
+                </datalist>
+                {customerName && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomerName('');
+                      setSelectedCustomerId('');
+                      setCustomerPhone('');
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-0.5 cursor-pointer"
+                    title="Kosongkan nama"
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+              <div className="w-28 sm:w-32 relative">
+                <input
+                  type="text"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="No. WA/HP"
+                  className="w-full text-xs py-1.5 px-2 bg-white border border-slate-200 hover:border-slate-300 focus:border-[#00871f] focus:ring-1 focus:ring-[#00871f] rounded-lg text-slate-700 focus:outline-none shadow-2xs transition-all placeholder:text-slate-400 font-mono text-center sm:text-left"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Sales */}
@@ -1915,7 +2009,11 @@ export const PosView: React.FC<PosViewProps> = ({
           MODAL: Preview Faktur Draft & Vendor (Khusus Admin & Kasir)
       ========================================================================= */}
       {showDraftPreviewModal && (() => {
-        const activeCustomer = customers.find((c) => c.id === selectedCustomerId) || customers[0];
+        const activeCustomer: Customer = {
+          id: selectedCustomerId || 'c0',
+          name: customerName.trim() || 'Pelanggan Umum',
+          phone: customerPhone.trim() || '-'
+        };
         return (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 text-slate-800 max-h-[90vh] flex flex-col">
