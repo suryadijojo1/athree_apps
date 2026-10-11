@@ -159,6 +159,23 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
     );
   };
 
+  // Direct manual input of item quantity
+  const handleSetItemQty = (idx: number, newQty: number) => {
+    const validQty = Math.max(1, Math.floor(newQty || 0));
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i === idx) {
+          return {
+            ...it,
+            quantity: validQty,
+            subtotal: validQty * it.price
+          };
+        }
+        return it;
+      })
+    );
+  };
+
   // Update item price
   const handleUpdatePrice = (idx: number, newPrice: number) => {
     setItems((prev) =>
@@ -626,17 +643,40 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleUpdateQty(idx, -1)}
-                            className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold text-slate-700"
+                            className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold text-slate-700 cursor-pointer"
+                            title="Kurangi 1"
                           >
                             -
                           </button>
-                          <span className="w-8 text-center font-bold text-slate-800">
-                            {it.quantity}
-                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={it.quantity === 0 ? '' : it.quantity}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                              handleSetItemQty(idx, isNaN(val) ? 1 : val);
+                            }}
+                            onFocus={(e) => e.target.select()}
+                            onBlur={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (isNaN(val) || val < 1) {
+                                handleSetItemQty(idx, 1);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            className="w-12 text-center text-xs font-bold text-slate-800 bg-white border border-slate-200 focus:border-[#00871f] focus:ring-1 focus:ring-[#00871f] rounded px-1 py-0.5 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            title="Ketik jumlah item secara manual"
+                            aria-label="Jumlah item"
+                          />
                           <button
                             type="button"
                             onClick={() => handleUpdateQty(idx, 1)}
-                            className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold text-slate-700"
+                            className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold text-slate-700 cursor-pointer"
+                            title="Tambah 1"
                           >
                             +
                           </button>

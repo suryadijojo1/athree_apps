@@ -329,6 +329,23 @@ export const PosView: React.FC<PosViewProps> = ({
     );
   };
 
+  // Direct manual input of item quantity
+  const handleSetItemQty = (itemKey: string, targetQty: number) => {
+    const validQty = Math.max(1, Math.floor(targetQty || 0));
+    setCartItems((prev) =>
+      prev.map((item) => {
+        if (getItemKey(item) === itemKey) {
+          return {
+            ...item,
+            quantity: validQty,
+            subtotal: validQty * item.price
+          };
+        }
+        return item;
+      })
+    );
+  };
+
   // Update item note
   const handleUpdateItemNote = (itemKey: string, note: string) => {
     setCartItems((prev) =>
@@ -1135,21 +1152,44 @@ export const PosView: React.FC<PosViewProps> = ({
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs">
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 hover:border-slate-300 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-300 rounded-lg px-1.5 py-0.5 shadow-2xs transition-all">
                         <button
                           type="button"
                           onClick={() => handleUpdateQty(itemKey, -1)}
-                          className="w-5 h-5 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded cursor-pointer"
+                          className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded cursor-pointer transition-colors"
+                          title="Kurangi 1"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
-                        <span className="text-xs font-bold text-slate-800 min-w-[20px] text-center">
-                          {item.quantity}
-                        </span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity === 0 ? '' : item.quantity}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                            handleSetItemQty(itemKey, isNaN(val) ? 1 : val);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          onBlur={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (isNaN(val) || val < 1) {
+                              handleSetItemQty(itemKey, 1);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
+                          className="w-12 text-center text-xs font-bold text-slate-800 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none py-0.5"
+                          title="Ketik jumlah item secara manual"
+                          aria-label="Jumlah item"
+                        />
                         <button
                           type="button"
                           onClick={() => handleUpdateQty(itemKey, 1)}
-                          className="w-5 h-5 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded cursor-pointer"
+                          className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded cursor-pointer transition-colors"
+                          title="Tambah 1"
                         >
                           <Plus className="w-3 h-3" />
                         </button>
