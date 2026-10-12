@@ -26,6 +26,7 @@ import { Transaction, OrderItem, PaymentMethod, OrderStatus, OrderType, Product,
 import { formatCurrency } from '../utils/exportUtils';
 import { calculateProfit, calculateProfitMargin, isAdminOrOwner } from '../utils/profitUtils';
 import { AddSalesModal } from './AddSalesModal';
+import { MockupDesignInput } from './MockupDesignInput';
 import { STANDARD_KAOS_COLORS, STANDARD_KAOS_SIZES } from '../data/mockData';
 import { isSablonKaosProduct } from '../utils/kaosStockUtils';
 
@@ -65,6 +66,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   );
   const [customerName, setCustomerName] = useState<string>(transaction?.customer?.name || '');
   const [customerPhone, setCustomerPhone] = useState<string>(transaction?.customer?.phone || '');
+  const [customerNameError, setCustomerNameError] = useState<boolean>(false);
   const [orderType, setOrderType] = useState<OrderType>(transaction?.orderType || 'Kasir (Dimas)');
   const [showAddSalesModal, setShowAddSalesModal] = useState<boolean>(false);
   const [dueDate, setDueDate] = useState<string>(
@@ -76,6 +78,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
   const [vendorName, setVendorName] = useState<string>(transaction?.vendorName || '');
   const [vendorCost, setVendorCost] = useState<number>(transaction?.vendorCost || 0);
   const [shippingCost, setShippingCost] = useState<number>(transaction?.shippingCost || 0);
+  const [mockupDesign, setMockupDesign] = useState<string>(transaction?.mockupDesign || '');
   const [amountPaid, setAmountPaid] = useState<number>(transaction?.amountPaid ?? (transaction?.total || 0));
   const [items, setItems] = useState<OrderItem[]>(
     transaction?.items ? transaction.items.map((it) => ({ ...it })) : []
@@ -100,6 +103,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       setVendorName(transaction.vendorName || '');
       setVendorCost(transaction.vendorCost || 0);
       setShippingCost(transaction.shippingCost || 0);
+      setMockupDesign(transaction.mockupDesign || '');
       setAmountPaid(transaction.amountPaid ?? transaction.total);
       setItems(transaction.items ? transaction.items.map((it) => ({ ...it })) : []);
       setRevisionNote('');
@@ -262,7 +266,8 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       return;
     }
     if (!customerName.trim()) {
-      alert('Nama pelanggan wajib diisi!');
+      setCustomerNameError(true);
+      alert('Nama pelanggan wajib diisi! Silakan masukkan nama pelanggan sebelum menyimpan revisi invoice.');
       return;
     }
     if (items.length === 0) {
@@ -313,6 +318,7 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
       vendorCost,
       shippingCost,
       profit: calculateProfit(total, vendorCost, shippingCost),
+      mockupDesign: mockupDesign.trim() || undefined,
       amountPaid,
       change,
       remainingAmount,
@@ -468,15 +474,21 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Nama Pelanggan (Ketik Manual / Pilih)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                  Nama Pelanggan (Ketik Manual / Pilih)
+                  <span className="text-red-500 font-bold">*Wajib</span>
+                </label>
+              </div>
               <input
                 type="text"
                 list="revise-customer-datalist"
                 value={customerName}
                 onChange={(e) => {
                   const val = e.target.value;
+                  if (customerNameError && val.trim()) {
+                    setCustomerNameError(false);
+                  }
                   setCustomerName(val);
                   if (customers && customers.length > 0) {
                     const match = customers.find((c) => c.name.trim().toLowerCase() === val.trim().toLowerCase());
@@ -485,10 +497,19 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
                     }
                   }
                 }}
-                placeholder="Ketik / pilih nama pelanggan..."
-                className="w-full text-xs font-medium px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#00871f] focus:outline-none"
+                placeholder="Ketik / pilih nama pelanggan (wajib diisi)..."
+                className={`w-full text-xs font-medium px-3 py-2 border rounded-lg focus:outline-none transition-all ${
+                  customerNameError
+                    ? 'border-red-500 ring-2 ring-red-200 bg-red-50/40 text-red-900 placeholder:text-red-400'
+                    : 'border-slate-200 focus:ring-2 focus:ring-[#00871f]'
+                }`}
                 autoComplete="off"
               />
+              {customerNameError && (
+                <p className="text-[10px] text-red-600 font-bold mt-1">
+                  ⚠️ Nama pelanggan wajib diisi sebelum menyimpan revisi.
+                </p>
+              )}
               {customers && customers.length > 0 && (
                 <datalist id="revise-customer-datalist">
                   {customers.map((c) => (
@@ -892,6 +913,15 @@ export const ReviseInvoiceModal: React.FC<ReviseInvoiceModalProps> = ({
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Mockup Design Input (Bisa di-paste Ctrl+V, khusus preview Admin & Kasir) */}
+            <div className="pt-2 border-t border-slate-200">
+              <MockupDesignInput
+                mockupDesign={mockupDesign}
+                onChange={setMockupDesign}
+                label="Mockup Design (Bisa di-Paste Ctrl+V / Ganti)"
+              />
             </div>
 
             {/* Preview Hasil Keuntungan (Khusus Admin/Owner) */}

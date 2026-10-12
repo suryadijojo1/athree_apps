@@ -32,7 +32,9 @@ import {
   TrendingUp,
   Truck,
   Building2,
-  Eye
+  Eye,
+  Image as ImageIcon,
+  Maximize2
 } from 'lucide-react';
 import type {
   Product,
@@ -51,6 +53,8 @@ import { formatCurrency } from '../utils/exportUtils';
 import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
 import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
 import { AddSalesModal } from './AddSalesModal';
+import { MockupDesignInput } from './MockupDesignInput';
+import { MockupPreviewModal } from './MockupPreviewModal';
 import { STANDARD_KAOS_COLORS, STANDARD_KAOS_SIZES } from '../data/mockData';
 import { isSablonKaosProduct, getKaosStockQty } from '../utils/kaosStockUtils';
 
@@ -199,6 +203,8 @@ export const PosView: React.FC<PosViewProps> = ({
   const [vendorName, setVendorName] = useState<string>('');
   const [vendorCost, setVendorCost] = useState<number>(0);
   const [shippingCost, setShippingCost] = useState<number>(0);
+  const [mockupDesign, setMockupDesign] = useState<string>('');
+  const [showDraftMockupModal, setShowDraftMockupModal] = useState<boolean>(false);
   const [cashGiven, setCashGiven] = useState<number>(0);
   const [nonCashGiven, setNonCashGiven] = useState<number>(0);
   const [hasEditedNonCash, setHasEditedNonCash] = useState<boolean>(false);
@@ -400,13 +406,14 @@ export const PosView: React.FC<PosViewProps> = ({
 
   // Cancel / Clear Cart
   const handleClearCart = () => {
-    if (cartItems.length > 0 || customerName) {
+    if (cartItems.length > 0 || customerName || mockupDesign) {
       if (window.confirm('Batalkan dan kosongkan semua rincian pesanan?')) {
         setCartItems([]);
         setCustomerName('');
         setSelectedCustomerId('');
         setCustomerPhone('');
         setCustomerNameError(false);
+        setMockupDesign('');
         setDiscountAmount(0);
         setCashGiven(0);
         setNonCashGiven(0);
@@ -531,6 +538,7 @@ export const PosView: React.FC<PosViewProps> = ({
       vendorCost,
       shippingCost,
       profit,
+      mockupDesign: mockupDesign.trim() || undefined,
       paymentMethod: finalPaymentMethod,
       amountPaid: effectiveCash,
       change: changeAmount,
@@ -549,6 +557,7 @@ export const PosView: React.FC<PosViewProps> = ({
     setSelectedCustomerId('');
     setCustomerPhone('');
     setCustomerNameError(false);
+    setMockupDesign('');
     setDiscountAmount(0);
     setVendorName('');
     setVendorCost(0);
@@ -632,6 +641,7 @@ export const PosView: React.FC<PosViewProps> = ({
       vendorCost,
       shippingCost,
       profit,
+      mockupDesign: mockupDesign.trim() || undefined,
       paymentMethod: finalPaymentMethod,
       amountPaid: effectiveCash,
       change: changeAmount,
@@ -650,6 +660,7 @@ export const PosView: React.FC<PosViewProps> = ({
     setSelectedCustomerId('');
     setCustomerPhone('');
     setCustomerNameError(false);
+    setMockupDesign('');
     setDiscountAmount(0);
     setVendorName('');
     setVendorCost(0);
@@ -1554,6 +1565,14 @@ export const PosView: React.FC<PosViewProps> = ({
             </div>
           </div>
 
+          {/* Mockup Design Input (Bisa di-paste Ctrl+V, otomatis kompres ringan, khusus preview Admin & Kasir) */}
+          <div className="pt-2 border-t border-slate-200/80">
+            <MockupDesignInput
+              mockupDesign={mockupDesign}
+              onChange={setMockupDesign}
+            />
+          </div>
+
           {/* PREVIEW HASIL KEUNTUNGAN (Hanya Admin / Owner) */}
           {isAdmin ? (
             <div className="mt-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200/90 text-emerald-950 space-y-1">
@@ -1808,7 +1827,15 @@ export const PosView: React.FC<PosViewProps> = ({
           {/* Tombol Preview Faktur & Vendor (Khusus Admin & Kasir) */}
           <button
             type="button"
-            onClick={() => setShowDraftPreviewModal(true)}
+            onClick={() => {
+              if (!customerName.trim()) {
+                setCustomerNameError(true);
+                customerInputRef.current?.focus();
+                alert('Nama pelanggan wajib diisi kasir/admin sebelum melihat preview faktur!');
+                return;
+              }
+              setShowDraftPreviewModal(true);
+            }}
             disabled={cartItems.length === 0}
             className="w-full py-2 px-3 bg-emerald-50/90 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-800 border border-emerald-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
             title="Buka preview faktur dan nama vendor (Khusus internal Admin & Kasir)"
@@ -1816,6 +1843,14 @@ export const PosView: React.FC<PosViewProps> = ({
             <Eye className="w-3.5 h-3.5 text-[#00871f]" />
             <span>Preview Faktur &amp; Vendor (Admin &amp; Kasir)</span>
           </button>
+
+          {/* Warning Banner Jika Nama Pelanggan Belum Diisi */}
+          {cartItems.length > 0 && !customerName.trim() && (
+            <div className="p-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5 animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+              <span>Nama pelanggan wajib diisi kasir/admin sebelum memproses transaksi.</span>
+            </div>
+          )}
 
           {/* Bottom Actions: Bayar & Simpan ke Pesanan (matching screenshot) */}
           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
@@ -2187,6 +2222,42 @@ export const PosView: React.FC<PosViewProps> = ({
                     * Nama vendor tersimpan dalam faktur khusus untuk catatan operasional internal Admin &amp; Kasir. Saat struk dicetak atau dibagikan ke pelanggan, nama vendor ini secara otomatis dirahasiakan dan tidak akan tercetak.
                   </p>
                 </div>
+
+                {/* KOTAK PREVIEW MOCKUP DESAIN (KHUSUS ADMIN & KASIR - TIDAK TAMPIL SAAT CETAK) */}
+                {mockupDesign && (
+                  <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                        <ImageIcon className="w-4 h-4 text-[#00871f] shrink-0" />
+                        <span>Mockup Desain (Admin &amp; Kasir)</span>
+                      </div>
+                      <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                        Tidak Ditampilkan Saat Print
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200">
+                      <img
+                        src={mockupDesign}
+                        alt="Mockup Draft"
+                        className="w-16 h-16 object-cover rounded-md border border-slate-200 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0 text-xs">
+                        <p className="font-bold text-slate-800">Mockup Desain Terlampir</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Khusus panduan produksi internal Admin &amp; Kasir, tidak dicetak di struk pelanggan.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowDraftMockupModal(true)}
+                          className="mt-1 text-[10px] font-bold text-[#00871f] hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Maximize2 className="w-3 h-3" />
+                          <span>Lihat Ukuran Penuh</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-200 flex justify-end gap-2 shrink-0">
@@ -2214,6 +2285,14 @@ export const PosView: React.FC<PosViewProps> = ({
           </div>
         );
       })()}
+      {/* Modal Preview Mockup Penuh untuk Draft Preview */}
+      <MockupPreviewModal
+        isOpen={showDraftMockupModal}
+        onClose={() => setShowDraftMockupModal(false)}
+        mockupUrl={mockupDesign}
+        invoiceNo="Draft Faktur"
+        customerName={customerName.trim() || 'Pelanggan Umum'}
+      />
     </div>
   );
 };

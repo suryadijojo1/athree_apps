@@ -35,7 +35,8 @@ import {
   Check,
   Wallet,
   Building2,
-  Lock
+  Lock,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Transaction, User, CashierShift, CashFlowRecord } from '../types';
 import { resolveLastClosingCash, getShiftTimestamp, isMockOrTestShift } from '../utils/shiftUtils';
@@ -47,6 +48,7 @@ import {
 } from '../utils/exportUtils';
 import { PrintReceiptModal } from './PrintReceiptModal';
 import { ReviseCashFlowModal } from './ReviseCashFlowModal';
+import { MockupPreviewModal } from './MockupPreviewModal';
 import { calculateProfit, isAdminOrOwner } from '../utils/profitUtils';
 import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
 import { uploadFileToDrive, getOrCreateBackupFolder } from '../services/googleDriveService';
@@ -236,6 +238,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
   const [driveUploadToast, setDriveUploadToast] = useState<{ message: string; link?: string; isError?: boolean } | null>(null);
   const [printModalTx, setPrintModalTx] = useState<Transaction | null>(null);
+  const [viewingMockupTx, setViewingMockupTx] = useState<Transaction | null>(null);
 
   // States: Revisi & Catat Pendapatan Lain / Pengeluaran Toko
   const [revisingCashFlow, setRevisingCashFlow] = useState<CashFlowRecord | null>(null);
@@ -2166,6 +2169,17 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                                 Vendor: {t.vendorName}
                               </span>
                             )}
+                            {t.mockupDesign && (isAdminOrOwner(currentUser) || currentUser.role === 'kasir') && (
+                              <button
+                                type="button"
+                                onClick={() => setViewingMockupTx(t)}
+                                className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded cursor-pointer transition-colors shadow-2xs"
+                                title="Lihat Mockup Desain (Khusus Preview Admin & Kasir - Tidak Dicetak)"
+                              >
+                                <ImageIcon className="w-2.5 h-2.5 text-[#00871f]" />
+                                <span>Mockup Desain</span>
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td className="py-2.5 px-3">
@@ -3287,6 +3301,15 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Preview Mockup Desain (Khusus Preview Admin & Kasir) */}
+      <MockupPreviewModal
+        isOpen={Boolean(viewingMockupTx)}
+        onClose={() => setViewingMockupTx(null)}
+        mockupUrl={viewingMockupTx?.mockupDesign}
+        invoiceNo={viewingMockupTx?.invoiceNo}
+        customerName={viewingMockupTx?.customer?.name}
+      />
     </div>
   );
 };

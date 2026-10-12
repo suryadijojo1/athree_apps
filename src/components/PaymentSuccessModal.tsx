@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Printer, Download, Share2, X, Clock, Calendar, FileEdit, Trash2, Settings2, Building2 } from 'lucide-react';
+import { CheckCircle2, Printer, Download, Share2, X, Clock, Calendar, FileEdit, Trash2, Settings2, Building2, Image as ImageIcon, Maximize2 } from 'lucide-react';
 import type { Transaction, User, UserRole } from '../types';
 import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUtils';
 import { printTransactionDirectly } from '../utils/printUtils';
 import { PrintReceiptModal } from './PrintReceiptModal';
+import { MockupPreviewModal } from './MockupPreviewModal';
 
 interface PaymentSuccessModalProps {
   transaction: Transaction | null;
@@ -25,6 +26,7 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
   currentUser
 }) => {
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showMockupModal, setShowMockupModal] = useState(false);
   const [isPrintingDirect, setIsPrintingDirect] = useState(false);
 
   if (!transaction) return null;
@@ -135,7 +137,7 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
 
         {/* Preview Nama Vendor - Khusus Admin & Kasir (TIDAK Ditampilkan Saat Print Struk) */}
         {canViewVendor && (
-          <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-xl p-3 mb-4 text-xs space-y-1.5 shadow-2xs">
+          <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-xl p-3 mb-3 text-xs space-y-1.5 shadow-2xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 font-bold text-emerald-950">
                 <Building2 className="w-4 h-4 text-[#00871f] shrink-0" />
@@ -154,6 +156,44 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
             <p className="text-[9.5px] text-emerald-700 italic">
               * Hanya Admin dan Kasir yang dapat melihat preview ini. Nama vendor tidak akan dicetak saat print struk fisik/PDF pelanggan.
             </p>
+          </div>
+        )}
+
+        {/* Preview Mockup Desain - Khusus Admin & Kasir (TIDAK Ditampilkan Saat Print Struk) */}
+        {transaction.mockupDesign && canViewVendor && (
+          <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 mb-4 space-y-2 shadow-2xs text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                <ImageIcon className="w-4 h-4 text-[#00871f] shrink-0" />
+                <span>Preview Mockup Desain</span>
+              </div>
+              <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                Khusus Admin &amp; Kasir
+              </span>
+            </div>
+            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200">
+              <img
+                src={transaction.mockupDesign}
+                alt="Mockup Desain"
+                className="w-14 h-14 object-cover rounded-md border border-slate-200 shrink-0 cursor-pointer hover:opacity-90"
+                onClick={() => setShowMockupModal(true)}
+                title="Klik untuk perbesar"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-slate-800 truncate">Mockup Desain Terlampir</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  Khusus panduan produksi internal, tidak dicetak di struk pelanggan.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowMockupModal(true)}
+                  className="mt-1 text-[10px] font-bold text-[#00871f] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                  <span>Lihat Ukuran Penuh</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -233,6 +273,15 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
         isOpen={showPrintModal}
         onClose={() => setShowPrintModal(false)}
         canViewVendor={canViewVendor}
+      />
+
+      {/* Modal Preview Mockup Desain (Khusus Admin & Kasir) */}
+      <MockupPreviewModal
+        isOpen={showMockupModal}
+        onClose={() => setShowMockupModal(false)}
+        mockupUrl={transaction.mockupDesign}
+        invoiceNo={transaction.invoiceNo}
+        customerName={transaction.customer?.name}
       />
     </div>
   );

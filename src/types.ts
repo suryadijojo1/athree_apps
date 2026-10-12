@@ -77,6 +77,7 @@ export interface Transaction {
   shippingCost?: number; // Biaya Pengiriman
   profit?: number; // Hasil Keuntungan = Total Nilai Faktur - (Biaya Vendor + Biaya Pengiriman)
   vendorNotes?: string; // Catatan Vendor atau Pengiriman
+  mockupDesign?: string; // Gambar Mockup Desain (Base64 terkompresi / lightweight, bisa di-paste saat pembuatan inv, khusus preview internal Admin & Kasir, tidak tampil di print struk)
   paymentMethod: PaymentMethod;
   amountPaid: number;
   change: number;

@@ -31,12 +31,15 @@ import {
   SlidersHorizontal,
   RotateCcw,
   Download,
-  Building2
+  Building2,
+  Image as ImageIcon,
+  Maximize2
 } from 'lucide-react';
 import type { Transaction, OrderStatus, User as UserType } from '../types';
 import { formatCurrency, downloadTransactionReceiptPDF } from '../utils/exportUtils';
 import { printTransactionDirectly } from '../utils/printUtils';
 import { PrintReceiptModal } from './PrintReceiptModal';
+import { MockupPreviewModal } from './MockupPreviewModal';
 import { calculateProfit, calculateProfitMargin } from '../utils/profitUtils';
 import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
 
@@ -95,6 +98,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
 
   // Preview Modal state
   const [previewTx, setPreviewTx] = useState<Transaction | null>(null);
+  const [viewingMockupTx, setViewingMockupTx] = useState<Transaction | null>(null);
   const [isEditingCosts, setIsEditingCosts] = useState<boolean>(false);
   const [tempVendorCost, setTempVendorCost] = useState<number>(0);
   const [tempShippingCost, setTempShippingCost] = useState<number>(0);
@@ -799,7 +803,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                             <span className="text-slate-600 font-medium">Sales: {t.orderType || t.cashierName || 'Kasir'}</span>
                           </div>
                           {t.vendorName && canViewVendorResolved && (
-                            <div className="mt-1">
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
                               <span
                                 className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
                                 title="Preview Nama Vendor (Khusus Admin & Kasir - Tidak Dicetak)"
@@ -807,6 +811,19 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                                 <Building2 className="w-2.5 h-2.5 text-[#00871f]" />
                                 Vendor: {t.vendorName}
                               </span>
+                            </div>
+                          )}
+                          {t.mockupDesign && canViewVendorResolved && (
+                            <div className="mt-1">
+                              <button
+                                type="button"
+                                onClick={() => setViewingMockupTx(t)}
+                                className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded cursor-pointer transition-colors shadow-2xs"
+                                title="Lihat Mockup Desain (Khusus Preview Admin & Kasir)"
+                              >
+                                <ImageIcon className="w-2.5 h-2.5 text-[#00871f]" />
+                                <span>Mockup Desain</span>
+                              </button>
                             </div>
                           )}
                         </td>
@@ -1036,6 +1053,19 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                           <Building2 className="w-3 h-3 text-[#00871f]" />
                           Vendor: {t.vendorName}
                         </span>
+                      </div>
+                    )}
+                    {t.mockupDesign && canViewVendorResolved && (
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          onClick={() => setViewingMockupTx(t)}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                          title="Lihat Mockup Desain (Khusus Preview Admin & Kasir)"
+                        >
+                          <ImageIcon className="w-3 h-3 text-[#00871f]" />
+                          <span>Lihat Mockup Desain</span>
+                        </button>
                       </div>
                     )}
 
@@ -1358,6 +1388,48 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                     Ubah Jadwal
                   </button>
                 </div>
+
+                {/* Mockup Desain Produk (Khusus Preview Admin & Kasir) */}
+                {previewTx.mockupDesign && canViewVendorResolved && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-emerald-100 text-[#00871f] rounded-lg">
+                          <ImageIcon className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                            Mockup Desain Produk
+                          </h4>
+                          <p className="text-[10px] text-slate-500">Khusus panduan produksi internal Admin &amp; Kasir (Tidak dicetak di struk)</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setViewingMockupTx(previewTx)}
+                        className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-slate-700 hover:text-[#00871f] border border-slate-300 hover:border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5 text-[#00871f]" />
+                        <span>Perbesar Mockup</span>
+                      </button>
+                    </div>
+                    <div
+                      onClick={() => setViewingMockupTx(previewTx)}
+                      className="relative rounded-lg overflow-hidden border border-slate-200 bg-white cursor-pointer group max-h-56 flex items-center justify-center p-1"
+                      title="Klik untuk melihat ukuran penuh"
+                    >
+                      <img
+                        src={previewTx.mockupDesign}
+                        alt="Mockup Desain Pesanan"
+                        className="max-h-52 w-auto object-contain rounded group-hover:scale-102 transition-transform"
+                      />
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-1">
+                        <Maximize2 className="w-4 h-4" />
+                        <span>Klik untuk Zoom Penuh</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* 3. Rincian Item Produksi */}
                 <div>
@@ -1828,6 +1900,15 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
         transaction={printModalTx}
         isOpen={Boolean(printModalTx)}
         onClose={() => setPrintModalTx(null)}
+      />
+
+      {/* Modal Preview Mockup Desain */}
+      <MockupPreviewModal
+        isOpen={Boolean(viewingMockupTx)}
+        onClose={() => setViewingMockupTx(null)}
+        mockupUrl={viewingMockupTx?.mockupDesign}
+        invoiceNo={viewingMockupTx?.invoiceNo}
+        customerName={viewingMockupTx?.customer?.name}
       />
     </div>
   );
