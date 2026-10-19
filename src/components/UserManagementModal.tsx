@@ -451,7 +451,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
-                        onClick={() => setRole('admin')}
+                        onClick={() => {
+                          setRole('admin');
+                          setRoleLabel('Administrator / Pemilik');
+                        }}
                         className={`p-2 rounded-xl border text-xs font-bold text-center transition-all cursor-pointer ${
                           role === 'admin'
                             ? 'bg-blue-50 border-blue-500 text-blue-800 ring-1 ring-blue-500'
@@ -462,7 +465,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setRole('kasir')}
+                        onClick={() => {
+                          setRole('kasir');
+                          setRoleLabel('Kasir POS');
+                        }}
                         className={`p-2 rounded-xl border text-xs font-bold text-center transition-all cursor-pointer ${
                           role === 'kasir'
                             ? 'bg-emerald-50 border-[#00871f] text-[#00871f] ring-1 ring-[#00871f]'
@@ -473,7 +479,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setRole('staff')}
+                        onClick={() => {
+                          setRole('staff');
+                          setRoleLabel('Staf Produksi');
+                        }}
                         className={`p-2 rounded-xl border text-xs font-bold text-center transition-all cursor-pointer ${
                           role === 'staff'
                             ? 'bg-amber-50 border-amber-500 text-amber-800 ring-1 ring-amber-500'

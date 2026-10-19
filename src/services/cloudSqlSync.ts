@@ -55,7 +55,7 @@ export interface CloudSqlStatus {
  */
 export async function checkCloudSqlStatus(): Promise<CloudSqlStatus> {
   try {
-    const res = await verboseFetch(buildApiUrl('/api/cloudsql/status'), { cache: 'no-store' }, 'CheckCloudSqlStatus');
+    const res = await verboseFetch(buildApiUrl('/api/cloudsql/status'), { cache: 'no-store', silentOnFail: true }, 'CheckCloudSqlStatus');
     if (res.ok) {
       const data = await res.json();
       return {
@@ -70,12 +70,12 @@ export async function checkCloudSqlStatus(): Promise<CloudSqlStatus> {
       };
     }
   } catch (err) {
-    console.warn('Could not query Cloud SQL status endpoint, falling back to database check:', err);
+    // Fallback gracefully
   }
 
   // Fallback: Check /api/health
   try {
-    const healthRes = await verboseFetch(buildApiUrl('/api/health'), { cache: 'no-store' }, 'CheckHealthFallback');
+    const healthRes = await verboseFetch(buildApiUrl('/api/health'), { cache: 'no-store', silentOnFail: true }, 'CheckHealthFallback');
     if (healthRes.ok) {
       const hData = await healthRes.json();
       return {

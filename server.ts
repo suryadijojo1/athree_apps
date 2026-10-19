@@ -332,8 +332,8 @@ async function startServer() {
           }
         }
       }
-      res.setHeader('Clear-Site-Data', '"cookies"');
-      res.json({ success: true, message: 'Cookies and session cleared successfully' });
+      res.setHeader('Clear-Site-Data', '"cookies", "cache"');
+      res.json({ success: true, message: 'Cookies and cache cleared successfully' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -379,29 +379,44 @@ async function startServer() {
       const deletedIds = new Set<string>(Array.isArray(payload.deletedTransactionIds) ? payload.deletedTransactionIds : []);
 
       // Smart transaction preservation: Never lose sales transactions
+      const dummyInvoices = new Set(['#INV/00001', '#INV/00002', '#INV/00003', '#INV/00004', '#INV/00005', '#INV/00006', '#INV/00007', '#INV/00008']);
       if (currentDbState?.transactions?.length > 0) {
         if (payload.transactions.length === 0 && deletedIds.size === 0) {
           console.warn('Blocked database wipe: incoming payload has 0 transactions while server has', currentDbState.transactions.length);
           payload.transactions = currentDbState.transactions;
           payload.isRealData = true;
-        } else {
-          // Merge transactions by ID: Incoming replaces older record with same ID,
-          // but existing server records are NOT dropped unless listed in deletedIds
-          const txMap = new Map<string, any>();
-          for (const tx of currentDbState.transactions) {
-            if (!deletedIds.has(tx.id)) {
-              txMap.set(tx.id, tx);
-            }
-          }
-          for (const tx of payload.transactions) {
-            if (!deletedIds.has(tx.id)) {
-              txMap.set(tx.id, tx);
-            }
-          }
-          payload.transactions = Array.from(txMap.values()).sort(
-            (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-          );
+        } else if (
+          currentDbState.transactions.some((t: any) => !dummyInvoices.has(t.invoiceNo)) &&
+          payload.transactions.length > 0 &&
+          payload.transactions.every((t: any) => dummyInvoices.has(t.invoiceNo))
+        ) {
+          console.warn('[server.ts] Blocked overwriting real transactions with initial mock transactions');
+          payload.transactions = currentDbState.transactions;
           payload.isRealData = true;
+        } else {
+          // Filter out deleted IDs and sort by latest date
+          payload.transactions = payload.transactions
+            .filter((tx: any) => !deletedIds.has(tx.id))
+            .sort(
+              (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+            );
+          payload.isRealData = true;
+        }
+      } else if (Array.isArray(payload.transactions)) {
+        payload.transactions = payload.transactions.filter((tx: any) => !deletedIds.has(tx.id));
+      }
+
+      // Safeguard: Retain existing real products if incoming payload only has default mock products or empty
+      if (currentDbState?.products?.length > 0) {
+        if (!payload.products || !Array.isArray(payload.products) || payload.products.length === 0) {
+          payload.products = currentDbState.products;
+        } else {
+          const isIncomingOnlyMock = payload.products.length <= 5 && payload.products.every((p: any) => p.id && /^p[1-5]$/.test(p.id));
+          const hasRealCustom = currentDbState.products.some((p: any) => p.id && !/^p[1-5]$/.test(p.id));
+          if (isIncomingOnlyMock && hasRealCustom) {
+            console.warn('[server.ts] Blocked overwriting real products with legacy initial mock products');
+            payload.products = currentDbState.products;
+          }
         }
       }
 
@@ -416,6 +431,27 @@ async function startServer() {
       if (!payload.customers || !Array.isArray(payload.customers) || payload.customers.length === 0) {
         if (currentDbState?.customers?.length > 0) {
           payload.customers = currentDbState.customers;
+        }
+      }
+
+      // Safeguard: Retain existing categories if incoming payload has no categories
+      if (!payload.categories || !Array.isArray(payload.categories) || payload.categories.length === 0) {
+        if (currentDbState?.categories?.length > 0) {
+          payload.categories = currentDbState.categories;
+        }
+      }
+
+      // Safeguard: Retain existing kaosStocks if incoming payload has no kaosStocks
+      if (!payload.kaosStocks || !Array.isArray(payload.kaosStocks) || payload.kaosStocks.length === 0) {
+        if (currentDbState?.kaosStocks?.length > 0) {
+          payload.kaosStocks = currentDbState.kaosStocks;
+        }
+      }
+
+      // Safeguard: Retain existing stockMovements if incoming payload has no stockMovements
+      if (!payload.stockMovements || !Array.isArray(payload.stockMovements) || payload.stockMovements.length === 0) {
+        if (currentDbState?.stockMovements?.length > 0) {
+          payload.stockMovements = currentDbState.stockMovements;
         }
       }
 
@@ -487,28 +523,17 @@ async function startServer() {
         Array.isArray(payload.deletedCashFlowIds) ? payload.deletedCashFlowIds : []
       );
 
-      // Smart cash flow preservation: Merge cash flow records by ID so no expense/income is ever lost
+      // Smart cash flow preservation
       if (Array.isArray(currentDbState?.cashFlowRecords) && currentDbState.cashFlowRecords.length > 0) {
         if ((!payload.cashFlowRecords || payload.cashFlowRecords.length === 0) && deletedCfIds.size === 0) {
           payload.cashFlowRecords = currentDbState.cashFlowRecords;
-        } else {
-          const cfMap = new Map<string, any>();
-          for (const cf of currentDbState.cashFlowRecords) {
-            if (!deletedCfIds.has(cf.id)) {
-              cfMap.set(cf.id, cf);
-            }
-          }
-          if (Array.isArray(payload.cashFlowRecords)) {
-            for (const cf of payload.cashFlowRecords) {
-              if (!deletedCfIds.has(cf.id)) {
-                cfMap.set(cf.id, cf);
-              }
-            }
-          }
-          payload.cashFlowRecords = Array.from(cfMap.values()).sort(
-            (a: any, b: any) =>
-              new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-          );
+        } else if (Array.isArray(payload.cashFlowRecords)) {
+          payload.cashFlowRecords = payload.cashFlowRecords
+            .filter((cf: any) => !deletedCfIds.has(cf.id))
+            .sort(
+              (a: any, b: any) =>
+                new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+            );
         }
       } else if (Array.isArray(payload.cashFlowRecords)) {
         payload.cashFlowRecords = payload.cashFlowRecords.filter((cf: any) => !deletedCfIds.has(cf.id));

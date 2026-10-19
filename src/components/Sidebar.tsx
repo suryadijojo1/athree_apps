@@ -10,11 +10,12 @@ import {
   Home,
   HardDrive,
   Shirt,
-  Lock
+  Lock,
+  Palette
 } from 'lucide-react';
 import { User } from '../types';
 
-export type ActiveTab = 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'kaos-stock' | 'drive';
+export type ActiveTab = 'dashboard' | 'pos' | 'orders' | 'reports' | 'stock' | 'kaos-stock' | 'drive' | 'design-studio';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -81,135 +82,137 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
-          {/* 1. KASIR (Menu Penjualan) */}
-          <button
-            onClick={() => {
-              if (!isCashierOpen) {
-                if (onOpenShiftModal) {
-                  onOpenShiftModal('open_shift');
+              {/* 1. KASIR (Menu Penjualan) */}
+              <button
+                onClick={() => {
+                  if (!isCashierOpen) {
+                    if (onOpenShiftModal) {
+                      onOpenShiftModal('open_shift');
+                    }
+                    alert(
+                      '⚠️ Menu Kasir (Penjualan) Otomatis Tidak Aktif!\n\nStatus kasir saat ini adalah TUTUP. Silakan klik tombol "Buka Kasir Sekarang" pada jendela yang tampil untuk mengaktifkan menu transaksi kasir.'
+                    );
+                    return;
+                  }
+                  setActiveTab('pos');
+                }}
+                title={
+                  isCashierOpen
+                    ? 'KASIR (Menu Penjualan Aktif)'
+                    : 'Menu Kasir Tidak Aktif (Kasir Tutup - Klik untuk Buka Kasir)'
                 }
-                alert(
-                  '⚠️ Menu Kasir (Penjualan) Otomatis Tidak Aktif!\n\nStatus kasir saat ini adalah TUTUP. Silakan klik tombol "Buka Kasir Sekarang" pada jendela yang tampil untuk mengaktifkan menu transaksi kasir.'
-                );
-                return;
-              }
-              setActiveTab('pos');
-            }}
-            title={
-              isCashierOpen
-                ? 'KASIR (Menu Penjualan Aktif)'
-                : 'Menu Kasir Tidak Aktif (Kasir Tutup - Klik untuk Buka Kasir)'
-            }
-            className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
-              activeTab === 'pos' && isCashierOpen
-                ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
-                : !isCashierOpen
-                ? 'text-slate-500 bg-slate-800/40 hover:bg-slate-800 hover:text-amber-400 opacity-60'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Monitor className="w-5 h-5 md:w-6 md:h-6" />
-            {!isCashierOpen && (
-              <span
-                className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 border-2 border-slate-900 rounded-full flex items-center justify-center text-white shadow-xs"
-                title="Status: Kasir Belum Dibuka (Menu Penjualan Terdisable)"
+                className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+                  activeTab === 'pos' && isCashierOpen
+                    ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
+                    : !isCashierOpen
+                    ? 'text-slate-500 bg-slate-800/40 hover:bg-slate-800 hover:text-amber-400 opacity-60'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
               >
-                <Lock className="w-2.5 h-2.5" />
-              </span>
-            )}
-          </button>
+                <Monitor className="w-5 h-5 md:w-6 md:h-6" />
+                {!isCashierOpen && (
+                  <span
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 border-2 border-slate-900 rounded-full flex items-center justify-center text-white shadow-xs"
+                    title="Status: Kasir Belum Dibuka (Menu Penjualan Terdisable)"
+                  >
+                    <Lock className="w-2.5 h-2.5" />
+                  </span>
+                )}
+              </button>
 
-          {/* 2. Daftar Pesanan & Jatuh Tempo */}
-          <button
-            onClick={() => setActiveTab('orders')}
-            title="Daftar Pesanan & Jatuh Tempo Produksi"
-            className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
-              activeTab === 'orders'
-                ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <FileText className="w-5 h-5 md:w-6 md:h-6" />
-            {pendingOrdersCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                {pendingOrdersCount}
-              </span>
-            )}
-          </button>
+              {/* 2. Daftar Pesanan & Jatuh Tempo */}
+              <button
+                onClick={() => setActiveTab('orders')}
+                title="Daftar Pesanan & Jatuh Tempo Produksi"
+                className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+                  activeTab === 'orders'
+                    ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <FileText className="w-5 h-5 md:w-6 md:h-6" />
+                {pendingOrdersCount > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                    {pendingOrdersCount}
+                  </span>
+                )}
+              </button>
 
-          {/* 3. Laporan Penjualan Harian */}
-          <button
-            onClick={() => {
-              if (isStaff) {
-                alert('Akses Dibatasi: Staf Produksi hanya memiliki hak akses Pesanan & Stok.');
-                return;
-              }
-              setActiveTab('reports');
-            }}
-            title={isStaff ? 'Laporan Dibatasi untuk Staf' : 'Laporan Penjualan Harian'}
-            className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
-              activeTab === 'reports'
-                ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
-                : isStaff
-                ? 'text-slate-600 opacity-40 cursor-not-allowed'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <BarChart3 className="w-5 h-5 md:w-6 md:h-6" />
-          </button>
+              {/* 3. Laporan Penjualan Harian */}
+              <button
+                onClick={() => {
+                  if (isStaff) {
+                    alert('Akses Dibatasi: Staf Produksi hanya memiliki hak akses Pesanan & Stok.');
+                    return;
+                  }
+                  setActiveTab('reports');
+                }}
+                title={isStaff ? 'Laporan Dibatasi untuk Staf' : 'Laporan Penjualan Harian'}
+                className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+                  activeTab === 'reports'
+                    ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
+                    : isStaff
+                    ? 'text-slate-600 opacity-40 cursor-not-allowed'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="w-5 h-5 md:w-6 md:h-6" />
+              </button>
 
-          {/* 4. Manajemen Stok Barang */}
-          <button
-            onClick={() => {
-              if (isKasir) {
-                alert('Perhatian: Akun Kasir hanya dapat melihat stok, sedangkan Admin dapat menambah/mengedit master produk.');
-              }
-              setActiveTab('stock');
-            }}
-            title="Manajemen Stok Barang"
-            className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
-              activeTab === 'stock'
-                ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Package className="w-5 h-5 md:w-6 md:h-6" />
-            {lowStockCount > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full"></span>
-            )}
-          </button>
+              {/* 4. Manajemen Stok Barang */}
+              <button
+                onClick={() => {
+                  if (isKasir) {
+                    alert('Perhatian: Akun Kasir hanya dapat melihat stok, sedangkan Admin dapat menambah/mengedit master produk.');
+                  }
+                  setActiveTab('stock');
+                }}
+                title="Manajemen Stok Barang"
+                className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+                  activeTab === 'stock'
+                    ? 'bg-[#00871f] text-white shadow-md shadow-emerald-950'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <Package className="w-5 h-5 md:w-6 md:h-6" />
+                {lowStockCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full"></span>
+                )}
+              </button>
 
-          {/* 4b. Manajemen Khusus Stok Kaos Polos */}
-          <button
-            onClick={() => {
-              setActiveTab('kaos-stock');
-            }}
-            title="Manajemen Khusus Stok Kaos Polos (Warna & Ukuran)"
-            className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
-              activeTab === 'kaos-stock'
-                ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-950'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Shirt className="w-5 h-5 md:w-6 md:h-6" />
-            {lowKaosStockCount > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse"></span>
-            )}
-          </button>
+              {/* 4b. Manajemen Khusus Stok Kaos Polos */}
+              <button
+                onClick={() => {
+                  setActiveTab('kaos-stock');
+                }}
+                title="Manajemen Khusus Stok Kaos Polos (Warna & Ukuran)"
+                className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+                  activeTab === 'kaos-stock'
+                    ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-950'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <Shirt className="w-5 h-5 md:w-6 md:h-6" />
+                {lowKaosStockCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse"></span>
+                )}
+              </button>
 
-          {/* 5. Google Drive Cloud Backup & Storage (Khusus Cadangan & Pemulihan Database Manual) */}
-          {(isAdmin || allowCashierDrive) && (
-            <button
-              onClick={() => setActiveTab('drive')}
-              title="Google Drive: Cadangan & Pemulihan Database Manual"
-              className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
-                activeTab === 'drive'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-950'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <HardDrive className="w-5 h-5 md:w-6 md:h-6" />
-            </button>
+              {/* 5. Google Drive Cloud Backup & Storage */}
+              {(isAdmin || allowCashierDrive) && (
+                <button
+                  onClick={() => setActiveTab('drive')}
+                  title="Google Drive: Cadangan & Pemulihan Database Manual"
+                  className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+                    activeTab === 'drive'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-950'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <HardDrive className="w-5 h-5 md:w-6 md:h-6" />
+                </button>
+              )}
+            </>
           )}
         </nav>
       </div>

@@ -175,7 +175,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-200 transition-all cursor-pointer"
+            className="w-full py-2.5 text-white text-xs font-bold rounded-xl shadow-md bg-blue-600 hover:bg-blue-700 shadow-blue-200 transition-all cursor-pointer"
           >
             Masuk sebagai {selectedCandidate.name}
           </button>

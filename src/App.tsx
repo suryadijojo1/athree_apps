@@ -46,6 +46,8 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { GoogleDriveView } from './components/GoogleDriveView';
 import { KaosStockManagementView } from './components/KaosStockManagementView';
 import { CloudSqlSyncModal } from './components/CloudSqlSyncModal';
+import { DesignStudioModal } from './components/design-studio/DesignStudioModal';
+import { ProductType } from './components/design-studio/designStudioTypes';
 import { CloudUpload, CheckCircle2, Flame } from 'lucide-react';
 import { calculateProfit } from './utils/profitUtils';
 import { sortTransactionsByLatestDate, compareTransactionsByLatestDate } from './utils/transactionUtils';
@@ -85,7 +87,8 @@ import {
   saveMultipleStockMovementsToFirestore,
   runFirestoreCheckoutTransaction,
   runFirestoreCashFlowTransaction,
-  runFirestoreShiftTransaction
+  runFirestoreShiftTransaction,
+  getFirestoreQuotaStatus
 } from './services/firebase';
 import {
   fetchServerDatabase,
@@ -192,7 +195,17 @@ export default function App() {
         const parsed = JSON.parse(saved);
         const hasOld = parsed.some((u: any) => u.name === 'Dian Octaviani' || u.name === 'Ahmad Rizky (Owner)');
         if (!hasOld && parsed.length > 0) {
-          return parsed;
+          // Otomatis migrasi Staf Budi ke User Design jika ada
+          const migrated = parsed.map((u: any) => {
+            if (u.name === 'Budi Santoso' || u.role === 'staff' || u.username === 'staff_budi') {
+              return INITIAL_USERS[2]; // User Design
+            }
+            return u;
+          });
+          const hasDesign = migrated.some((u: any) => u.role === 'design' || u.username === 'design');
+          if (hasDesign) {
+            return migrated;
+          }
         }
       } catch {}
     }
@@ -215,8 +228,33 @@ export default function App() {
     localStorage.removeItem('athree_timeout_notice');
   };
 
-  // Authentication state - Preserved across page refresh!
+  // Authentication state - Sesuai instruksi: jika logout/refresh maka otomatis website/aplikasi hapus cookie & cache
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    // 1. Deteksi Refresh Browser (F5, Ctrl+R, reload button)
+    if (isPageRefreshed()) {
+      console.log('[Security] Deteksi refresh browser: Otomatis membersihkan cookie & cache dan mengakhiri sesi.');
+      try {
+        clearAllCookies();
+      } catch {}
+      try {
+        clearBrowserCaches().catch(() => {});
+      } catch {}
+      try {
+        fetch(buildApiUrl('/api/clear-session'), { method: 'POST' }).catch(() => {});
+      } catch {}
+      try {
+        localStorage.setItem('athree_is_authenticated', 'false');
+        localStorage.removeItem('athree_session_active');
+        sessionStorage.removeItem('athree_session_active');
+        sessionStorage.clear();
+        clearRefreshMark();
+      } catch {}
+
+      const notice = 'Aplikasi baru saja di-refresh. Seluruh cookie dan cache browser telah otomatis dibersihkan demi keamanan dan pembaruan database. Silakan login kembali.';
+      localStorage.setItem('athree_timeout_notice', notice);
+      return false;
+    }
+
     const isAuth = localStorage.getItem('athree_is_authenticated') === 'true';
     if (!isAuth) return false;
 
@@ -236,6 +274,10 @@ export default function App() {
     // If cashier shift is open, never auto-logout so cashier stays open on duty
     if (!hasOpenShift && lastActive > 0 && Date.now() - lastActive >= ONE_HOUR_TIMEOUT_MS) {
       // Lebih dari 1 jam tidak dibuka / tidak aktif & shift tertutup -> otomatis logout
+      try {
+        clearAllCookies();
+        clearBrowserCaches().catch(() => {});
+      } catch {}
       localStorage.setItem('athree_is_authenticated', 'false');
       sessionStorage.removeItem('athree_session_active');
       const notice = 'Sesi Anda telah keluar otomatis karena aplikasi tidak dibuka / tidak aktif selama lebih dari 1 jam. Seluruh database penjualan telah otomatis tersimpan aman di Cloud & Server.';
@@ -259,6 +301,9 @@ export default function App() {
         }
         if (parsed.name === 'Ahmad Rizky (Owner)') {
           return INITIAL_USERS[1]; // ATHREE(Owner) (admin)
+        }
+        if (parsed.name === 'Budi Santoso' || parsed.role === 'staff' || parsed.username === 'staff_budi') {
+          return INITIAL_USERS[2]; // User Design
         }
         return parsed;
       } catch {}
@@ -501,6 +546,7 @@ export default function App() {
 
   // Navigation and UI states
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (currentUser.role === 'design') return 'design-studio';
     return currentUser.role === 'admin' ? 'dashboard' : 'pos';
   });
   const [reportsSubTab, setReportsSubTab] = useState<'daily_sales' | 'sales_profit'>('daily_sales');
@@ -515,6 +561,21 @@ export default function App() {
     setAllowCashierDrive(allowed);
     localStorage.setItem('athree_allow_cashier_drive', allowed ? 'true' : 'false');
   };
+
+  // Enforce access control:
+  // 1. User Design hanya bisa mengakses Design Studio (tampilan lain tidak bisa diakses)
+  // 2. Menu Design Studio hanya ada pada user Design (user lain tidak bisa akses menu design studio)
+  useEffect(() => {
+    if (currentUser.role === 'design') {
+      if (activeTab !== 'design-studio') {
+        setActiveTab('design-studio');
+      }
+    } else {
+      if (activeTab === 'design-studio') {
+        setActiveTab('pos');
+      }
+    }
+  }, [currentUser.role, activeTab]);
 
   // If currently on drive tab but user is non-admin and cashier access is disabled, redirect to pos
   useEffect(() => {
@@ -584,68 +645,46 @@ export default function App() {
 
   // Set up Central Server & Cloud Synchronization
   const isApplyingRemoteRef = useRef(false);
+  const hasHydratedFromServerRef = useRef(false);
 
   const applyFullDatabasePayload = (payload: AppDatabasePayload) => {
     isApplyingRemoteRef.current = true;
+    hasHydratedFromServerRef.current = true;
     try {
       if (payload.products && Array.isArray(payload.products) && payload.products.length > 0) {
         setProducts(payload.products);
+        latestStateRef.current.products = payload.products;
         localStorage.setItem('athree_products', JSON.stringify(payload.products));
       }
       if (payload.categories && Array.isArray(payload.categories) && payload.categories.length > 0) {
         setCategories(payload.categories);
+        latestStateRef.current.categories = payload.categories;
         localStorage.setItem('athree_categories', JSON.stringify(payload.categories));
       }
       if (payload.transactions && Array.isArray(payload.transactions) && payload.transactions.length > 0) {
-        setTransactions((prev) => {
-          const map = new Map<string, Transaction>();
-          for (const tx of prev) {
-            map.set(tx.id, tx);
-          }
-          for (const tx of payload.transactions) {
-            const existing = map.get(tx.id);
-            if (!existing) {
-              map.set(tx.id, tx);
-            } else {
-              // Ensure we never overwrite a newer revision with an older snapshot
-              const existingTs = new Date(existing.updatedAt || existing.date || existing.createdAt || 0).getTime();
-              const incomingTs = new Date(tx.updatedAt || tx.date || tx.createdAt || 0).getTime();
-              if (incomingTs >= existingTs) {
-                map.set(tx.id, tx);
-              }
-            }
-          }
-          const merged = sortTransactionsByLatestDate(Array.from(map.values()));
-          localStorage.setItem('athree_transactions', JSON.stringify(merged));
-          localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(merged));
-          latestStateRef.current.transactions = merged;
-          return merged;
-        });
+        const sorted = sortTransactionsByLatestDate(payload.transactions);
+        setTransactions(sorted);
+        latestStateRef.current.transactions = sorted;
+        localStorage.setItem('athree_transactions', JSON.stringify(sorted));
+        localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(sorted));
       }
       if (payload.cashFlowRecords && Array.isArray(payload.cashFlowRecords)) {
         const cleaned = payload.cashFlowRecords.filter(
           (r) => r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
         );
-        setCashFlowRecords((prev) => {
-          const deletedSet = deletedCashFlowIdsRef.current;
-          const map = new Map<string, CashFlowRecord>();
-          for (const item of prev) {
-            if (!deletedSet.has(item.id)) {
-              map.set(item.id, item);
-            }
+        const deletedSet = deletedCashFlowIdsRef.current;
+        const map = new Map<string, CashFlowRecord>();
+        for (const item of cleaned) {
+          if (!deletedSet.has(item.id)) {
+            map.set(item.id, item);
           }
-          for (const item of cleaned) {
-            if (!deletedSet.has(item.id)) {
-              map.set(item.id, item);
-            }
-          }
-          const merged = Array.from(map.values()).sort(
-            (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-          );
-          latestStateRef.current.cashFlowRecords = merged;
-          localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
-          return merged;
-        });
+        }
+        const merged = Array.from(map.values()).sort(
+          (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+        );
+        latestStateRef.current.cashFlowRecords = merged;
+        setCashFlowRecords(merged);
+        localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
       }
       if (payload.shiftHistory && Array.isArray(payload.shiftHistory)) {
         setShiftHistory(payload.shiftHistory);
@@ -667,11 +706,6 @@ export default function App() {
               cashierName: remoteShift.cashierName || prevShift.cashierName || 'DIMAS',
               startTime: remoteShift.startTime || prevShift.startTime || '-'
             };
-            console.log('Real-Time Sync: Updating active shift from central database:', {
-              isOpen: mergedShift.isOpen,
-              startTime: mergedShift.startTime,
-              cashierName: mergedShift.cashierName
-            });
             localStorage.setItem('athree_shift', JSON.stringify(mergedShift));
             if (mergedShift.isOpen) {
               localStorage.setItem('athree_shift_active_persistent', JSON.stringify(mergedShift));
@@ -690,31 +724,22 @@ export default function App() {
       }
       if (payload.kaosStocks && Array.isArray(payload.kaosStocks) && payload.kaosStocks.length > 0) {
         setKaosStocks(payload.kaosStocks);
+        latestStateRef.current.kaosStocks = payload.kaosStocks;
         localStorage.setItem('athree_kaos_stocks', JSON.stringify(payload.kaosStocks));
       }
       if (payload.stockMovements && Array.isArray(payload.stockMovements)) {
         setStockMovements(payload.stockMovements);
+        latestStateRef.current.stockMovements = payload.stockMovements;
         localStorage.setItem('athree_stock_movements', JSON.stringify(payload.stockMovements));
       }
       if (payload.customers && Array.isArray(payload.customers) && payload.customers.length > 0) {
-        setCustomers((prev) => {
-          const map = new Map<string, Customer>();
-          for (const c of prev) {
-            map.set(c.id, c);
-          }
-          for (const c of payload.customers) {
-            if (!map.has(c.id)) {
-              map.set(c.id, c);
-            }
-          }
-          const merged = Array.from(map.values());
-          localStorage.setItem('athree_customers', JSON.stringify(merged));
-          latestStateRef.current.customers = merged;
-          return merged;
-        });
+        setCustomers(payload.customers);
+        latestStateRef.current.customers = payload.customers;
+        localStorage.setItem('athree_customers', JSON.stringify(payload.customers));
       }
       if (payload.users && Array.isArray(payload.users) && payload.users.length > 0) {
         setUsers(payload.users);
+        latestStateRef.current.users = payload.users;
         localStorage.setItem('athree_users', JSON.stringify(payload.users));
         // Keep currentUser synchronized with the server's user data
         setCurrentUser((prev) => {
@@ -730,6 +755,7 @@ export default function App() {
       }
       if (payload.salesList && Array.isArray(payload.salesList) && payload.salesList.length > 0) {
         setSalesList(payload.salesList);
+        latestStateRef.current.salesList = payload.salesList;
         localStorage.setItem('athree_sales_list', JSON.stringify(payload.salesList));
       }
       localStorage.setItem('athree_last_save_time', String(Date.now()));
@@ -745,6 +771,11 @@ export default function App() {
     if (syncTimerRef.current) {
       clearTimeout(syncTimerRef.current);
       syncTimerRef.current = null;
+    }
+
+    // Hindari menimpa database server dengan state awal mock sebelum server selesai di-hydrate
+    if (!hasHydratedFromServerRef.current && !immediate) {
+      return;
     }
 
     const performSync = () => {
@@ -775,7 +806,7 @@ export default function App() {
     if (immediate) {
       performSync();
     } else {
-      syncTimerRef.current = setTimeout(performSync, 300);
+      syncTimerRef.current = setTimeout(performSync, 1000);
     }
   };
 
@@ -831,9 +862,12 @@ export default function App() {
           console.log('Cloud SQL (Utama): Memuat data dari Cloud SQL database server...');
           applyFullDatabasePayload(serverRes.data);
         } else {
-          // Push initial local state to Cloud SQL if server state is not yet initialized
-          console.log('Cloud SQL (Utama): Menginisialisasi state awal ke Cloud SQL database...');
-          syncCurrentStateToServer(true);
+          // Only push local state if server is completely uninitialized AND local state has real user transactions
+          const cur = latestStateRef.current;
+          if (cur.transactions?.length > 0 && isRealUserData(cur.transactions)) {
+            console.log('Cloud SQL (Utama): Menginisialisasi state awal ke Cloud SQL database...');
+            syncCurrentStateToServer(true);
+          }
         }
       } catch (err) {
         console.warn('Initial Cloud SQL hydration error:', err);
@@ -866,11 +900,8 @@ export default function App() {
       try {
         const serverRes = await fetchServerDatabase();
         if (!isSubscribed) return;
-        if (serverRes.success && serverRes.data && serverRes.isRealData) {
-          const currentTransactions = latestStateRef.current.transactions;
-          if (currentTransactions.length === 0 && serverRes.data.transactions?.length > 0) {
-            applyFullDatabasePayload(serverRes.data);
-          }
+        if (serverRes.success && serverRes.data) {
+          applyFullDatabasePayload(serverRes.data);
         }
       } catch (err) {
         console.warn('Central server sync check:', err);
@@ -1009,7 +1040,7 @@ export default function App() {
       try {
         markPageForRefresh();
         const currentState = latestStateRef.current;
-        if (currentState && currentState.transactions) {
+        if (currentState && currentState.transactions && hasHydratedFromServerRef.current) {
           const payload = {
             products: currentState.products,
             categories: currentState.categories,
@@ -1531,99 +1562,49 @@ export default function App() {
   const [isLoginSyncing, setIsLoginSyncing] = useState<boolean>(false);
   const [loginSyncMessage, setLoginSyncMessage] = useState<string>('Menyinkronkan data database dari Firebase Firestore...');
 
-  // Helper: Otomatis muat data segar dari Firebase Firestore (Real-Time Hydration)
-  const syncAndLoadFromFirestore = async (showOverlay = true): Promise<boolean> => {
+  // Helper: Otomatis muat data database terbaru dari Server Pusat / Cloud SQL
+  const syncAndLoadCentralDatabase = async (showOverlay = true): Promise<boolean> => {
     if (showOverlay) {
       setIsLoginSyncing(true);
-      setLoginSyncMessage('Menyinkronkan data database dari Firebase Firestore...');
+      setLoginSyncMessage('Menyinkronkan data database terbaru dari server pusat...');
     }
 
     try {
-      console.log('Firebase Firestore: Memulai sinkronisasi otomatis saat login...');
-      const firestoreData = await fetchAllDataFromFirestore();
-      if (firestoreData) {
-        if (firestoreData.products && firestoreData.products.length > 0) {
-          setProducts(firestoreData.products);
-          localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
-        }
-        if (firestoreData.transactions && firestoreData.transactions.length > 0) {
-          const sorted = sortTransactionsByLatestDate(firestoreData.transactions);
-          setTransactions(sorted);
-          localStorage.setItem('athree_transactions', JSON.stringify(sorted));
-        }
-        if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
-          setCashFlowRecords((prev) => {
-            const deletedSet = deletedCashFlowIdsRef.current;
-            const map = new Map<string, CashFlowRecord>();
-            for (const item of prev) {
-              if (!deletedSet.has(item.id)) map.set(item.id, item);
-            }
-            for (const item of firestoreData.cashFlowRecords) {
-              if (!deletedSet.has(item.id)) map.set(item.id, item);
-            }
-            const merged = Array.from(map.values()).sort(
-              (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-            );
-            latestStateRef.current.cashFlowRecords = merged;
-            localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
-            return merged;
-          });
-        }
-        if (firestoreData.shifts && firestoreData.shifts.length > 0) {
-          setShiftHistory(firestoreData.shifts);
-          latestStateRef.current.shiftHistory = firestoreData.shifts;
-          localStorage.setItem('athree_shift_history', JSON.stringify(firestoreData.shifts));
-          localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
-        }
-        if (firestoreData.activeShift) {
-          setShift((prevShift) => {
-            if (shouldApplyRemoteShift(firestoreData.activeShift!, prevShift)) {
-              const mergedShift: CashierShift = {
-                ...firestoreData.activeShift!,
-                startingCash: firestoreData.activeShift!.startingCash || prevShift.startingCash || 500000,
-                cashierName: firestoreData.activeShift!.cashierName || prevShift.cashierName || 'DIMAS',
-                startTime: firestoreData.activeShift!.startTime || prevShift.startTime || '-'
-              };
-              localStorage.setItem('athree_shift', JSON.stringify(mergedShift));
-              if (mergedShift.isOpen) {
-                localStorage.setItem('athree_shift_active_persistent', JSON.stringify(mergedShift));
-              } else {
-                localStorage.removeItem('athree_shift_active_persistent');
-                if (mergedShift.actualCash !== undefined || mergedShift.expectedCash !== undefined) {
-                  const c = mergedShift.actualCash !== undefined ? mergedShift.actualCash : mergedShift.expectedCash;
-                  localStorage.setItem('athree_last_closing_cash', String(c));
-                }
-              }
-              latestStateRef.current.shift = mergedShift;
-              return mergedShift;
-            }
-            return prevShift;
-          });
-        }
-        if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
-          setKaosStocks(firestoreData.kaosStocks);
-          localStorage.setItem('athree_kaos_stocks', JSON.stringify(firestoreData.kaosStocks));
-        }
-        if (firestoreData.customers && firestoreData.customers.length > 0) {
-          setCustomers(firestoreData.customers);
-          localStorage.setItem('athree_customers', JSON.stringify(firestoreData.customers));
-        }
-        if (firestoreData.users && firestoreData.users.length > 0) {
-          setUsers(firestoreData.users);
-          localStorage.setItem('athree_users', JSON.stringify(firestoreData.users));
-        }
-        if (firestoreData.stockMovements && firestoreData.stockMovements.length > 0) {
-          setStockMovements(firestoreData.stockMovements);
-          localStorage.setItem('athree_stock_movements', JSON.stringify(firestoreData.stockMovements));
-        }
+      console.log('Database: Memuat data database master dari Server Pusat...');
+      const serverRes = await fetchServerDatabase();
+      if (serverRes.success && serverRes.data) {
+        applyFullDatabasePayload(serverRes.data);
         if (showOverlay) {
-          setLoginSyncMessage(`Berhasil menyinkronkan data (${firestoreData.transactions.length} transaksi, ${firestoreData.products.length} produk).`);
+          setLoginSyncMessage(
+            `Database master berhasil dimuat (${serverRes.data.transactions?.length || 0} transaksi, ${serverRes.data.products?.length || 0} produk).`
+          );
         }
         return true;
       }
+
+      // Fallback ke Firestore hanya jika server tidak merespons dan kuota aman
+      if (!getFirestoreQuotaStatus()) {
+        const firestoreData = await fetchAllDataFromFirestore('server-first');
+        if (firestoreData && !firestoreData.quotaExceeded && !firestoreData.isFromCache) {
+          applyFullDatabasePayload({
+            products: firestoreData.products,
+            transactions: firestoreData.transactions,
+            cashFlowRecords: firestoreData.cashFlowRecords,
+            shiftHistory: firestoreData.shifts,
+            currentShift: firestoreData.activeShift || undefined,
+            kaosStocks: firestoreData.kaosStocks,
+            customers: firestoreData.customers,
+            users: firestoreData.users,
+            stockMovements: firestoreData.stockMovements,
+            lastUpdated: new Date().toISOString(),
+            isRealData: true
+          });
+          return true;
+        }
+      }
       return false;
     } catch (err) {
-      console.warn('Gagal memuat data Firestore saat login:', err);
+      console.warn('Gagal memuat database terbaru saat sinkronisasi:', err);
       return false;
     } finally {
       if (showOverlay) {
@@ -1655,7 +1636,7 @@ export default function App() {
       setActiveTab('orders');
     }
 
-    // 2. Pembersihan cache & sinkronisasi database Firestore di background (non-blocking)
+    // 2. Pembersihan cache & sinkronisasi database Server & Cloud di background (non-blocking)
     (async () => {
       try {
         await clearBrowserCaches();
@@ -1664,86 +1645,31 @@ export default function App() {
       }
 
       try {
-        const firestoreData = await fetchAllDataFromFirestore('server-first');
-        if (firestoreData) {
-          if (firestoreData.products && firestoreData.products.length > 0) {
-            setProducts(firestoreData.products);
-            localStorage.setItem('athree_products', JSON.stringify(firestoreData.products));
-          }
-          if (firestoreData.transactions && firestoreData.transactions.length > 0) {
-            const sorted = sortTransactionsByLatestDate(firestoreData.transactions);
-            setTransactions(sorted);
-            localStorage.setItem('athree_transactions', JSON.stringify(sorted));
-            localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(sorted));
-          }
-          if (firestoreData.cashFlowRecords && firestoreData.cashFlowRecords.length > 0) {
-            setCashFlowRecords((prev) => {
-              const deletedSet = deletedCashFlowIdsRef.current;
-              const map = new Map<string, CashFlowRecord>();
-              for (const item of prev) {
-                if (!deletedSet.has(item.id)) map.set(item.id, item);
-              }
-              for (const item of firestoreData.cashFlowRecords) {
-                if (!deletedSet.has(item.id)) map.set(item.id, item);
-              }
-              const merged = Array.from(map.values()).sort(
-                (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-              );
-              latestStateRef.current.cashFlowRecords = merged;
-              localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
-              return merged;
+        // ALWAYS hydrate from central server first to prevent using old / stale data!
+        const serverRes = await fetchServerDatabase();
+        if (serverRes.success && serverRes.data) {
+          console.log('[Login] Database berhasil dimuat dari central server database');
+          applyFullDatabasePayload(serverRes.data);
+        } else if (!getFirestoreQuotaStatus()) {
+          const firestoreData = await fetchAllDataFromFirestore('server-first');
+          if (firestoreData && !firestoreData.quotaExceeded) {
+            applyFullDatabasePayload({
+              products: firestoreData.products,
+              transactions: firestoreData.transactions,
+              cashFlowRecords: firestoreData.cashFlowRecords,
+              shiftHistory: firestoreData.shifts,
+              currentShift: firestoreData.activeShift || undefined,
+              kaosStocks: firestoreData.kaosStocks,
+              customers: firestoreData.customers,
+              users: firestoreData.users,
+              stockMovements: firestoreData.stockMovements,
+              lastUpdated: new Date().toISOString(),
+              isRealData: true
             });
-          }
-          if (firestoreData.shifts && firestoreData.shifts.length > 0) {
-            setShiftHistory(firestoreData.shifts);
-            latestStateRef.current.shiftHistory = firestoreData.shifts;
-            localStorage.setItem('athree_shift_history', JSON.stringify(firestoreData.shifts));
-            localStorage.setItem('athree_shifts', JSON.stringify(firestoreData.shifts));
-          }
-          if (firestoreData.activeShift) {
-            setShift((prevShift) => {
-              if (shouldApplyRemoteShift(firestoreData.activeShift!, prevShift)) {
-                const mergedShift: CashierShift = {
-                  ...firestoreData.activeShift!,
-                  startingCash: firestoreData.activeShift!.startingCash || prevShift.startingCash || 500000,
-                  cashierName: firestoreData.activeShift!.cashierName || prevShift.cashierName || 'DIMAS',
-                  startTime: firestoreData.activeShift!.startTime || prevShift.startTime || '-'
-                };
-                localStorage.setItem('athree_shift', JSON.stringify(mergedShift));
-                if (mergedShift.isOpen) {
-                  localStorage.setItem('athree_shift_active_persistent', JSON.stringify(mergedShift));
-                } else {
-                  localStorage.removeItem('athree_shift_active_persistent');
-                  if (mergedShift.actualCash !== undefined || mergedShift.expectedCash !== undefined) {
-                    const c = mergedShift.actualCash !== undefined ? mergedShift.actualCash : mergedShift.expectedCash;
-                    localStorage.setItem('athree_last_closing_cash', String(c));
-                  }
-                }
-                latestStateRef.current.shift = mergedShift;
-                return mergedShift;
-              }
-              return prevShift;
-            });
-          }
-          if (firestoreData.kaosStocks && firestoreData.kaosStocks.length > 0) {
-            setKaosStocks(firestoreData.kaosStocks);
-            localStorage.setItem('athree_kaos_stocks', JSON.stringify(firestoreData.kaosStocks));
-          }
-          if (firestoreData.customers && firestoreData.customers.length > 0) {
-            setCustomers(firestoreData.customers);
-            localStorage.setItem('athree_customers', JSON.stringify(firestoreData.customers));
-          }
-          if (firestoreData.users && firestoreData.users.length > 0) {
-            setUsers(firestoreData.users);
-            localStorage.setItem('athree_users', JSON.stringify(firestoreData.users));
-          }
-          if (firestoreData.stockMovements && firestoreData.stockMovements.length > 0) {
-            setStockMovements(firestoreData.stockMovements);
-            localStorage.setItem('athree_stock_movements', JSON.stringify(firestoreData.stockMovements));
           }
         }
       } catch (err) {
-        console.warn('Background Firestore sync on login warning:', err);
+        console.warn('Login database sync error:', err);
       }
     })();
 
@@ -1859,16 +1785,18 @@ export default function App() {
     } catch (err) {
       console.warn('Logout cloud save warning:', err);
     } finally {
-      // Synchronously clear authentication markers so the user is immediately taken to LoginScreen
+      // 1. Bersihkan semua cookie & cache browser secara menyeluruh sesuai instruksi pengguna
+      try {
+        await clearAllCachesAndCookies();
+      } catch {}
+
+      // 2. Bersihkan penanda sesi & autentikasi
       try {
         localStorage.setItem('athree_is_authenticated', 'false');
         localStorage.removeItem('athree_session_active');
         sessionStorage.removeItem('athree_session_active');
         sessionStorage.clear();
-      } catch {}
-
-      try {
-        clearAllCookies();
+        clearRefreshMark();
       } catch {}
 
       setIsAuthenticated(false);
@@ -2020,8 +1948,8 @@ export default function App() {
   // Handler: User selection
   const handleSelectUser = (user: User) => {
     setCurrentUser(user);
-    // Refresh & sync Firestore data for newly active user
-    syncAndLoadFromFirestore(false).catch(() => {});
+    // Refresh & sync master database for newly active user
+    syncAndLoadCentralDatabase(false).catch(() => {});
     recordActiveSession(user.id, user.name, user.role).catch(() => {});
     if (user.role === 'admin') {
       setActiveTab('dashboard');
@@ -3335,6 +3263,22 @@ export default function App() {
               allowCashierDrive={allowCashierDrive}
               onSwitchToAdmin={() => setIsLoginModalOpen(true)}
               onRestoreData={handleRestoreDataFromDrive}
+            />
+          )}
+
+          {activeTab === 'design-studio' && (
+            <DesignStudioModal
+              isOpen={true}
+              onClose={() => {
+                if (currentUser.role !== 'design') {
+                  setActiveTab('pos');
+                }
+              }}
+              initialProductType="tshirt"
+              isDedicatedDesignUser={currentUser.role === 'design'}
+              onLogout={handleLogout}
+              onSwitchUser={() => setIsLoginModalOpen(true)}
+              startWithSelector={currentUser.role === 'design'}
             />
           )}
         </main>

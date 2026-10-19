@@ -10,9 +10,13 @@ import {
   CheckCircle2,
   ZoomIn,
   ZoomOut,
-  RotateCcw
+  RotateCcw,
+  Palette
 } from 'lucide-react';
 import { compressImage, extractImageFromClipboard } from '../utils/imageCompressor';
+import { ProductSelectorModal } from './design-studio/ProductSelectorModal';
+import { DesignStudioModal } from './design-studio/DesignStudioModal';
+import { ProductType } from './design-studio/designStudioTypes';
 
 interface MockupDesignInputProps {
   mockupDesign?: string;
@@ -32,6 +36,9 @@ export const MockupDesignInput: React.FC<MockupDesignInputProps> = ({
   const [showFullPreview, setShowFullPreview] = useState<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [showProductSelector, setShowProductSelector] = useState<boolean>(false);
+  const [selectedProductForStudio, setSelectedProductForStudio] = useState<ProductType>('tshirt');
+  const [showDesignStudio, setShowDesignStudio] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pasteZoneRef = useRef<HTMLDivElement>(null);
 
@@ -218,16 +225,30 @@ export const MockupDesignInput: React.FC<MockupDesignInputProps> = ({
                 </div>
               </div>
 
-              {/* Paste button shortcut */}
-              <button
-                type="button"
-                onClick={handlePasteFromClipboardBtn}
-                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer shadow-2xs"
-                title="Tempel gambar langsung dari clipboard komputer"
-              >
-                <Clipboard className="w-3 h-3 text-[#00871f]" />
-                <span>Tempel Clipboard</span>
-              </button>
+              {/* Buttons: Mulai Design Studio & Paste Clipboard */}
+              <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowProductSelector(true);
+                  }}
+                  className="px-2.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shrink-0 transition-all cursor-pointer shadow-xs active:scale-95"
+                  title="Mulai Design Custom (T-Shirt, Polo, Hoodie, Jersey) Real 1:1"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                  <span>Mulai Design</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboardBtn}
+                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer shadow-2xs"
+                  title="Tempel gambar langsung dari clipboard komputer"
+                >
+                  <Clipboard className="w-3 h-3 text-[#00871f]" />
+                  <span>Tempel (Ctrl+V)</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -282,6 +303,15 @@ export const MockupDesignInput: React.FC<MockupDesignInputProps> = ({
               >
                 <Maximize2 className="w-3 h-3 text-[#00871f]" />
                 <span>Lihat</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowProductSelector(true)}
+                className="px-2 py-1 bg-white hover:bg-emerald-50 text-[#00871f] border border-emerald-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                title="Buka di Design Studio untuk modifikasi / buat baru"
+              >
+                <Sparkles className="w-3 h-3 text-[#00871f]" />
+                <span>Desain</span>
               </button>
               <button
                 type="button"
@@ -399,6 +429,29 @@ export const MockupDesignInput: React.FC<MockupDesignInputProps> = ({
           </div>
         </div>
       )}
+
+      {/* Product Selector Modal (Image 1) */}
+      <ProductSelectorModal
+        isOpen={showProductSelector}
+        onClose={() => setShowProductSelector(false)}
+        onSelectProduct={(pType) => {
+          setSelectedProductForStudio(pType);
+          setShowProductSelector(false);
+          setShowDesignStudio(true);
+        }}
+      />
+
+      {/* Design Studio Modal (Images 2, 3, 4, 5) */}
+      <DesignStudioModal
+        isOpen={showDesignStudio}
+        onClose={() => setShowDesignStudio(false)}
+        initialProductType={selectedProductForStudio}
+        onApplyToInvoice={(mockupDataUrl) => {
+          onChange(mockupDataUrl);
+          setShowDesignStudio(false);
+        }}
+        isInvoiceMode={true}
+      />
     </div>
   );
 };

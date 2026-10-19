@@ -73,6 +73,49 @@ if (FIRESTORE_ENABLED && typeof window !== 'undefined' && db) {
   });
 }
 
+// Global Firestore Quota Tracking and Upgrade link
+export const FIRESTORE_UPGRADE_URL = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore/databases/${firebaseConfig.firestoreDatabaseId}/data?openUpgradeDialog=true`;
+
+let _firestoreQuotaExceeded = false;
+const _quotaListeners = new Set<(exceeded: boolean) => void>();
+
+export function getFirestoreQuotaStatus(): boolean {
+  return _firestoreQuotaExceeded;
+}
+
+export function subscribeToQuotaStatus(cb: (exceeded: boolean) => void): () => void {
+  _quotaListeners.add(cb);
+  cb(_firestoreQuotaExceeded);
+  return () => {
+    _quotaListeners.delete(cb);
+  };
+}
+
+export function setFirestoreQuotaExceeded(exceeded: boolean) {
+  if (_firestoreQuotaExceeded !== exceeded) {
+    _firestoreQuotaExceeded = exceeded;
+    for (const l of _quotaListeners) {
+      try {
+        l(exceeded);
+      } catch {}
+    }
+  }
+}
+
+export function isFirestoreQuotaExceeded(error: unknown): boolean {
+  if (!error) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  const code = (error as any)?.code;
+  return (
+    code === 'resource-exhausted' ||
+    msg.includes('Quota exceeded') ||
+    msg.includes('Quota limit exceeded') ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('quota metric') ||
+    msg.includes('free tier database')
+  );
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -86,6 +129,7 @@ export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
+  isQuotaExceeded?: boolean;
   authInfo: {
     userId?: string | null;
     email?: string | null;
@@ -100,23 +144,35 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const quotaExceeded = isFirestoreQuotaExceeded(error);
+  if (quotaExceeded) {
+    setFirestoreQuotaExceeded(true);
+    console.warn(
+      `[Firestore] Kuota harian Firestore (Free Tier) tercapai untuk database ${firebaseConfig.firestoreDatabaseId}. Aplikasi otomatis beralih ke Server Database lokal tanpa gangguan. Upgrade link: ${FIRESTORE_UPGRADE_URL}`
+    );
+  }
+
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
+    operationType,
+    path,
+    isQuotaExceeded: quotaExceeded,
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+      isAnonymous: auth?.currentUser?.isAnonymous,
+      tenantId: auth?.currentUser?.tenantId,
+      providerInfo: auth?.currentUser?.providerData?.map((provider) => ({
         providerId: provider.providerId,
         email: provider.email,
       })) || []
-    },
-    operationType,
-    path
+    }
   };
-  console.warn('Firestore Warning/Error:', JSON.stringify(errInfo));
+
+  if (!quotaExceeded) {
+    console.warn('Firestore Warning/Error:', JSON.stringify(errInfo));
+  }
   return errInfo;
 }
 
@@ -127,6 +183,10 @@ export async function testConnection(): Promise<boolean> {
     await getDocFromServer(doc(db, 'test', 'connection'));
     return true;
   } catch (error: any) {
+    if (isFirestoreQuotaExceeded(error)) {
+      setFirestoreQuotaExceeded(true);
+      return false;
+    }
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.warn('Firebase client appears offline:', error.message);
     }
@@ -395,7 +455,7 @@ export function subscribeToUsers(
 // ---------------------------------------------------------------------------
 
 export async function saveProductToFirestore(product: Product): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `products/${product.id}`;
   try {
     await setDoc(doc(db, 'products', product.id), product, { merge: true });
@@ -405,7 +465,7 @@ export async function saveProductToFirestore(product: Product): Promise<void> {
 }
 
 export async function deleteProductFromFirestore(productId: string): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `products/${productId}`;
   try {
     await deleteDoc(doc(db, 'products', productId));
@@ -415,7 +475,7 @@ export async function deleteProductFromFirestore(productId: string): Promise<voi
 }
 
 export async function saveTransactionToFirestore(transaction: Transaction): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `transactions/${transaction.id}`;
   try {
     await setDoc(doc(db, 'transactions', transaction.id), transaction, { merge: true });
@@ -425,7 +485,7 @@ export async function saveTransactionToFirestore(transaction: Transaction): Prom
 }
 
 export async function deleteTransactionFromFirestore(transactionId: string): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `transactions/${transactionId}`;
   try {
     await deleteDoc(doc(db, 'transactions', transactionId));
@@ -435,7 +495,7 @@ export async function deleteTransactionFromFirestore(transactionId: string): Pro
 }
 
 export async function saveCashFlowToFirestore(record: CashFlowRecord): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `cashFlowRecords/${record.id}`;
   try {
     await setDoc(doc(db, 'cashFlowRecords', record.id), record, { merge: true });
@@ -445,7 +505,7 @@ export async function saveCashFlowToFirestore(record: CashFlowRecord): Promise<v
 }
 
 export async function deleteCashFlowFromFirestore(recordId: string): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `cashFlowRecords/${recordId}`;
   try {
     await deleteDoc(doc(db, 'cashFlowRecords', recordId));
@@ -455,7 +515,7 @@ export async function deleteCashFlowFromFirestore(recordId: string): Promise<voi
 }
 
 export async function saveShiftToFirestore(shift: CashierShift): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `shifts/${shift.id}`;
   try {
     await setDoc(doc(db, 'shifts', shift.id), shift, { merge: true });
@@ -465,7 +525,7 @@ export async function saveShiftToFirestore(shift: CashierShift): Promise<void> {
 }
 
 export async function saveActiveShiftToFirestore(shift: CashierShift): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = 'shifts/active_shift';
   try {
     await setDoc(doc(db, 'shifts', 'active_shift'), shift, { merge: true });
@@ -503,7 +563,7 @@ export async function runFirestoreCheckoutTransaction(input: CheckoutTransaction
   transaction: Transaction;
 }> {
   const { transaction: txData, items, isCashPayment, cashAmountReceived, stockMovements } = input;
-  if (!FIRESTORE_ENABLED || !db) {
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) {
     return { success: true, transaction: txData };
   }
   const path = `transactions/${txData.id}`;
@@ -573,7 +633,7 @@ export async function runFirestoreCheckoutTransaction(input: CheckoutTransaction
     return { success: true, transaction: txData };
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
-    throw err;
+    return { success: true, transaction: txData };
   }
 }
 
@@ -584,7 +644,7 @@ export async function runFirestoreCheckoutTransaction(input: CheckoutTransaction
  * - Writes cash flow record doc in a single transaction.
  */
 export async function runFirestoreCashFlowTransaction(record: CashFlowRecord): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `cashFlowRecords/${record.id}`;
   try {
     await runTransaction(db, async (txn) => {
@@ -613,7 +673,7 @@ export async function runFirestoreCashFlowTransaction(record: CashFlowRecord): P
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
-    throw err;
+    return;
   }
 }
 
@@ -626,7 +686,7 @@ export async function runFirestoreShiftTransaction(
   shift: CashierShift,
   isClosing: boolean
 ): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = 'shifts/active_shift';
   try {
     await runTransaction(db, async (txn) => {
@@ -647,12 +707,12 @@ export async function runFirestoreShiftTransaction(
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
-    throw err;
+    return;
   }
 }
 
 export async function saveKaosStockToFirestore(item: KaosStockItem): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `kaosStocks/${item.id}`;
   try {
     await setDoc(doc(db, 'kaosStocks', item.id), item, { merge: true });
@@ -662,7 +722,7 @@ export async function saveKaosStockToFirestore(item: KaosStockItem): Promise<voi
 }
 
 export async function saveMultipleKaosStocksToFirestore(items: KaosStockItem[]): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db || !items || items.length === 0) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus() || !items || items.length === 0) return;
   try {
     const chunkSize = 400;
     for (let i = 0; i < items.length; i += chunkSize) {
@@ -679,7 +739,7 @@ export async function saveMultipleKaosStocksToFirestore(items: KaosStockItem[]):
 }
 
 export async function saveMultipleProductsToFirestore(products: Product[]): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db || !products || products.length === 0) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus() || !products || products.length === 0) return;
   try {
     const chunkSize = 400;
     for (let i = 0; i < products.length; i += chunkSize) {
@@ -696,7 +756,7 @@ export async function saveMultipleProductsToFirestore(products: Product[]): Prom
 }
 
 export async function saveCustomerToFirestore(customer: Customer): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `customers/${customer.id}`;
   try {
     await setDoc(doc(db, 'customers', customer.id), customer, { merge: true });
@@ -706,7 +766,7 @@ export async function saveCustomerToFirestore(customer: Customer): Promise<void>
 }
 
 export async function deleteCustomerFromFirestore(customerId: string): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `customers/${customerId}`;
   try {
     await deleteDoc(doc(db, 'customers', customerId));
@@ -716,7 +776,7 @@ export async function deleteCustomerFromFirestore(customerId: string): Promise<v
 }
 
 export async function saveStockMovementToFirestore(movement: StockMovement): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `stockMovements/${movement.id}`;
   try {
     await setDoc(doc(db, 'stockMovements', movement.id), movement, { merge: true });
@@ -726,7 +786,7 @@ export async function saveStockMovementToFirestore(movement: StockMovement): Pro
 }
 
 export async function saveMultipleStockMovementsToFirestore(movements: StockMovement[]): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db || !movements || movements.length === 0) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus() || !movements || movements.length === 0) return;
   try {
     const chunkSize = 400;
     for (let i = 0; i < movements.length; i += chunkSize) {
@@ -743,7 +803,7 @@ export async function saveMultipleStockMovementsToFirestore(movements: StockMove
 }
 
 export async function saveUserToFirestore(user: User): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `users/${user.id}`;
   try {
     await setDoc(doc(db, 'users', user.id), user, { merge: true });
@@ -753,7 +813,7 @@ export async function saveUserToFirestore(user: User): Promise<void> {
 }
 
 export async function deleteUserFromFirestore(userId: string): Promise<void> {
-  if (!FIRESTORE_ENABLED || !db) return;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return;
   const path = `users/${userId}`;
   try {
     await deleteDoc(doc(db, 'users', userId));
@@ -788,7 +848,10 @@ export async function getDocsExplicit<T = any>(
     try {
       const snap = await withTimeout(getDocsFromServer(colRef), 2500);
       return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
-    } catch {
+    } catch (err) {
+      if (isFirestoreQuotaExceeded(err)) {
+        setFirestoreQuotaExceeded(true);
+      }
       const snap = await getDocs(colRef);
       return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
     }
@@ -807,6 +870,9 @@ export async function getDocsExplicit<T = any>(
     const snap = await withTimeout(getDocsFromServer(colRef), 1500);
     return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
   } catch (err) {
+    if (isFirestoreQuotaExceeded(err)) {
+      setFirestoreQuotaExceeded(true);
+    }
     try {
       const snap = await getDocsFromCache(colRef);
       return snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as T));
@@ -829,7 +895,10 @@ export async function getDocExplicit<T = any>(
     try {
       const snap = await withTimeout(getDocFromServer(docRef), 2500);
       return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
-    } catch {
+    } catch (err) {
+      if (isFirestoreQuotaExceeded(err)) {
+        setFirestoreQuotaExceeded(true);
+      }
       const snap = await getDoc(docRef);
       return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
     }
@@ -848,6 +917,9 @@ export async function getDocExplicit<T = any>(
     const snap = await withTimeout(getDocFromServer(docRef), 1500);
     return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
   } catch (err) {
+    if (isFirestoreQuotaExceeded(err)) {
+      setFirestoreQuotaExceeded(true);
+    }
     try {
       const snap = await getDocFromCache(docRef);
       return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) } as T) : null;
@@ -874,6 +946,8 @@ export async function fetchAllDataFromFirestore(
   customers: Customer[];
   users: User[];
   stockMovements: StockMovement[];
+  isFromCache?: boolean;
+  quotaExceeded?: boolean;
 }> {
   if (!FIRESTORE_ENABLED || !db) {
     return {
@@ -885,9 +959,15 @@ export async function fetchAllDataFromFirestore(
       kaosStocks: [],
       customers: [],
       users: [],
-      stockMovements: []
+      stockMovements: [],
+      isFromCache: false,
+      quotaExceeded: false
     };
   }
+
+  // If quota was already exceeded, avoid hitting Firestore again
+  const quotaAlreadyExceeded = getFirestoreQuotaStatus();
+
   try {
     const [
       products,
@@ -900,15 +980,15 @@ export async function fetchAllDataFromFirestore(
       users,
       stockMovements
     ] = await Promise.all([
-      getDocsExplicit<Product>(collection(db, 'products'), source),
-      getDocsExplicit<Transaction>(collection(db, 'transactions'), source),
-      getDocsExplicit<CashFlowRecord>(collection(db, 'cashFlowRecords'), source),
-      getDocsExplicit<CashierShift>(collection(db, 'shifts'), source),
-      getDocExplicit<CashierShift>(doc(db, 'shifts', 'active_shift'), source),
-      getDocsExplicit<KaosStockItem>(collection(db, 'kaosStocks'), source),
-      getDocsExplicit<Customer>(collection(db, 'customers'), source),
-      getDocsExplicit<User>(collection(db, 'users'), source),
-      getDocsExplicit<StockMovement>(collection(db, 'stockMovements'), source)
+      getDocsExplicit<Product>(collection(db, 'products'), quotaAlreadyExceeded ? 'cache' : source),
+      getDocsExplicit<Transaction>(collection(db, 'transactions'), quotaAlreadyExceeded ? 'cache' : source),
+      getDocsExplicit<CashFlowRecord>(collection(db, 'cashFlowRecords'), quotaAlreadyExceeded ? 'cache' : source),
+      getDocsExplicit<CashierShift>(collection(db, 'shifts'), quotaAlreadyExceeded ? 'cache' : source),
+      getDocExplicit<CashierShift>(doc(db, 'shifts', 'active_shift'), quotaAlreadyExceeded ? 'cache' : source),
+      getDocsExplicit<KaosStockItem>(collection(db, 'kaosStocks'), quotaAlreadyExceeded ? 'cache' : source),
+      getDocsExplicit<Customer>(collection(db, 'customers'), quotaAlreadyExceeded ? 'cache' : source),
+      getDocsExplicit<User>(collection(db, 'users'), quotaAlreadyExceeded ? 'cache' : source),
+      getDocsExplicit<StockMovement>(collection(db, 'stockMovements'), quotaAlreadyExceeded ? 'cache' : source)
     ]);
 
     const shifts = shiftDocs.filter((s) => s.id !== 'active_shift');
@@ -922,7 +1002,9 @@ export async function fetchAllDataFromFirestore(
       kaosStocks,
       customers,
       users,
-      stockMovements
+      stockMovements,
+      isFromCache: quotaAlreadyExceeded,
+      quotaExceeded: quotaAlreadyExceeded || getFirestoreQuotaStatus()
     };
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'all');
@@ -935,7 +1017,9 @@ export async function fetchAllDataFromFirestore(
       kaosStocks: [],
       customers: [],
       users: [],
-      stockMovements: []
+      stockMovements: [],
+      isFromCache: true,
+      quotaExceeded: isFirestoreQuotaExceeded(err) || getFirestoreQuotaStatus()
     };
   }
 }
@@ -1029,7 +1113,7 @@ export async function syncAllLocalDataToFirestore(data: {
   cashFlowCount: number;
   kaosCount: number;
 }> {
-  if (!FIRESTORE_ENABLED || !db) {
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) {
     return {
       productsCount: 0,
       transactionsCount: 0,
@@ -1139,7 +1223,7 @@ export async function saveCloudBackupSnapshot(
 ): Promise<string> {
   const now = Date.now();
   const backupId = `backup_${now}`;
-  if (!FIRESTORE_ENABLED || !db) return backupId;
+  if (!FIRESTORE_ENABLED || !db || getFirestoreQuotaStatus()) return backupId;
   const path = `databaseBackups/${backupId}`;
 
   const meta: CloudBackupSnapshotMeta = {

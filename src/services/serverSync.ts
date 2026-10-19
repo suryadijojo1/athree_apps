@@ -593,12 +593,12 @@ export async function fetchServerDatabase(): Promise<{
   isRealData: boolean;
 }> {
   const candidatePaths = [
-    '/api/cloudsql/save-all',
-    '/api/cloudsql/sync',
     '/api/database',
     '/api/database/save-all',
+    '/api/cloudsql/data',
     '/api/cloudsql/database',
-    '/api/cloudsql/data'
+    '/api/cloudsql/save-all',
+    '/api/cloudsql/sync'
   ];
 
   const endpointsToTry: string[] = [];
@@ -623,23 +623,31 @@ export async function fetchServerDatabase(): Promise<{
       );
       if (res.ok) {
         const json = await res.json();
-        return {
-          success: Boolean(json.success),
-          data: json.data || null,
-          isRealData: Boolean(json.isRealData)
-        };
+        if (json.data) {
+          return {
+            success: Boolean(json.success),
+            data: json.data || null,
+            isRealData: Boolean(json.isRealData)
+          };
+        }
       }
     } catch (err) {
       console.warn(`[ServerSync] Failed to fetch database from ${ep}:`, err);
     }
   }
 
-  // Fallback to Firebase Firestore cloud database if server endpoints returned 404 or failed
+  // Fallback to Firebase Firestore cloud database ONLY if server endpoints returned 404 or failed
   if (FIRESTORE_ENABLED) {
     try {
       console.log('[ServerSync] Server endpoints unavailable. Loading from Firebase Firestore cloud database...');
       const firestoreData = await fetchAllDataFromFirestore('server-first');
-      if (firestoreData && (firestoreData.products.length > 0 || firestoreData.transactions.length > 0 || firestoreData.customers.length > 0)) {
+      // CRITICAL: Never overwrite with stale Firestore cache if quota was exceeded
+      if (
+        firestoreData &&
+        !firestoreData.isFromCache &&
+        !firestoreData.quotaExceeded &&
+        (firestoreData.products.length > 0 || firestoreData.transactions.length > 0 || firestoreData.customers.length > 0)
+      ) {
         return {
           success: true,
           data: {
@@ -667,7 +675,7 @@ export async function fetchServerDatabase(): Promise<{
 }
 
 /**
- * Save full database payload to the central Express server
+ * Save full database payload to the central Express server & replicated cloud storage
  */
 export interface SaveDatabaseResult {
   success: boolean;
@@ -692,30 +700,12 @@ export async function saveServerDatabase(
     deletedCashFlowIds: options?.deletedCashFlowIds || payload.deletedCashFlowIds || []
   };
 
-  // 1. Parallel Sync to Firebase Firestore Cloud
-  // Direct to Google Cloud (works on any website domain, localhost, and preview without 404)
-  let firestoreSnapshotId: string | undefined;
-  let firestoreSyncSuccess = false;
-  if (FIRESTORE_ENABLED) {
-    try {
-      const [snapId] = await Promise.all([
-        saveCloudBackupSnapshot(fullPayload, fullPayload.savedBy, fullPayload.source),
-        syncAllLocalDataToFirestore(fullPayload)
-      ]);
-      firestoreSnapshotId = snapId;
-      firestoreSyncSuccess = true;
-      console.log('[ServerSync] Successfully synced database to Firebase Firestore cloud:', snapId);
-    } catch (fsErr) {
-      console.warn('[ServerSync] Firebase Firestore cloud sync warning:', fsErr);
-    }
-  }
-
-  // 2. Sync to Central Express Server
+  // 1. Primary Save to Central Server (app-database.json and rolling backup snapshots)
   const candidatePaths = [
-    '/api/cloudsql/save-all',
-    '/api/cloudsql/save',
     '/api/database/save-all',
     '/api/database',
+    '/api/cloudsql/save-all',
+    '/api/cloudsql/save',
     '/api/cloudsql/sync'
   ];
 
@@ -730,25 +720,16 @@ export async function saveServerDatabase(
   const uniqueEndpoints = Array.from(new Set(endpointsToTry));
 
   console.log(
-    `%c[ServerSync:SAVE] 💾 Initiating full database push (${fullPayload.transactions?.length || 0} tx, ${fullPayload.products?.length || 0} products). Candidates: [${uniqueEndpoints.join(', ')}]`,
+    `%c[ServerSync:SAVE] 💾 Initiating database push (${fullPayload.transactions?.length || 0} tx, ${fullPayload.products?.length || 0} products).`,
     'color: #0369a1; font-weight: bold;'
   );
 
-  let lastErrorMsg = 'Server error: Endpoint Cloud SQL tidak merespons';
+  let lastErrorMsg = 'Server error: Endpoint Cloud SQL/Server tidak merespons';
   let serverSaved = false;
   let serverResult: SaveDatabaseResult | null = null;
 
   for (let idx = 0; idx < uniqueEndpoints.length; idx++) {
     const ep = uniqueEndpoints[idx];
-    const fullUrl = buildFullApiUrl(ep);
-
-    console.log(
-      `%c[ServerSync:SAVE] 🔄 Trying candidate #${idx + 1}/${uniqueEndpoints.length}: %c${ep}%c (Full: ${fullUrl})`,
-      'color: #475569; font-weight: bold;',
-      'color: #0284c7; font-weight: bold;',
-      'color: #64748b;'
-    );
-
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -766,28 +747,23 @@ export async function saveServerDatabase(
           body: JSON.stringify(fullPayload),
           signal: controller.signal
         },
-        `SaveDatabase (Candidate #${idx + 1}: ${ep})`
+        `SaveDatabase (${ep})`
       );
 
       clearTimeout(timeoutId);
 
       if (res.ok) {
-        console.log(
-          `%c[ServerSync:SAVE] 🎉 Save successful on candidate #${idx + 1} (${ep})! Full URL: ${fullUrl}`,
-          'color: #15803d; font-weight: bold; background: #dcfce7; padding: 2px 6px;'
-        );
         const json = await res.json().catch(() => ({}));
         serverSaved = true;
         serverResult = {
           success: true,
-          message: json.message || 'Berhasil disimpan ke Cloud SQL & Server',
-          snapshotId: json?.snapshotId || firestoreSnapshotId,
+          message: json.message || 'Berhasil disimpan ke Database Server & Storage lokal',
+          snapshotId: json?.snapshotId,
           transactionsCount: json?.transactionsCount ?? fullPayload.transactions?.length ?? 0
         };
         break;
       }
 
-      // If it's a specific non-404 error (e.g. 400 or 500), read the error and stop
       if (res.status !== 404) {
         try {
           const errJson = await res.json();
@@ -798,9 +774,6 @@ export async function saveServerDatabase(
         }
         break;
       } else {
-        console.warn(
-          `[ServerSync:SAVE 404] Candidate ${ep} returned 404. Trying next candidate...`
-        );
         lastErrorMsg = `Server error 404 pada endpoint ${ep}`;
       }
     } catch (err: any) {
@@ -812,21 +785,27 @@ export async function saveServerDatabase(
     }
   }
 
-  // If server responded OK, return the server result
-  if (serverSaved && serverResult) {
-    return serverResult;
+  // 2. Non-blocking Asynchronous Replication to Firebase Firestore Cloud (only if not quota-exceeded)
+  if (FIRESTORE_ENABLED) {
+    (async () => {
+      try {
+        const quotaExceeded = (await import('./firebase')).getFirestoreQuotaStatus();
+        if (!quotaExceeded) {
+          const { saveCloudBackupSnapshot, syncAllLocalDataToFirestore } = await import('./firebase');
+          await Promise.all([
+            saveCloudBackupSnapshot(fullPayload, fullPayload.savedBy, fullPayload.source),
+            syncAllLocalDataToFirestore(fullPayload)
+          ]);
+        }
+      } catch (fsErr) {
+        console.warn('[ServerSync] Background Firestore cloud replication notice:', fsErr);
+      }
+    })();
   }
 
-  // If server endpoints failed with 404 (e.g. running on external domain "athree studio" or static hosting)
-  // but Firestore cloud sync succeeded, return SUCCESS!
-  if (firestoreSyncSuccess || (FIRESTORE_ENABLED && firestoreSnapshotId)) {
-    console.log('[ServerSync] Server endpoints returned 404/offline, but database was saved successfully to Firebase Firestore Cloud.');
-    return {
-      success: true,
-      message: `Berhasil disimpan ke Cloud Database (Firebase Firestore)! Data ${fullPayload.transactions?.length || 0} transaksi & ${fullPayload.products?.length || 0} produk tersimpan aman di cloud.`,
-      snapshotId: firestoreSnapshotId,
-      transactionsCount: fullPayload.transactions?.length || 0
-    };
+  // If server responded OK, return the server result immediately
+  if (serverSaved && serverResult) {
+    return serverResult;
   }
 
   return { success: false, error: lastErrorMsg };

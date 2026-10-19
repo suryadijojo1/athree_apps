@@ -71,32 +71,41 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Middle: Search bar with barcode icon */}
-      <div className="flex-1 max-w-xl mx-2">
-        <div className="relative flex items-center">
-          <Search className="absolute left-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari produk atau SKU..."
-            className="w-full pl-10 pr-10 py-2 text-sm bg-white border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-slate-800 placeholder:text-slate-400 shadow-inner transition-all"
-          />
-          <button
-            type="button"
-            onClick={onScanBarcodePrompt}
-            title="Scan Barcode / Cari Cepat SKU"
-            className="absolute right-2.5 p-1 text-slate-400 hover:text-[#00871f] rounded transition-colors"
-          >
-            <Barcode className="w-5 h-5" />
-          </button>
+      {/* Middle: Search bar with barcode icon (Hidden for User Design) */}
+      {currentUser.role !== 'design' ? (
+        <div className="flex-1 max-w-xl mx-2">
+          <div className="relative flex items-center">
+            <Search className="absolute left-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari produk atau SKU..."
+              className="w-full pl-10 pr-10 py-2 text-sm bg-white border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-slate-800 placeholder:text-slate-400 shadow-inner transition-all"
+            />
+            <button
+              type="button"
+              onClick={onScanBarcodePrompt}
+              title="Scan Barcode / Cari Cepat SKU"
+              className="absolute right-2.5 p-1 text-slate-400 hover:text-[#00871f] rounded transition-colors"
+            >
+              <Barcode className="w-5 h-5" />
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex-1 max-w-xl mx-2 flex items-center justify-center">
+          <div className="inline-flex items-center gap-2 bg-emerald-900/60 border border-emerald-400/40 px-3.5 py-1.5 rounded-full text-xs font-semibold text-emerald-100 shadow-inner">
+            <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+            <span>Design Studio Real 1:1 &bull; 1. Kaos T-Shirt &bull; 2. Polo &bull; 3. Hoodie &bull; 4. Jersey</span>
+          </div>
+        </div>
+      )}
 
       {/* Right: Date, Shift button, Profile */}
       <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
         {/* Integrated Cloud SQL Database Status Badge & Trigger */}
-        {(onOpenCloudSqlModal || onOpenFirebaseModal) && (
+        {(onOpenCloudSqlModal || onOpenFirebaseModal) && currentUser.role !== 'design' && (
           <button
             type="button"
             onClick={onOpenCloudSqlModal || onOpenFirebaseModal}
@@ -119,44 +128,46 @@ export const Header: React.FC<HeaderProps> = ({
           <Calendar className="w-3.5 h-3.5 text-emerald-200" />
         </div>
 
-        {/* Status Kasir & Tombol Buka / Tutup Kasir */}
-        {shift.isOpen ? (
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => onOpenShiftModal('overview')}
-              className="hidden sm:flex flex-col text-left px-2.5 py-1 rounded-lg bg-black/20 border border-white/20 hover:bg-black/30 transition-colors cursor-pointer group text-white"
-              title="Klik untuk melihat detail kasir terbuka"
-            >
-              <span className="text-[10px] font-semibold text-emerald-200 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Kasir Terbuka
-              </span>
-              <span className="text-[11px] text-white group-hover:text-emerald-100 font-medium">
-                Buka: {shift.startTime}
-              </span>
-            </button>
+        {/* Status Kasir & Tombol Buka / Tutup Kasir (Khusus Non-Design) */}
+        {currentUser.role !== 'design' && (
+          shift.isOpen ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => onOpenShiftModal('overview')}
+                className="hidden sm:flex flex-col text-left px-2.5 py-1 rounded-lg bg-black/20 border border-white/20 hover:bg-black/30 transition-colors cursor-pointer group text-white"
+                title="Klik untuk melihat detail kasir terbuka"
+              >
+                <span className="text-[10px] font-semibold text-emerald-200 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Kasir Terbuka
+                </span>
+                <span className="text-[11px] text-white group-hover:text-emerald-100 font-medium">
+                  Buka: {shift.startTime}
+                </span>
+              </button>
 
-            {/* Dedicated Tutup Kasir Button */}
+              {/* Dedicated Tutup Kasir Button */}
+              <button
+                type="button"
+                onClick={() => onOpenShiftModal('reconcile')}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title="Menu Tutup Kasir & Rekonsiliasi Kas"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Tutup Kasir</span>
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={() => onOpenShiftModal('reconcile')}
-              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-              title="Menu Tutup Kasir & Rekonsiliasi Kas"
+              onClick={() => onOpenShiftModal('open_shift')}
+              className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-[#00871f] font-bold text-xs shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+              title="Buka Kasir Baru (Tanggal & Jam Otomatis)"
             >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Tutup Kasir</span>
+              <Unlock className="w-3.5 h-3.5 text-[#00871f]" />
+              <span>Buka Kasir</span>
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onOpenShiftModal('open_shift')}
-            className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-[#00871f] font-bold text-xs shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-            title="Buka Kasir Baru (Tanggal & Jam Otomatis)"
-          >
-            <Unlock className="w-3.5 h-3.5 text-[#00871f]" />
-            <span>Buka Kasir</span>
-          </button>
+          )
         )}
 
         {/* User Profile Avatar with dropdown */}

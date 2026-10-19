@@ -18,15 +18,6 @@ export const INITIAL_USERS: User[] = [
     role: 'admin',
     avatarText: 'AT',
     roleLabel: 'Administrator / Pemilik'
-  },
-  {
-    id: 'u3',
-    name: 'Budi Santoso',
-    username: 'staff_budi',
-    pin: '1234',
-    role: 'staff',
-    avatarText: 'BS',
-    roleLabel: 'Staf Produksi / Desain'
   }
 ];
 

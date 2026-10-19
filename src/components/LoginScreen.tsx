@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User as UserIcon, Lock, Layers, Check, AlertCircle, Clock, ShieldCheck, RefreshCw, Flame } from 'lucide-react';
+import { User as UserIcon, Lock, Layers, Check, AlertCircle, Clock, ShieldCheck, RefreshCw, Flame, Palette, Sparkles } from 'lucide-react';
 import { User } from '../types';
 import welcomeBg from '../assets/images/kang_sablon_mascot_1789898387552.jpg';
 
@@ -8,29 +8,32 @@ interface LoginScreenProps {
   onLogin: (user: User) => void;
   sessionTimeoutNotice?: string | null;
   onClearTimeoutNotice?: () => void;
+  onOpenDesignStudio?: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   users,
   onLogin,
   sessionTimeoutNotice,
-  onClearTimeoutNotice
+  onClearTimeoutNotice,
+  onOpenDesignStudio
 }) => {
   const [usernameInput, setUsernameInput] = useState<string>('admin_athree');
   const [passwordInput, setPasswordInput] = useState<string>('1234');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [selectedRolePreset, setSelectedRolePreset] = useState<'admin' | 'kasir' | 'staff'>('admin');
+  const [selectedRolePreset, setSelectedRolePreset] = useState<'admin' | 'kasir'>('admin');
 
-  const handleSelectPreset = (role: 'admin' | 'kasir' | 'staff') => {
+  const handleSelectPreset = (role: 'admin' | 'kasir') => {
     setSelectedRolePreset(role);
     setErrorMsg('');
     const target = users.find((u) => u.role === role);
+
     if (target) {
-      setUsernameInput(target.username || (role === 'admin' ? 'admin_athree' : role === 'kasir' ? 'kasir_dimas' : 'staff_budi'));
+      setUsernameInput(target.username || (role === 'admin' ? 'admin_athree' : 'kasir_dimas'));
       setPasswordInput(target.pin || '1234');
     } else {
-      setUsernameInput(role === 'admin' ? 'admin_athree' : role === 'kasir' ? 'kasir_dimas' : 'staff_budi');
+      setUsernameInput(role === 'admin' ? 'admin_athree' : 'kasir_dimas');
       setPasswordInput('1234');
     }
   };
@@ -50,9 +53,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         (cleanUser === 'athree' && u.role === 'admin') ||
         (cleanUser === 'deazbar' && u.role === 'admin') ||
         (cleanUser === 'kasir' && u.role === 'kasir') ||
-        (cleanUser === 'dimas' && u.role === 'kasir') ||
-        (cleanUser === 'staff' && u.role === 'staff') ||
-        (cleanUser === 'budi' && u.role === 'staff')
+        (cleanUser === 'dimas' && u.role === 'kasir')
     );
 
     if (!matchedUser) {
@@ -78,8 +79,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             LEFT COLUMN: White Login Form Area
         ========================================================================= */}
         <div className="w-full md:w-[42%] bg-white p-7 md:p-9 flex flex-col justify-between">
-          {/* Top Logo / Brand */}
-          <div>
+          {/* Top Logo / Brand & Quick Design Studio Button */}
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-[#203166]">
               <div className="relative w-7 h-7">
                 <div className="w-5 h-5 rounded-md bg-[#203166] absolute top-0 left-0"></div>
@@ -94,6 +95,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </span>
               </div>
             </div>
+
+            {onOpenDesignStudio && (
+              <button
+                type="button"
+                onClick={onOpenDesignStudio}
+                title="Buka Design Studio untuk mendesain baju tanpa login"
+                className="px-3 py-1.5 rounded-full bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <Palette className="w-3.5 h-3.5 text-purple-600" />
+                <span>Design Studio</span>
+                <span className="text-[9px] bg-purple-200 text-purple-900 px-1.5 py-0.2 rounded font-mono font-bold">Tanpa Login</span>
+              </button>
+            )}
           </div>
 
           {/* Center Form */}
@@ -221,18 +235,47 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
             </form>
 
+            {/* Dedicated Design Studio Access Without Login */}
+            {onOpenDesignStudio && (
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={onOpenDesignStudio}
+                  className="w-full p-3 rounded-2xl bg-gradient-to-r from-purple-700 via-indigo-700 to-blue-700 hover:from-purple-800 hover:to-blue-800 text-white font-extrabold text-xs shadow-md shadow-purple-950/20 flex items-center justify-between transition-all cursor-pointer group active:scale-98 border border-purple-400/40"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                      <Palette className="w-4 h-4 text-amber-300" />
+                    </div>
+                    <div className="text-left">
+                      <span className="block font-black text-xs text-white tracking-tight">
+                        🎨 Design Studio (Bebas Akses)
+                      </span>
+                      <span className="block text-[10px] text-purple-200 font-normal">
+                        Desain Kaos T-Shirt, Polo, Hoodie, Jersey
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0 shadow-xs">
+                    <Sparkles className="w-2.5 h-2.5 fill-slate-950 text-slate-950" />
+                    Tanpa Login
+                  </span>
+                </button>
+              </div>
+            )}
+
             {/* Role Demo Quick Preset Switcher */}
-            <div className="mt-5 pt-4 border-t border-slate-100">
-              <p className="text-[10px] text-slate-400 font-semibold text-center mb-2 uppercase tracking-wider">
-                Pilihan Cepat Akun Demo:
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <p className="text-[10px] text-slate-400 font-semibold text-center mb-1.5 uppercase tracking-wider">
+                Pilihan Cepat Akun Demo POS:
               </p>
-              <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div className="grid grid-cols-2 gap-2 text-center">
                 <button
                   type="button"
                   onClick={() => handleSelectPreset('admin')}
-                  className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
+                  className={`py-1.5 px-2 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
                     selectedRolePreset === 'admin'
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      ? 'bg-emerald-50 border-emerald-400 text-emerald-800 ring-1 ring-emerald-400'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -241,24 +284,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSelectPreset('kasir')}
-                  className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
+                  className={`py-1.5 px-2 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
                     selectedRolePreset === 'kasir'
-                      ? 'bg-blue-50 border-blue-300 text-blue-800'
+                      ? 'bg-blue-50 border-blue-400 text-blue-800 ring-1 ring-blue-400'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   Kasir (Dimas)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectPreset('staff')}
-                  className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
-                    selectedRolePreset === 'staff'
-                      ? 'bg-amber-50 border-amber-300 text-amber-800'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  Staf (Budi)
                 </button>
               </div>
             </div>
@@ -312,6 +344,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 Siap Melayani
               </span>
             </div>
+
+            {onOpenDesignStudio && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={onOpenDesignStudio}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600/90 hover:bg-purple-600 text-white font-black text-xs shadow-lg shadow-purple-950/50 border border-purple-400/40 backdrop-blur-md transition-all cursor-pointer active:scale-95"
+                >
+                  <Palette className="w-4 h-4 text-amber-300" />
+                  <span>Buka Design Studio &bull; Mulai Desain Baju</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
