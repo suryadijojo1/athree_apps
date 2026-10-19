@@ -726,6 +726,7 @@ async function startServer() {
       res.clearCookie('token', { path: '/' });
       res.clearCookie('session', { path: '/' });
       res.clearCookie('auth', { path: '/' });
+      res.setHeader('Clear-Site-Data', '"cache", "cookies"');
       res.json({
         success: true,
         message: 'Cache & cookies cleared successfully'

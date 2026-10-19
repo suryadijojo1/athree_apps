@@ -243,9 +243,10 @@ export async function verboseFetch(
     networkLogs.unshift(logItem);
     if (networkLogs.length > MAX_NETWORK_LOGS) networkLogs.pop();
 
-    console.warn(
-      `[ServerSync:NET-WARN] ⚠️ [${contextLabel}] ${method} ${fullUrl} (${durationMs}ms):`,
-      isAbort ? 'Request Aborted' : (netErr.message || netErr)
+    console.error(
+      `%c[ServerSync:NET-FAIL] 💥 [${contextLabel}] ${method} ${fullUrl} FAILED after ${durationMs}ms:`,
+      'color: #991b1b; font-weight: bold; background: #fee2e2; padding: 2px 6px; border-radius: 3px;',
+      netErr.message || netErr
     );
     throw netErr;
   }
@@ -270,9 +271,20 @@ export async function verboseFetch(
   if (networkLogs.length > MAX_NETWORK_LOGS) networkLogs.pop();
 
   if (is404) {
-    console.warn(
-      `[ServerSync:404] ⚠️ HTTP 404 Not Found on ${method} [${contextLabel}] ${fullUrl}`
+    console.group(
+      `%c[ServerSync:404 ERROR] ❌ HTTP 404 Not Found on ${method} [${contextLabel}]`,
+      'color: #ffffff; background: #dc2626; font-weight: bold; padding: 2px 8px; border-radius: 4px;'
     );
+    console.error(`• Full Target URL : %c${fullUrl}%c`, 'color: #dc2626; font-weight: bold;', '');
+    console.error(`• Requested Path  : ${inputUrl}`);
+    console.error(`• HTTP Method     : ${method}`);
+    console.error(`• HTTP Status     : 404 (Not Found)`);
+    console.error(`• Latency         : ${durationMs}ms`);
+    console.error(`• Gateway Base    : ${getServerBaseUrl() || '(none / browser origin)'}`);
+    console.error(`• Full Base URL   : ${getFullServerBaseUrl()}`);
+    console.error(`• Timestamp       : ${new Date().toISOString()}`);
+    console.error(`• Context         : ${contextLabel}`);
+    console.groupEnd();
   } else if (!response.ok) {
     console.warn(
       `%c[ServerSync:HTTP ${response.status}] ⚠ [${contextLabel}] ${method} %c${fullUrl}%c (${durationMs}ms) - ${response.statusText}`,
@@ -807,11 +819,14 @@ export async function saveServerBackupSnapshot(
   savedBy: string = 'Kasir Logout',
   source: string = 'logout'
 ): Promise<boolean> {
-  // Asynchronously replicate to Firestore without blocking the critical server snapshot
+  let fsSuccess = false;
   if (FIRESTORE_ENABLED) {
-    saveCloudBackupSnapshot(data, savedBy, source).catch((e) => {
-      console.warn('Firestore backup snapshot notice:', e);
-    });
+    try {
+      await saveCloudBackupSnapshot(data, savedBy, source);
+      fsSuccess = true;
+    } catch (e) {
+      console.warn('Firestore backup snapshot warning:', e);
+    }
   }
 
   try {
@@ -824,10 +839,10 @@ export async function saveServerBackupSnapshot(
       },
       'SaveServerBackupSnapshot'
     );
-    return res.ok;
+    return res.ok || fsSuccess;
   } catch (err) {
     console.warn('Failed to save server backup snapshot:', err);
-    return false;
+    return fsSuccess;
   }
 }
 
@@ -1098,9 +1113,6 @@ export function startLiveShiftSync(onShiftUpdate: (shift: CashierShift) => void)
 
   const checkShift = async () => {
     if (isClosed) return;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-
     try {
       const shift = await fetchCurrentShiftFromServer();
       if (isClosed || !shift) return;
@@ -1121,11 +1133,11 @@ export function startLiveShiftSync(onShiftUpdate: (shift: CashierShift) => void)
     } catch {}
   };
 
-  // Run initial check
+  // Run immediately
   checkShift();
 
-  // Heartbeat every 10 seconds (SSE handles instantaneous push events; this is safety fallback)
-  const interval = setInterval(checkShift, 10000);
+  // Heartbeat every 4 seconds (lightweight & avoids network congestion)
+  const interval = setInterval(checkShift, 4000);
 
   return () => {
     isClosed = true;
@@ -1165,7 +1177,6 @@ export async function syncShiftToServer(
  * Fetch current live shift from the central server
  */
 export async function fetchCurrentShiftFromServer(): Promise<CashierShift | null> {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
   try {
     const res = await verboseFetch(
       buildApiUrl(`/api/shift/current?_t=${Date.now()}`),
