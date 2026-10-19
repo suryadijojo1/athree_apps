@@ -411,9 +411,6 @@ export async function diagnoseCloudSqlService(options?: {
         statusText = isAbort ? 'TIMEOUT' : 'CONNECTION_ERROR';
         errorMessage = err.message || 'Connection failed';
       }
-      if (err.name === 'TypeError' || err.message?.includes('Failed to fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-        break;
-      }
     }
   }
 
@@ -583,7 +580,14 @@ export async function fetchServerDatabase(): Promise<{
   data: AppDatabasePayload | null;
   isRealData: boolean;
 }> {
-  const candidatePaths = ['/api/database'];
+  const candidatePaths = [
+    '/api/database',
+    '/api/database/save-all',
+    '/api/cloudsql/data',
+    '/api/cloudsql/database',
+    '/api/cloudsql/save-all',
+    '/api/cloudsql/sync'
+  ];
 
   const endpointsToTry: string[] = [];
   for (const p of candidatePaths) {
@@ -615,9 +619,8 @@ export async function fetchServerDatabase(): Promise<{
           };
         }
       }
-    } catch (err: any) {
-      console.warn(`[ServerSync] Server database fetch failed from ${ep}:`, err.message || err);
-      break;
+    } catch (err) {
+      console.warn(`[ServerSync] Failed to fetch database from ${ep}:`, err);
     }
   }
 
@@ -686,7 +689,13 @@ export async function saveServerDatabase(
   };
 
   // 1. Primary Save to Central Server (app-database.json and rolling backup snapshots)
-  const candidatePaths = ['/api/database/save-all'];
+  const candidatePaths = [
+    '/api/database/save-all',
+    '/api/database',
+    '/api/cloudsql/save-all',
+    '/api/cloudsql/save',
+    '/api/cloudsql/sync'
+  ];
 
   const endpointsToTry: string[] = [];
   for (const p of candidatePaths) {
@@ -761,7 +770,6 @@ export async function saveServerDatabase(
       } else {
         lastErrorMsg = err.message || 'Koneksi ke server gagal';
       }
-      break;
     }
   }
 
