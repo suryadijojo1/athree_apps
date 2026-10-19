@@ -1746,10 +1746,10 @@ export default function App() {
       source
     ).catch((err) => console.warn('Server backup warning:', err));
 
-    // Wait for critical saves with safety timeout (max 1500ms)
-    const timeout = new Promise((resolve) => setTimeout(resolve, 1500));
+    // Wait for critical server saves with safety timeout (max 3000ms)
+    const timeout = new Promise((resolve) => setTimeout(resolve, 3000));
     await Promise.race([
-      Promise.all([firestoreBackupPromise, serverSavePromise, serverBackupPromise]),
+      Promise.all([serverSavePromise, serverBackupPromise]),
       timeout
     ]);
 
@@ -1775,8 +1775,8 @@ export default function App() {
         latestStateRef.current.shift
       );
 
-      // Max 1.5s total wait to guarantee logout is instant and never gets stuck
-      const safetyTimeout = new Promise((resolve) => setTimeout(resolve, 1500));
+      // Max 3.5s total wait to guarantee server save succeeds without freezing UI
+      const safetyTimeout = new Promise((resolve) => setTimeout(resolve, 3500));
       await Promise.race([savePromise, safetyTimeout]);
 
       setLogoutSuccess(true);
@@ -1805,8 +1805,6 @@ export default function App() {
       setIsCustomProductModalOpen(false);
       setIsLoggingOut(false);
       setLogoutSuccess(false);
-
-      fetch(buildApiUrl('/api/clear-session'), { method: 'POST' }).catch(() => {});
     }
   };
 
