@@ -110,6 +110,7 @@ import {
   clearAllCachesAndCookies,
   clearBrowserCaches,
   markPageForRefresh,
+  markTabAsLoaded,
   clearRefreshMark
 } from './utils/sessionCleaner';
 import {
@@ -127,34 +128,22 @@ const shouldApplyRemoteShift = (remoteShift: CashierShift, prevShift: CashierShi
   if (remoteShift.id === 'shift-test') return false;
   if (!prevShift) return true;
 
-  // RULE 1: If remote shift is OPEN and local shift is NOT open,
-  // ALWAYS apply it immediately! The cashier has been opened in another browser.
+  // RULE 1: If remote shift is OPEN and local shift is NOT open:
   if (remoteShift.isOpen && !prevShift.isOpen) {
-    console.log('Real-Time Sync: Remote shift is OPEN, transitioning local cashier to OPEN');
+    // Guard against stale abandoned open shifts from previous days
+    const startTs = getShiftTimestamp(remoteShift);
+    const now = Date.now();
+    if (startTs > 0 && now - startTs > 24 * 60 * 60 * 1000) {
+      console.log('Real-Time Protection: Ignored abandoned stale open shift older than 24 hours.');
+      return false;
+    }
+    console.log('Real-Time Sync: Remote shift is actively OPEN today, transitioning local cashier to OPEN');
     return true;
   }
 
-  // RULE 2: If local cashier is currently OPEN (prevShift.isOpen === true),
-  // NEVER close it unless the remote shift is an EXPLICIT closure of THIS SAME SHIFT:
+  // RULE 2: If remote shift is CLOSED, always respect closure!
   if (prevShift.isOpen && !remoteShift.isOpen) {
-    // A remote shift with a DIFFERENT ID can NEVER close the currently open shift!
-    if (remoteShift.id !== prevShift.id) {
-      console.log('Real-Time Protection: Ignored remote closed shift with different ID because local cashier is currently OPEN.');
-      return false;
-    }
-    // Check timestamps: an older closed shift from yesterday/earlier must NEVER close a newer open shift
-    const endTs = getShiftTimestamp(remoteShift);
-    const startTs = getShiftTimestamp(prevShift);
-    if (startTs > 0 && endTs > 0 && endTs < startTs) {
-      console.log('Real-Time Protection: Ignored remote closed shift because end time is earlier than current open shift start time.');
-      return false;
-    }
-    // For the same shift ID, only accept closure if it has an explicit endTime or endTimestamp
-    const isExplicitClose = Boolean(remoteShift.endTime) || Boolean(remoteShift.endTimestamp);
-    if (!isExplicitClose) {
-      console.log('Real-Time Protection: Ignored remote shift closure because endTime is missing.');
-      return false;
-    }
+    console.log('Real-Time Sync: Remote shift is CLOSED, transitioning local cashier to CLOSED');
     return true;
   }
 
@@ -345,6 +334,16 @@ export default function App() {
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    const phantomIds = new Set([
+      't1',
+      'tx-86871',
+      'tx-41438',
+      'tx-82687',
+      'tx-43814',
+      'tx-18529',
+      'tx-39983',
+      'tx-11028'
+    ]);
     const saved =
       localStorage.getItem('athree_transactions') ||
       localStorage.getItem('athree_transactions_persistent_backup');
@@ -352,11 +351,12 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return sortTransactionsByLatestDate(parsed);
+          const filtered = parsed.filter((t: any) => t && t.id && !phantomIds.has(t.id) && t.invoiceNo && !t.invoiceNo.includes('0000'));
+          if (filtered.length > 0) return sortTransactionsByLatestDate(filtered);
         }
       } catch {}
     }
-    return sortTransactionsByLatestDate(INITIAL_TRANSACTIONS);
+    return [];
   });
 
   useEffect(() => {
@@ -661,8 +661,21 @@ export default function App() {
         latestStateRef.current.categories = payload.categories;
         localStorage.setItem('athree_categories', JSON.stringify(payload.categories));
       }
-      if (payload.transactions && Array.isArray(payload.transactions) && payload.transactions.length > 0) {
-        const sorted = sortTransactionsByLatestDate(payload.transactions);
+      if (payload.transactions && Array.isArray(payload.transactions)) {
+        const phantomIds = new Set([
+          't1',
+          'tx-86871',
+          'tx-41438',
+          'tx-82687',
+          'tx-43814',
+          'tx-18529',
+          'tx-39983',
+          'tx-11028'
+        ]);
+        const cleaned = payload.transactions.filter(
+          (t: any) => t && t.id && !phantomIds.has(t.id) && t.invoiceNo && !t.invoiceNo.includes('0000')
+        );
+        const sorted = sortTransactionsByLatestDate(cleaned);
         setTransactions(sorted);
         latestStateRef.current.transactions = sorted;
         localStorage.setItem('athree_transactions', JSON.stringify(sorted));
@@ -842,9 +855,6 @@ export default function App() {
           }
           latestStateRef.current.shift = mergedShift;
           return mergedShift;
-        } else if (prevShift.isOpen && (!remoteShift.isOpen || remoteShift.id !== prevShift.id)) {
-          // Local browser has open cashier, ensure server knows about this active open shift
-          syncShiftToServer(prevShift, `${currentUser.name} (Buka Kasir Aktif)`).catch(() => {});
         }
         return prevShift;
       });
@@ -1069,8 +1079,15 @@ export default function App() {
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+    // Tandai tab ini telah aktif dimuat agar refresh berikutnya langsung terdeteksi
+    setTimeout(() => {
+      markTabAsLoaded();
+    }, 1000);
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
     };
   }, []);
 

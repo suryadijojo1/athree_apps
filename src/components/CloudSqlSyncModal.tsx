@@ -192,10 +192,10 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
     }
   };
 
-  // 3. Create Cloud SQL 14-Day Rolling Backup
+  // 3. Create Cloud SQL 30-Day Rolling Backup
   const handleCreateSqlBackup = async () => {
     setIsProcessing(true);
-    setStatusMessage({ text: 'Menyimpan snapshot cadangan manual ke Cloud SQL (retensi 14 hari)...' });
+    setStatusMessage({ text: 'Menyimpan snapshot cadangan manual ke Cloud SQL (retensi 30 hari)...' });
 
     try {
       const payload = {
@@ -737,7 +737,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                       STATUS ARSIP &amp; CADANGAN
                     </span>
                     <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                      14 Hari Retensi
+                      30 Hari Retensi
                     </span>
                   </div>
                   <h4 className="text-base font-bold text-slate-800">
@@ -824,7 +824,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                     className="flex flex-col items-center justify-center p-4 rounded-2xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold transition-all disabled:opacity-50 cursor-pointer group text-center"
                   >
                     <ShieldCheck className="w-6 h-6 mb-1 text-indigo-600 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs">Buat Snapshot SQL (14 Hari)</span>
+                    <span className="text-xs">Buat Snapshot SQL (30 Hari)</span>
                     <span className="text-[10px] text-indigo-700 font-normal mt-0.5">
                       Simpan checkpoint ke Cloud SQL
                     </span>
@@ -838,7 +838,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       <History className="w-4 h-4 text-blue-600" />
-                      DAFTAR SNAPSHOT CLOUD SQL (RETENSI 14 HARI)
+                      DAFTAR SNAPSHOT CLOUD SQL (RETENSI 30 HARI)
                     </span>
                     <span className="text-[11px] text-slate-500 font-medium">
                       {sqlBackups.length} Snapshot
@@ -1015,7 +1015,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                                 {snap.stats?.productsCount || 0} Produk
                               </span>
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                Sisa {snap.remainingDays || 14} Hari
+                                Sisa {snap.remainingDays || 30} Hari
                               </span>
                             </div>
 
@@ -1453,7 +1453,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                     <ul className="list-disc list-inside space-y-0.5 text-slate-600">
                       <li>Bekerja langsung di website <strong>athree studio</strong> tanpa membutuhkan proxy backend lokal.</li>
                       <li>Data transaksi dan katalog produk tetap sinkron secara instan antar perangkat kasir.</li>
-                      <li>Rolling backup snapshot otomatis beretensi 14 hari tersimpan aman di cloud.</li>
+                      <li>Rolling backup snapshot otomatis beretensi 30 hari tersimpan aman di cloud.</li>
                     </ul>
                   </div>
                 </div>

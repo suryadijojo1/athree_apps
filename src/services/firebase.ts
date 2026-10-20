@@ -1196,7 +1196,7 @@ export async function syncAllLocalDataToFirestore(data: {
 // Rolling 14-Day Snapshots in Firestore
 // ---------------------------------------------------------------------------
 
-export const BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+export const BACKUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari (1 bulan penuh)
 
 export interface CloudBackupSnapshotMeta {
   id: string;
@@ -1232,7 +1232,7 @@ export async function saveCloudBackupSnapshot(
     timestamp: now,
     expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
     expiresTimestamp: now + BACKUP_RETENTION_MS,
-    retentionDays: 14,
+    retentionDays: 30,
     savedBy,
     source,
     stats: {
@@ -1276,7 +1276,7 @@ export async function fetchCloudBackupSnapshots(): Promise<CloudBackupSnapshotMe
         timestamp: data.timestamp || 0,
         expiresAt: data.expiresAt,
         expiresTimestamp: data.expiresTimestamp || 0,
-        retentionDays: data.retentionDays || 14,
+        retentionDays: data.retentionDays || 30,
         savedBy: data.savedBy || 'Kasir',
         source: data.source || 'backup',
         stats: data.stats || {

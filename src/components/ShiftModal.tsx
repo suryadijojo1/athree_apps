@@ -412,10 +412,10 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     setViewMode('closed_summary');
   };
 
-  // Handler: Langsung Tutup Kasir Sekarang & Nonaktifkan Penjualan
+  // Handler: Langsung Tutup Kasir Sekarang & Nonaktifkan Penjualan (1x Klik Langsung Selesai)
   const handleCloseCashierNow = () => {
     handleConfirmCloseShift();
-    alert('✅ Kasir Berhasil Ditutup!\n\nStatus kasir sekarang Tutup. Menu penjualan di kasir otomatis dinonaktifkan (terdisable).');
+    onClose();
   };
 
   // Handler: Akhiri Shift & Logout dari sistem (User Request: "menu ini adalah menu akhiri shift, ketika di tekan maka shift berakhir dan system terlogout")

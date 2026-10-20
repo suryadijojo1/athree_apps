@@ -10,7 +10,17 @@ export function isPageRefreshed(): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    // 1. Modern Performance Navigation Timing API
+    // 1. Session Storage markers (survives reload in the same browser tab)
+    if (typeof sessionStorage !== 'undefined') {
+      if (sessionStorage.getItem('athree_page_refreshed') === 'true') {
+        return true;
+      }
+      if (sessionStorage.getItem('athree_tab_has_loaded') === 'true') {
+        return true;
+      }
+    }
+
+    // 2. Modern Performance Navigation Timing API
     if (typeof performance !== 'undefined' && typeof performance.getEntriesByType === 'function') {
       const navEntries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
       if (navEntries.length > 0 && navEntries[0].type === 'reload') {
@@ -18,16 +28,9 @@ export function isPageRefreshed(): boolean {
       }
     }
 
-    // 2. Legacy Navigation Timing API
+    // 3. Legacy Navigation Timing API
     if (typeof performance !== 'undefined' && (performance as any)?.navigation) {
       if ((performance as any).navigation.type === 1) {
-        return true;
-      }
-    }
-
-    // 3. Session Storage marker set during beforeunload/unload
-    if (typeof sessionStorage !== 'undefined') {
-      if (sessionStorage.getItem('athree_page_refreshed') === 'true') {
         return true;
       }
     }
@@ -50,12 +53,24 @@ export function markPageForRefresh(): void {
 }
 
 /**
- * Clears the refresh marker
+ * Marks that this tab has loaded so future reloads in this tab are recognized as refresh
+ */
+export function markTabAsLoaded(): void {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('athree_tab_has_loaded', 'true');
+    }
+  } catch {}
+}
+
+/**
+ * Clears the refresh markers
  */
 export function clearRefreshMark(): void {
   try {
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('athree_page_refreshed');
+      sessionStorage.removeItem('athree_tab_has_loaded');
     }
   } catch {}
 }

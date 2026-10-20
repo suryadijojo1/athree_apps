@@ -542,6 +542,17 @@ if (typeof window !== 'undefined') {
   win.__NETWORK_LOGS__ = networkLogs;
 }
 
+const PHANTOM_TRANSACTION_IDS = new Set([
+  't1',
+  'tx-86871',
+  'tx-41438',
+  'tx-82687',
+  'tx-43814',
+  'tx-18529',
+  'tx-39983',
+  'tx-11028'
+]);
+
 const LEGACY_DUMMY_INVOICES = new Set([
   '#INV/00001',
   '#INV/00002',
@@ -624,6 +635,11 @@ export async function fetchServerDatabase(): Promise<{
       if (res.ok) {
         const json = await res.json();
         if (json.data) {
+          if (Array.isArray(json.data.transactions)) {
+            json.data.transactions = json.data.transactions.filter(
+              (tx: any) => tx && tx.id && !PHANTOM_TRANSACTION_IDS.has(tx.id) && tx.invoiceNo && !LEGACY_DUMMY_INVOICES.has(tx.invoiceNo)
+            );
+          }
           return {
             success: Boolean(json.success),
             data: json.data || null,

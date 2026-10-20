@@ -21,9 +21,9 @@ const DB_FILE_PATH = path.join(process.cwd(), 'data', 'app-database.json');
 const BACKUPS_DIR = path.join(process.cwd(), 'data', 'backups');
 const GDRIVE_ACCOUNT_FILE = path.join(process.cwd(), 'data', 'gdrive-account.json');
 const GDRIVE_BACKUPS_DIR = path.join(process.cwd(), 'data', 'gdrive-backups');
-const BACKUP_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 hari retensi sesuai permintaan
+const BACKUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari retensi sesuai permintaan
 
-// Helper: Prune backups older than 14 days so files do not pile up
+// Helper: Prune backups older than 30 days so files do not pile up
 function pruneExpiredBackups(): number {
   let prunedCount = 0;
   try {
@@ -80,7 +80,7 @@ function saveBackupSnapshot(payload: any, savedBy: string = 'System', source: st
       timestamp: now,
       expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
       expiresTimestamp: now + BACKUP_RETENTION_MS,
-      retentionDays: 14,
+      retentionDays: 30,
       savedBy,
       source,
       stats: {
@@ -378,32 +378,51 @@ async function startServer() {
       // Explicitly deleted transaction IDs (if any)
       const deletedIds = new Set<string>(Array.isArray(payload.deletedTransactionIds) ? payload.deletedTransactionIds : []);
 
-      // Smart transaction preservation: Never lose sales transactions
-      const dummyInvoices = new Set(['#INV/00001', '#INV/00002', '#INV/00003', '#INV/00004', '#INV/00005', '#INV/00006', '#INV/00007', '#INV/00008']);
+      // Blacklist of phantom/dummy transactions to prevent phantom invoices ("inv siluman")
+      const phantomIds = new Set([
+        't1',
+        'tx-86871',
+        'tx-41438',
+        'tx-82687',
+        'tx-43814',
+        'tx-18529',
+        'tx-39983',
+        'tx-11028'
+      ]);
+      const dummyInvoices = new Set([
+        '#INV/00001',
+        '#INV/00002',
+        '#INV/00003',
+        '#INV/00004',
+        '#INV/00005',
+        '#INV/00006',
+        '#INV/00007',
+        '#INV/00008'
+      ]);
+
+      // Filter out deleted & phantom IDs from incoming payload
+      if (Array.isArray(payload.transactions)) {
+        payload.transactions = payload.transactions.filter(
+          (tx: any) => tx && tx.id && !phantomIds.has(tx.id) && tx.invoiceNo && !dummyInvoices.has(tx.invoiceNo) && !deletedIds.has(tx.id)
+        );
+      } else {
+        payload.transactions = [];
+      }
+
       if (currentDbState?.transactions?.length > 0) {
         if (payload.transactions.length === 0 && deletedIds.size === 0) {
           console.warn('Blocked database wipe: incoming payload has 0 transactions while server has', currentDbState.transactions.length);
-          payload.transactions = currentDbState.transactions;
-          payload.isRealData = true;
-        } else if (
-          currentDbState.transactions.some((t: any) => !dummyInvoices.has(t.invoiceNo)) &&
-          payload.transactions.length > 0 &&
-          payload.transactions.every((t: any) => dummyInvoices.has(t.invoiceNo))
-        ) {
-          console.warn('[server.ts] Blocked overwriting real transactions with initial mock transactions');
-          payload.transactions = currentDbState.transactions;
+          payload.transactions = currentDbState.transactions.filter(
+            (tx: any) => tx && tx.id && !phantomIds.has(tx.id) && tx.invoiceNo && !dummyInvoices.has(tx.invoiceNo) && !deletedIds.has(tx.id)
+          );
           payload.isRealData = true;
         } else {
-          // Filter out deleted IDs and sort by latest date
-          payload.transactions = payload.transactions
-            .filter((tx: any) => !deletedIds.has(tx.id))
-            .sort(
-              (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-            );
+          // Sort by latest date
+          payload.transactions = payload.transactions.sort(
+            (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+          );
           payload.isRealData = true;
         }
-      } else if (Array.isArray(payload.transactions)) {
-        payload.transactions = payload.transactions.filter((tx: any) => !deletedIds.has(tx.id));
       }
 
       // Safeguard: Retain existing real products if incoming payload only has default mock products or empty
@@ -460,39 +479,19 @@ async function startServer() {
         if (currentDbState) currentDbState.shiftHistory = [];
       }
 
-      // Safeguard: Preserve existing active shift state if incoming payload doesn't close it explicitly
-      if (currentDbState?.currentShift?.isOpen === true) {
-        if (!payload.currentShift) {
-          payload.currentShift = currentDbState.currentShift;
-        } else if (payload.currentShift.isOpen === false) {
-          // Check if this is an explicit valid closure of the current open shift
-          const currentStartTs = Number(currentDbState.currentShift.startTimestamp || 0);
-          const payloadEndTs = Number(payload.currentShift.endTimestamp || 0);
-          const isExplicitClose = Boolean(payload.currentShift.endTime) && (
-            payload.currentShift.id === currentDbState.currentShift.id ||
-            (payloadEndTs > 0 && currentStartTs > 0 && payloadEndTs >= currentStartTs)
-          );
-          if (!isExplicitClose) {
-            // Incoming payload has an old or unrelated closed shift - preserve the active OPEN shift!
-            payload.currentShift = currentDbState.currentShift;
-          } else {
-            const closingVal = payload.currentShift.actualCash !== undefined
-              ? payload.currentShift.actualCash
-              : (payload.currentShift.expectedCash || 0);
+      // Safeguard & Shift state synchronization
+      if (payload.currentShift) {
+        if (payload.currentShift.isOpen === false) {
+          const closingVal = payload.currentShift.actualCash !== undefined
+            ? payload.currentShift.actualCash
+            : (payload.currentShift.expectedCash || 0);
+          if (currentDbState) {
             currentDbState.lastClosingCash = closingVal;
             currentDbState.lastClosedShift = payload.currentShift;
           }
         }
-      } else if (!payload.currentShift && currentDbState?.currentShift) {
+      } else if (currentDbState?.currentShift) {
         payload.currentShift = currentDbState.currentShift;
-      } else if (payload.currentShift && payload.currentShift.isOpen === false) {
-        const closingVal = payload.currentShift.actualCash !== undefined
-          ? payload.currentShift.actualCash
-          : (payload.currentShift.expectedCash || 0);
-        if (closingVal > 0 && currentDbState) {
-          currentDbState.lastClosingCash = closingVal;
-          currentDbState.lastClosedShift = payload.currentShift;
-        }
       }
 
       // Safeguard: Preserve existing shiftHistory so historical closed shifts and balances are never lost
@@ -585,7 +584,7 @@ async function startServer() {
         snapshotId,
         transactionsCount: payload.transactions?.length || 0,
         productsCount: payload.products?.length || 0,
-        retentionDays: 14
+        retentionDays: 30
       });
     } catch (err: any) {
       console.error('Failed to save central database:', err);
@@ -709,8 +708,8 @@ async function startServer() {
       res.json({
         success: true,
         snapshotId,
-        retentionDays: 14,
-        expiresIn: '14 hari',
+        retentionDays: 30,
+        expiresIn: '30 hari',
         timestamp: new Date().toISOString()
       });
     } catch (err: any) {
@@ -736,7 +735,7 @@ async function startServer() {
     }
   });
 
-  // Get active 14-day backup snapshots list
+  // Get active 30-day backup snapshots list
   app.get('/api/database/backups', (req, res) => {
     try {
       pruneExpiredBackups();
@@ -770,7 +769,7 @@ async function startServer() {
       }
 
       backups.sort((a, b) => b.timestamp - a.timestamp);
-      res.json({ success: true, backups, retentionDays: 14 });
+      res.json({ success: true, backups, retentionDays: 30 });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
