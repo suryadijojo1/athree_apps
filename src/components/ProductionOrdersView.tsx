@@ -51,6 +51,8 @@ interface ProductionOrdersViewProps {
   onViewReceipt: (transaction: Transaction) => void;
   onReviseInvoice?: (transaction: Transaction) => void;
   onDeleteInvoice?: (transaction: Transaction) => void;
+  onBatchDeleteInvoices?: (transactionIds: string[]) => void;
+  onBatchUpdateOrderStatus?: (transactionIds: string[], status: OrderStatus) => void;
   onPayPiutang?: (transaction: Transaction) => void;
   isAdmin?: boolean;
   currentUser?: UserType;
@@ -65,6 +67,8 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   onViewReceipt,
   onReviseInvoice,
   onDeleteInvoice,
+  onBatchDeleteInvoices,
+  onBatchUpdateOrderStatus,
   onPayPiutang,
   isAdmin = false,
   currentUser,
@@ -132,6 +136,12 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
       setIsEditingCosts(false);
     }
   }, [previewTx?.id]);
+
+  // Multi-Invoice Selection States (Permasalahan 2)
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
+  const [batchStatusValue, setBatchStatusValue] = useState<OrderStatus>('Sedang Dikerjakan');
+  const [isExportingBatch, setIsExportingBatch] = useState(false);
 
   // Helper to calculate days remaining
   const getDaysDiff = (dueDateStr: string) => {
@@ -323,6 +333,81 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
   ).length;
 
   const completedCount = (transactions || []).filter((t) => t && t.status === 'Selesai').length;
+
+  // Multi-Invoice Selection Handlers
+  const toggleSelectInvoice = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedInvoiceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isAllFilteredSelected = useMemo(() => {
+    return filteredList.length > 0 && filteredList.every((t) => selectedInvoiceIds.has(t.id));
+  }, [filteredList, selectedInvoiceIds]);
+
+  const toggleSelectAll = () => {
+    if (isAllFilteredSelected) {
+      setSelectedInvoiceIds(new Set());
+    } else {
+      setSelectedInvoiceIds(new Set(filteredList.map((t) => t.id)));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedInvoiceIds(new Set());
+  };
+
+  const handleApplyBatchStatus = () => {
+    if (selectedInvoiceIds.size === 0) return;
+    if (onBatchUpdateOrderStatus) {
+      onBatchUpdateOrderStatus(Array.from(selectedInvoiceIds), batchStatusValue);
+    } else {
+      selectedInvoiceIds.forEach((id) => onUpdateOrderStatus(id, batchStatusValue));
+    }
+    clearSelection();
+  };
+
+  const handleConfirmBatchDelete = () => {
+    if (selectedInvoiceIds.size === 0) return;
+    if (onBatchDeleteInvoices) {
+      onBatchDeleteInvoices(Array.from(selectedInvoiceIds));
+    } else if (onDeleteInvoice) {
+      const toDelete = transactions.filter((t) => selectedInvoiceIds.has(t.id));
+      toDelete.forEach((t) => onDeleteInvoice(t));
+    }
+    clearSelection();
+    setShowBatchDeleteConfirm(false);
+  };
+
+  const handleBatchPrint = () => {
+    const selectedTxs = transactions.filter((t) => selectedInvoiceIds.has(t.id));
+    if (selectedTxs.length === 0) return;
+    selectedTxs.forEach((tx) => {
+      printTransactionDirectly(tx);
+    });
+  };
+
+  const handleBatchDownloadPDF = async () => {
+    const selectedTxs = transactions.filter((t) => selectedInvoiceIds.has(t.id));
+    if (selectedTxs.length === 0) return;
+    setIsExportingBatch(true);
+    try {
+      for (const tx of selectedTxs) {
+        await downloadTransactionReceiptPDF(tx);
+      }
+    } catch (err) {
+      console.warn('Batch PDF export warning:', err);
+    } finally {
+      setIsExportingBatch(false);
+    }
+  };
 
   const handleSaveDueDate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -726,6 +811,103 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4">
+        {/* MULTI-INVOICE SELECTION ACTION BAR */}
+        {selectedInvoiceIds.size > 0 && (
+          <div className="mb-4 p-3.5 bg-gradient-to-r from-emerald-900 via-slate-900 to-slate-900 text-white rounded-2xl shadow-lg border border-emerald-500/30 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">
+                {selectedInvoiceIds.size}
+              </div>
+              <div>
+                <div className="font-bold text-xs flex items-center gap-2">
+                  <span>{selectedInvoiceIds.size} Invoice Terpilih</span>
+                  <span className="text-[10px] text-emerald-300 font-normal">
+                    (dari {filteredList.length} total)
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                  <button
+                    type="button"
+                    onClick={toggleSelectAll}
+                    className="text-emerald-400 hover:text-emerald-300 hover:underline cursor-pointer font-medium"
+                  >
+                    {isAllFilteredSelected ? 'Batal Pilih Semua' : `Pilih Semua (${filteredList.length})`}
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="text-slate-400 hover:text-white hover:underline cursor-pointer"
+                  >
+                    Reset Pilihan
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Ubah Status Masal */}
+              <div className="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
+                <span className="text-[11px] text-slate-300 pl-2 font-medium">Ubah Status:</span>
+                <select
+                  value={batchStatusValue}
+                  onChange={(e) => setBatchStatusValue(e.target.value as OrderStatus)}
+                  className="bg-slate-900 text-xs text-white px-2 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="Antrean Produksi">Antrean Produksi</option>
+                  <option value="Sedang Dikerjakan">Sedang Dikerjakan</option>
+                  <option value="Selesai">Selesai</option>
+                  <option value="Diambil/Dikirim">Diambil/Dikirim</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={handleApplyBatchStatus}
+                  className="px-3 py-1.5 bg-[#00871f] hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Terapkan</span>
+                </button>
+              </div>
+
+              {/* Unduh PDF Masal */}
+              <button
+                type="button"
+                onClick={handleBatchDownloadPDF}
+                disabled={isExportingBatch}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Unduh faktur PDF yang dipilih"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{isExportingBatch ? 'Mengunduh...' : 'Unduh PDF'}</span>
+              </button>
+
+              {/* Cetak Masal */}
+              <button
+                type="button"
+                onClick={handleBatchPrint}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Cetak SPK & Faktur yang dipilih"
+              >
+                <Printer className="w-3.5 h-3.5 text-blue-400" />
+                <span>Cetak Masal</span>
+              </button>
+
+              {/* Hapus Masal */}
+              {(isAdmin || Boolean(onBatchDeleteInvoices || onDeleteInvoice)) && (
+                <button
+                  type="button"
+                  onClick={() => setShowBatchDeleteConfirm(true)}
+                  className="px-3 py-2 bg-rose-600/90 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Hapus beberapa invoice terpilih"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus ({selectedInvoiceIds.size})</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {filteredList.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-slate-400">
             <Clock className="w-12 h-12 stroke-1 mb-2 text-slate-300" />
@@ -741,7 +923,7 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
               <div className="flex items-center gap-2 text-slate-600 font-semibold">
                 <span>Daftar Pesanan ({filteredList.length})</span>
                 <span className="text-[11px] text-slate-400 font-normal hidden sm:inline">
-                  &bull; Klik salah satu baris untuk membuka <strong className="text-[#00871f]">Preview Detail & SPK</strong>
+                  &bull; Centang kotak untuk memilih beberapa invoice &bull; Klik salah satu baris untuk membuka <strong className="text-[#00871f]">Preview Detail & SPK</strong>
                 </span>
               </div>
             </div>
@@ -750,6 +932,15 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50/80 text-slate-500 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                    <th className="py-3 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllFilteredSelected}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded text-[#00871f] focus:ring-[#00871f] cursor-pointer accent-[#00871f]"
+                        title={isAllFilteredSelected ? 'Batal pilih semua' : 'Pilih semua invoice'}
+                      />
+                    </th>
                     <th className="py-3 px-4">No. Faktur</th>
                     <th className="py-3 px-4">Pelanggan & Sales</th>
                     <th className="py-3 px-4">Rincian Item</th>
@@ -766,13 +957,16 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                     const isOverdue = !isDone && days !== null && days < 0;
                     const isDueToday = !isDone && days === 0;
                     const isPiutang = Boolean(t.remainingAmount && t.remainingAmount > 0);
+                    const isSelected = selectedInvoiceIds.has(t.id);
 
                     return (
                       <tr
                         key={t.id}
                         onClick={() => setPreviewTx(t)}
                         className={`group cursor-pointer transition-colors ${
-                          isOverdue
+                          isSelected
+                            ? 'bg-emerald-50/80 border-l-4 border-l-[#00871f]'
+                            : isOverdue
                             ? 'bg-rose-50/30 hover:bg-rose-50/70'
                             : isDueToday
                             ? 'bg-amber-50/30 hover:bg-amber-50/70'
@@ -780,6 +974,17 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                         }`}
                         title="Klik untuk membuka Preview Pesanan"
                       >
+                        {/* Checkbox multi-select */}
+                        <td className="py-3 px-3 w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => toggleSelectInvoice(t.id, e as any)}
+                            className="w-4 h-4 rounded text-[#00871f] focus:ring-[#00871f] cursor-pointer accent-[#00871f]"
+                            title={`Pilih invoice ${t.invoiceNo}`}
+                          />
+                        </td>
+
                         {/* No Faktur & Tanggal */}
                         <td className="py-3 px-4 whitespace-nowrap">
                           <div className="flex flex-col">
@@ -1002,12 +1207,15 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
               const isDone = t.status === 'Selesai';
               const isOverdue = !isDone && days !== null && days < 0;
               const isDueToday = !isDone && days === 0;
+              const isSelected = selectedInvoiceIds.has(t.id);
 
               return (
                 <div
                   key={t.id}
                   className={`bg-white border rounded-xl p-4 shadow-xs flex flex-col justify-between transition-all ${
-                    isOverdue
+                    isSelected
+                      ? 'border-[#00871f] ring-2 ring-[#00871f] bg-emerald-50/20'
+                      : isOverdue
                       ? 'border-rose-300 ring-1 ring-rose-200'
                       : isDueToday
                       ? 'border-amber-300 ring-1 ring-amber-200'
@@ -1015,16 +1223,25 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                   }`}
                 >
                   <div>
-                    {/* Header: Invoice & Status */}
+                    {/* Header: Checkbox, Invoice & Status */}
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewTx(t)}
-                        className="font-mono font-bold text-xs text-[#00871f] hover:underline cursor-pointer flex items-center gap-1"
-                        title="Klik untuk Preview Pesanan"
-                      >
-                        {t.invoiceNo || `#ORD/${t.id}`}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => toggleSelectInvoice(t.id, e as any)}
+                          className="w-4 h-4 rounded text-[#00871f] focus:ring-[#00871f] cursor-pointer accent-[#00871f]"
+                          title={`Pilih invoice ${t.invoiceNo}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setPreviewTx(t)}
+                          className="font-mono font-bold text-xs text-[#00871f] hover:underline cursor-pointer flex items-center gap-1"
+                          title="Klik untuk Preview Pesanan"
+                        >
+                          {t.invoiceNo || `#ORD/${t.id}`}
+                        </button>
+                      </div>
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                           isDone
@@ -1891,6 +2108,59 @@ export const ProductionOrdersView: React.FC<ProductionOrdersViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Masal Invoice */}
+      {showBatchDeleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-800">Hapus {selectedInvoiceIds.size} Invoice Terpilih?</h3>
+                <p className="text-xs text-slate-500">Tindakan ini permanen dan tidak dapat dibatalkan</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+              <p>Anda akan menghapus <strong>{selectedInvoiceIds.size} faktur</strong> berikut secara permanen dari riwayat transaksi kasir:</p>
+              <div className="font-mono text-[11px] max-h-24 overflow-y-auto bg-white/80 p-2 rounded border border-rose-200 space-y-0.5">
+                {transactions
+                  .filter((t) => selectedInvoiceIds.has(t.id))
+                  .slice(0, 10)
+                  .map((t) => (
+                    <div key={t.id} className="flex justify-between">
+                      <span className="font-bold text-rose-700">{t.invoiceNo || t.id}</span>
+                      <span className="text-slate-600 truncate max-w-[160px]">{t.customer?.name}</span>
+                    </div>
+                  ))}
+                {selectedInvoiceIds.size > 10 && (
+                  <div className="text-slate-400 italic text-[10px]">+ {selectedInvoiceIds.size - 10} faktur lainnya...</div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowBatchDeleteConfirm(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBatchDelete}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer shadow-md flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus {selectedInvoiceIds.size} Faktur</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

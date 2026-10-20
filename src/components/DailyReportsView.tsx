@@ -51,6 +51,7 @@ import { ReviseCashFlowModal } from './ReviseCashFlowModal';
 import { MockupPreviewModal } from './MockupPreviewModal';
 import { calculateProfit, isAdminOrOwner } from '../utils/profitUtils';
 import { compareTransactionsByLatestDate } from '../utils/transactionUtils';
+import { printTransactionDirectly } from '../utils/printUtils';
 import { uploadFileToDrive, getOrCreateBackupFolder } from '../services/googleDriveService';
 import { getAccessToken, googleSignIn } from '../services/googleAuth';
 import { SalesProfitReportView } from './SalesProfitReportView';
@@ -239,6 +240,11 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   const [driveUploadToast, setDriveUploadToast] = useState<{ message: string; link?: string; isError?: boolean } | null>(null);
   const [printModalTx, setPrintModalTx] = useState<Transaction | null>(null);
   const [viewingMockupTx, setViewingMockupTx] = useState<Transaction | null>(null);
+
+  // Multi-Invoice Selection in DailyReportsView (Permasalahan 2)
+  const [selectedReportInvoiceIds, setSelectedReportInvoiceIds] = useState<Set<string>>(new Set());
+  const [showBatchDeleteReportsConfirm, setShowBatchDeleteReportsConfirm] = useState(false);
+  const [isExportingReportsBatch, setIsExportingReportsBatch] = useState(false);
 
   // States: Revisi & Catat Pendapatan Lain / Pengeluaran Toko
   const [revisingCashFlow, setRevisingCashFlow] = useState<CashFlowRecord | null>(null);
@@ -718,6 +724,67 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
       return acc + (t.remainingAmount || 0);
     }, 0);
   }, [filteredTransactions]);
+
+  // Multi-Invoice Selection Handlers (Permasalahan 2)
+  const toggleSelectReportInvoice = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedReportInvoiceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isAllReportsSelected = useMemo(() => {
+    return filteredTransactions.length > 0 && filteredTransactions.every((t) => selectedReportInvoiceIds.has(t.id));
+  }, [filteredTransactions, selectedReportInvoiceIds]);
+
+  const toggleSelectAllReports = () => {
+    if (isAllReportsSelected) {
+      setSelectedReportInvoiceIds(new Set());
+    } else {
+      setSelectedReportInvoiceIds(new Set(filteredTransactions.map((t) => t.id)));
+    }
+  };
+
+  const clearReportSelection = () => {
+    setSelectedReportInvoiceIds(new Set());
+  };
+
+  const handleBatchDownloadReportsPDF = async () => {
+    const selectedTxs = transactions.filter((t) => selectedReportInvoiceIds.has(t.id));
+    if (selectedTxs.length === 0) return;
+    setIsExportingReportsBatch(true);
+    try {
+      for (const tx of selectedTxs) {
+        await downloadTransactionReceiptPDF(tx);
+      }
+    } catch (err) {
+      console.warn('Batch PDF export warning:', err);
+    } finally {
+      setIsExportingReportsBatch(false);
+    }
+  };
+
+  const handleBatchPrintReports = () => {
+    const selectedTxs = transactions.filter((t) => selectedReportInvoiceIds.has(t.id));
+    if (selectedTxs.length === 0) return;
+    selectedTxs.forEach((tx) => {
+      printTransactionDirectly(tx);
+    });
+  };
+
+  const handleConfirmBatchDeleteReports = () => {
+    if (selectedReportInvoiceIds.size === 0 || !onDeleteInvoice) return;
+    const toDelete = transactions.filter((t) => selectedReportInvoiceIds.has(t.id));
+    toDelete.forEach((t) => onDeleteInvoice(t));
+    clearReportSelection();
+    setShowBatchDeleteReportsConfirm(false);
+  };
 
   // Filtered Cash Flow records (Income & Expense) for the active date range
   const filteredCashFlows = useMemo(() => {
@@ -2087,10 +2154,76 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
             </div>
           </div>
 
+          {/* Multi-Invoice Selection Action Bar */}
+          {selectedReportInvoiceIds.size > 0 && (
+            <div className="p-3 bg-gradient-to-r from-emerald-900 to-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-emerald-700/40 animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <span className="w-6 h-6 rounded-md bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center">
+                  {selectedReportInvoiceIds.size}
+                </span>
+                <span className="text-xs font-bold">{selectedReportInvoiceIds.size} Invoice Terpilih</span>
+                <span className="text-slate-400 text-[11px]">&bull;</span>
+                <button
+                  type="button"
+                  onClick={toggleSelectAllReports}
+                  className="text-xs text-emerald-400 hover:underline cursor-pointer"
+                >
+                  {isAllReportsSelected ? 'Batal Pilih Semua' : `Pilih Semua (${filteredTransactions.length})`}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearReportSelection}
+                  className="text-xs text-slate-400 hover:text-white hover:underline cursor-pointer ml-1"
+                >
+                  Reset
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleBatchDownloadReportsPDF}
+                  disabled={isExportingReportsBatch}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50 border border-slate-700"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{isExportingReportsBatch ? 'Mengunduh...' : 'Unduh PDF'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBatchPrintReports}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer border border-slate-700"
+                >
+                  <Printer className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Cetak Masal</span>
+                </button>
+                {isAdminOrOwner(currentUser) && onDeleteInvoice && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchDeleteReportsConfirm(true)}
+                    className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus ({selectedReportInvoiceIds.size})</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                 <tr>
+                  <th className="py-2.5 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllReportsSelected}
+                      onChange={toggleSelectAllReports}
+                      className="w-4 h-4 rounded text-[#00871f] focus:ring-[#00871f] cursor-pointer accent-[#00871f]"
+                      title={isAllReportsSelected ? 'Batal pilih semua' : 'Pilih semua invoice'}
+                    />
+                  </th>
                   <th className="py-2.5 px-3">No. Faktur</th>
                   <th className="py-2.5 px-3">Waktu Order</th>
                   <th className="py-2.5 px-3">Jatuh Tempo</th>
@@ -2108,7 +2241,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="py-10 text-center text-slate-400">
+                    <td colSpan={13} className="py-10 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Filter className="w-8 h-8 text-slate-300 stroke-[1.5]" />
                         <p className="text-xs font-medium text-slate-500">
@@ -2132,9 +2265,24 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                         t.piutangPayments.length > 0 &&
                         (!t.remainingAmount || t.remainingAmount <= 0)
                     );
+                    const isSelected = selectedReportInvoiceIds.has(t.id);
 
                     return (
-                      <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr
+                        key={t.id}
+                        className={`transition-colors ${
+                          isSelected ? 'bg-emerald-50/80 border-l-4 border-l-[#00871f]' : 'hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <td className="py-2.5 px-3 w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => toggleSelectReportInvoice(t.id, e as any)}
+                            className="w-4 h-4 rounded text-[#00871f] focus:ring-[#00871f] cursor-pointer accent-[#00871f]"
+                            title={`Pilih ${t.invoiceNo}`}
+                          />
+                        </td>
                         <td className="py-2.5 px-3 font-mono font-bold text-[#00871f]">
                           {t.invoiceNo}
                           {fin.piutangCashReceived > 0 && (
@@ -3298,6 +3446,59 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Masal Invoice (Reports) */}
+      {showBatchDeleteReportsConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-800">Hapus {selectedReportInvoiceIds.size} Invoice Terpilih?</h3>
+                <p className="text-xs text-slate-500">Tindakan ini permanen dan tidak dapat dibatalkan</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+              <p>Anda akan menghapus <strong>{selectedReportInvoiceIds.size} faktur</strong> penjualan yang dipilih:</p>
+              <div className="font-mono text-[11px] max-h-24 overflow-y-auto bg-white/80 p-2 rounded border border-rose-200 space-y-0.5">
+                {transactions
+                  .filter((t) => selectedReportInvoiceIds.has(t.id))
+                  .slice(0, 10)
+                  .map((t) => (
+                    <div key={t.id} className="flex justify-between">
+                      <span className="font-bold text-rose-700">{t.invoiceNo || t.id}</span>
+                      <span className="text-slate-600 truncate max-w-[160px]">{t.customer?.name}</span>
+                    </div>
+                  ))}
+                {selectedReportInvoiceIds.size > 10 && (
+                  <div className="text-slate-400 italic text-[10px]">+ {selectedReportInvoiceIds.size - 10} faktur lainnya...</div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowBatchDeleteReportsConfirm(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBatchDeleteReports}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer shadow-md flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus {selectedReportInvoiceIds.size} Faktur</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

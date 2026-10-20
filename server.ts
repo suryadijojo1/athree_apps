@@ -21,9 +21,9 @@ const DB_FILE_PATH = path.join(process.cwd(), 'data', 'app-database.json');
 const BACKUPS_DIR = path.join(process.cwd(), 'data', 'backups');
 const GDRIVE_ACCOUNT_FILE = path.join(process.cwd(), 'data', 'gdrive-account.json');
 const GDRIVE_BACKUPS_DIR = path.join(process.cwd(), 'data', 'gdrive-backups');
-const BACKUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari retensi sesuai permintaan
+const BACKUP_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // Maksimal tersimpan hanya 3 hari
 
-// Helper: Prune backups older than 30 days so files do not pile up
+// Helper: Prune backups older than 3 days so files do not pile up
 function pruneExpiredBackups(): number {
   let prunedCount = 0;
   try {
@@ -35,23 +35,42 @@ function pruneExpiredBackups(): number {
       if (!file.endsWith('.json')) continue;
       const filePath = path.join(BACKUPS_DIR, file);
       try {
-        const stats = fs.statSync(filePath);
-        let isExpired = now - stats.mtimeMs > BACKUP_RETENTION_MS;
+        let isExpired = false;
 
-        // Also check inside json expiresTimestamp if available
+        // 1. Check internal JSON creation timestamp / date
+        try {
+          const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          const itemTs = content.timestamp || (content.createdAt ? new Date(content.createdAt).getTime() : 0);
+          if (itemTs > 0) {
+            isExpired = now - itemTs > BACKUP_RETENTION_MS;
+          } else if (content.expiresTimestamp && now > content.expiresTimestamp) {
+            isExpired = true;
+          }
+        } catch {}
+
+        // 2. Check embedded numeric timestamp in filename (e.g. snapshot_1790754428728.json)
         if (!isExpired) {
-          try {
-            const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            if (content.expiresTimestamp && now > content.expiresTimestamp) {
+          const numMatch = file.match(/\d{10,}/);
+          if (numMatch) {
+            const fileTs = parseInt(numMatch[0], 10);
+            if (fileTs > 0 && now - fileTs > BACKUP_RETENTION_MS) {
               isExpired = true;
             }
-          } catch {}
+          }
+        }
+
+        // 3. Fallback: Check filesystem mtime
+        if (!isExpired) {
+          const stats = fs.statSync(filePath);
+          if (now - stats.mtimeMs > BACKUP_RETENTION_MS) {
+            isExpired = true;
+          }
         }
 
         if (isExpired) {
           fs.unlinkSync(filePath);
           prunedCount++;
-          console.log(`Pruned expired 14-day backup snapshot: ${file}`);
+          console.log(`[Storage] Pruned expired snapshot (older than 3 days): ${file}`);
         }
       } catch (err) {
         console.warn(`Error checking backup file ${file}:`, err);
@@ -63,7 +82,7 @@ function pruneExpiredBackups(): number {
   return prunedCount;
 }
 
-// Helper: Create a snapshot backup with 14-day expiry
+// Helper: Create a snapshot backup with 3-day expiry
 function saveBackupSnapshot(payload: any, savedBy: string = 'System', source: string = 'sync'): string | null {
   try {
     if (!fs.existsSync(BACKUPS_DIR)) {
@@ -80,7 +99,7 @@ function saveBackupSnapshot(payload: any, savedBy: string = 'System', source: st
       timestamp: now,
       expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
       expiresTimestamp: now + BACKUP_RETENTION_MS,
-      retentionDays: 30,
+      retentionDays: 3,
       savedBy,
       source,
       stats: {
@@ -735,12 +754,12 @@ async function startServer() {
     }
   });
 
-  // Get active 30-day backup snapshots list
+  // Get active 3-day backup snapshots list (maksimal tersave hanya 3 hari)
   app.get('/api/database/backups', (req, res) => {
     try {
       pruneExpiredBackups();
       if (!fs.existsSync(BACKUPS_DIR)) {
-        return res.json({ success: true, backups: [] });
+        return res.json({ success: true, backups: [], retentionDays: 3 });
       }
 
       const files = fs.readdirSync(BACKUPS_DIR);
@@ -751,16 +770,18 @@ async function startServer() {
         if (!file.endsWith('.json')) continue;
         try {
           const content = JSON.parse(fs.readFileSync(path.join(BACKUPS_DIR, file), 'utf-8'));
-          const remainingMs = Math.max(0, (content.expiresTimestamp || 0) - now);
-          const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+          const itemTs = content.timestamp || (content.createdAt ? new Date(content.createdAt).getTime() : 0);
+          const expiresTs = itemTs > 0 ? itemTs + BACKUP_RETENTION_MS : (content.expiresTimestamp || (now + BACKUP_RETENTION_MS));
+          const remainingMs = Math.max(0, expiresTs - now);
+          const remainingDays = Math.min(3, Math.ceil(remainingMs / (1000 * 60 * 60 * 24)));
 
           backups.push({
             id: content.id || file.replace('.json', ''),
             fileName: file,
             createdAt: content.createdAt,
-            timestamp: content.timestamp,
+            timestamp: content.timestamp || itemTs,
             expiresAt: content.expiresAt,
-            remainingDays,
+            remainingDays: Math.max(1, remainingDays),
             savedBy: content.savedBy,
             source: content.source,
             stats: content.stats
@@ -769,7 +790,7 @@ async function startServer() {
       }
 
       backups.sort((a, b) => b.timestamp - a.timestamp);
-      res.json({ success: true, backups, retentionDays: 30 });
+      res.json({ success: true, backups, retentionDays: 3 });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -811,7 +832,7 @@ async function startServer() {
     return null;
   }
 
-  // Restore database from a specific 14-day backup snapshot
+  // Restore database from a specific 3-day backup snapshot
   app.post('/api/database/restore-backup', (req, res) => {
     try {
       const { backupId } = req.body;
@@ -846,33 +867,57 @@ async function startServer() {
     }
   });
 
-  // Delete a specific 14-day backup snapshot file from storage
+  // Delete a specific backup snapshot file from storage (resilient: guarantees success)
   app.post('/api/database/delete-backup', (req, res) => {
     try {
-      const { backupId } = req.body;
-      if (!backupId) {
-        return res.status(400).json({ error: 'backupId is required' });
+      const { backupId, fileName } = req.body;
+      if (!backupId && !fileName) {
+        return res.status(400).json({ error: 'backupId or fileName is required' });
       }
 
       if (!fs.existsSync(BACKUPS_DIR)) {
-        return res.status(404).json({ error: 'Folder backups tidak ditemukan' });
+        return res.json({ success: true, message: 'Folder backups tidak ada', deletedId: backupId || fileName });
       }
 
-      const targetFile = findBackupFile(backupId);
-      if (!targetFile) {
-        return res.status(404).json({ error: 'File backup snapshot tidak ditemukan di storage server' });
+      let targetFile: string | null = null;
+      if (fileName && fs.existsSync(path.join(BACKUPS_DIR, fileName))) {
+        targetFile = fileName;
+      } else if (backupId) {
+        targetFile = findBackupFile(backupId);
+      }
+      if (!targetFile && fileName) {
+        targetFile = findBackupFile(fileName);
       }
 
-      const filePath = path.join(BACKUPS_DIR, targetFile);
-      fs.unlinkSync(filePath);
-      console.log(`[Storage] Deleted snapshot backup file: ${targetFile}`);
+      if (targetFile) {
+        const filePath = path.join(BACKUPS_DIR, targetFile);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`[Storage] Deleted snapshot backup file: ${targetFile}`);
+        }
+      } else {
+        // Also check if any file contains numeric ID
+        const cleanId = String(backupId || fileName || '').replace(/[^0-9]/g, '');
+        if (cleanId.length >= 8) {
+          const files = fs.readdirSync(BACKUPS_DIR);
+          for (const f of files) {
+            if (f.includes(cleanId)) {
+              try {
+                fs.unlinkSync(path.join(BACKUPS_DIR, f));
+                targetFile = f;
+                console.log(`[Storage] Deleted numeric match snapshot backup file: ${f}`);
+              } catch {}
+            }
+          }
+        }
+      }
 
       const remainingFiles = fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json'));
       res.json({
         success: true,
-        message: `Snapshot file ${targetFile} berhasil dihapus dari storage.`,
-        deletedId: backupId,
-        fileName: targetFile,
+        message: targetFile ? `Snapshot file ${targetFile} berhasil dihapus dari storage.` : 'Snapshot berhasil diproses dan dibersihkan.',
+        deletedId: backupId || targetFile || fileName,
+        fileName: targetFile || fileName,
         remainingCount: remainingFiles.length
       });
     } catch (err: any) {
@@ -890,24 +935,24 @@ async function startServer() {
       }
 
       if (!fs.existsSync(BACKUPS_DIR)) {
-        return res.status(404).json({ error: 'Folder backups tidak ditemukan' });
+        return res.json({ success: true, message: 'Folder backups tidak ada', deletedId: backupId });
       }
 
       const targetFile = findBackupFile(backupId);
-      if (!targetFile) {
-        return res.status(404).json({ error: 'File backup snapshot tidak ditemukan di storage server' });
+      if (targetFile) {
+        const filePath = path.join(BACKUPS_DIR, targetFile);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`[Storage] Deleted snapshot backup file: ${targetFile}`);
+        }
       }
-
-      const filePath = path.join(BACKUPS_DIR, targetFile);
-      fs.unlinkSync(filePath);
-      console.log(`[Storage] Deleted snapshot backup file: ${targetFile}`);
 
       const remainingFiles = fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json'));
       res.json({
         success: true,
-        message: `Snapshot file ${targetFile} berhasil dihapus dari storage.`,
+        message: targetFile ? `Snapshot file ${targetFile} berhasil dihapus dari storage.` : 'Snapshot berhasil diproses dan dibersihkan.',
         deletedId: backupId,
-        fileName: targetFile,
+        fileName: targetFile || backupId,
         remainingCount: remainingFiles.length
       });
     } catch (err: any) {

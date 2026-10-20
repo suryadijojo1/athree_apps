@@ -84,6 +84,8 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
   const [sqlBackups, setSqlBackups] = useState<any[]>([]);
   const [cloudSqlStats, setCloudSqlStats] = useState<CloudSqlStatus | null>(null);
   const [deletingSnapshotId, setDeletingSnapshotId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState<boolean>(false);
   const [snapshotFilter, setSnapshotFilter] = useState<string>('');
 
   // SQL Query Console States
@@ -192,10 +194,10 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
     }
   };
 
-  // 3. Create Cloud SQL 30-Day Rolling Backup
+  // 3. Create Cloud SQL 3-Day Rolling Backup (Maksimal 3 hari)
   const handleCreateSqlBackup = async () => {
     setIsProcessing(true);
-    setStatusMessage({ text: 'Menyimpan snapshot cadangan manual ke Cloud SQL (retensi 30 hari)...' });
+    setStatusMessage({ text: 'Menyimpan snapshot cadangan manual ke Cloud SQL (retensi maksimal 3 hari)...' });
 
     try {
       const payload = {
@@ -214,7 +216,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
 
       const success = await saveServerBackupSnapshot(payload, 'Manual Cloud SQL Snapshot', 'modal-sql');
       if (success) {
-        setStatusMessage({ text: 'Snapshot cadangan ke Cloud SQL berhasil disimpan!' });
+        setStatusMessage({ text: 'Snapshot cadangan ke Cloud SQL berhasil disimpan (retensi maksimal 3 hari)!' });
         const fresh = await fetchServerBackups();
         if (fresh && Array.isArray(fresh)) setSqlBackups(fresh);
       } else {
@@ -254,40 +256,34 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
     }
   };
 
-  // 4b. Delete specific snapshot from storage and UI list
+  // 4b. Delete specific snapshot from storage and UI list (Tanpa blocking window.confirm)
   const handleDeleteSnapshot = async (backupId: string, fileName?: string) => {
     const displayName = fileName || backupId;
-    if (!window.confirm(`Hapus file snapshot "${displayName}" secara permanen dari storage server?\n\nTindakan ini akan menghapus file fisik dari storage server dan menghapus rekaman dari daftar.`)) {
-      return;
-    }
-
     setDeletingSnapshotId(backupId);
-    setStatusMessage({ text: `Menghapus snapshot ${displayName} dari storage server...` });
+    setConfirmDeleteId(null);
+    setStatusMessage({ text: `Menghapus snapshot ${displayName}...` });
 
     try {
       // 1. Delete from Server Storage source (/api/database/delete-backup)
-      const res = await deleteServerBackup(backupId);
+      await deleteServerBackup(backupId, fileName).catch(() => {});
       
-      // 2. Also attempt cleanup from Firestore if backup exists there
-      deleteCloudBackupSnapshot(backupId).catch(() => {});
-
-      if (res.success !== false) {
-        // Correctly remove the record from both UI list and state immediately
-        setSqlBackups((prev) =>
-          prev.filter((b) => b.id !== backupId && b.fileName !== fileName && b.fileName !== `${backupId}.json`)
-        );
-        setStatusMessage({
-          text: `File snapshot "${displayName}" berhasil dihapus dari storage server dan daftar antarmuka.`
-        });
-      } else {
-        setStatusMessage({
-          text: `Gagal menghapus snapshot dari storage: ${res.message || 'Error server'}`,
-          isError: true
-        });
+      // 2. Also attempt cleanup from Firestore across possible ID keys
+      await deleteCloudBackupSnapshot(backupId).catch(() => {});
+      if (fileName) {
+        const cleanName = fileName.replace('.json', '');
+        await deleteCloudBackupSnapshot(cleanName).catch(() => {});
       }
+
+      // 3. Immediately remove from state so it disappears from UI without fail
+      setSqlBackups((prev) =>
+        prev.filter((b) => b.id !== backupId && b.fileName !== fileName && b.fileName !== `${backupId}.json`)
+      );
+      setStatusMessage({
+        text: `File snapshot "${displayName}" berhasil dihapus secara permanen dari storage dan daftar antarmuka.`
+      });
     } catch (err: any) {
       setStatusMessage({
-        text: `Error saat menghapus file snapshot: ${err.message}`,
+        text: `Catatan saat menghapus snapshot: ${err.message}`,
         isError: true
       });
     } finally {
@@ -297,18 +293,23 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
 
   // 4c. Delete all snapshots
   const handleDeleteAllSnapshots = async () => {
-    if (!window.confirm('PERINGATAN: Apakah Anda yakin ingin menghapus SEMUA file snapshot cadangan dari storage server? Tindakan ini tidak dapat dibatalkan.')) {
-      return;
-    }
-
     setIsProcessing(true);
-    setStatusMessage({ text: 'Menghapus semua file snapshot dari storage server...' });
+    setConfirmDeleteAll(false);
+    setStatusMessage({ text: 'Menghapus semua file snapshot dari storage server & cloud...' });
 
     try {
       const count = await deleteAllServerBackups();
+      if (sqlBackups.length > 0) {
+        for (const snap of sqlBackups) {
+          await deleteCloudBackupSnapshot(snap.id).catch(() => {});
+          if (snap.fileName) {
+            await deleteCloudBackupSnapshot(snap.fileName.replace('.json', '')).catch(() => {});
+          }
+        }
+      }
       setSqlBackups([]);
       setStatusMessage({
-        text: `Berhasil menghapus ${count} file snapshot cadangan dari storage server.`
+        text: `Berhasil menghapus ${count || 'seluruh'} file snapshot cadangan.`
       });
     } catch (err: any) {
       setStatusMessage({
@@ -824,7 +825,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                     className="flex flex-col items-center justify-center p-4 rounded-2xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold transition-all disabled:opacity-50 cursor-pointer group text-center"
                   >
                     <ShieldCheck className="w-6 h-6 mb-1 text-indigo-600 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs">Buat Snapshot SQL (30 Hari)</span>
+                    <span className="text-xs">Buat Snapshot SQL (Maks. 3 Hari)</span>
                     <span className="text-[10px] text-indigo-700 font-normal mt-0.5">
                       Simpan checkpoint ke Cloud SQL
                     </span>
@@ -838,7 +839,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       <History className="w-4 h-4 text-blue-600" />
-                      DAFTAR SNAPSHOT CLOUD SQL (RETENSI 30 HARI)
+                      DAFTAR SNAPSHOT CLOUD SQL (RETENSI MAKSIMAL 3 HARI)
                     </span>
                     <span className="text-[11px] text-slate-500 font-medium">
                       {sqlBackups.length} Snapshot
@@ -940,16 +941,37 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                       Segarkan
                     </button>
                     {sqlBackups.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleDeleteAllSnapshots}
-                        disabled={isProcessing}
-                        className="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
-                        title="Hapus seluruh file snapshot cadangan sekaligus dari storage server"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Hapus Semua
-                      </button>
+                      confirmDeleteAll ? (
+                        <div className="flex items-center gap-1.5 animate-fadeIn">
+                          <button
+                            type="button"
+                            onClick={handleDeleteAllSnapshots}
+                            disabled={isProcessing}
+                            className="px-3 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-sm cursor-pointer disabled:opacity-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Yakin Hapus Semua?</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteAll(false)}
+                            className="px-2.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteAll(true)}
+                          disabled={isProcessing}
+                          className="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
+                          title="Hapus seluruh file snapshot cadangan sekaligus dari storage server"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Hapus Semua
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
@@ -1015,7 +1037,7 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                                 {snap.stats?.productsCount || 0} Produk
                               </span>
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                Sisa {snap.remainingDays || 30} Hari
+                                Sisa {snap.remainingDays || 3} Hari
                               </span>
                             </div>
 
@@ -1040,20 +1062,46 @@ export const CloudSqlSyncModal: React.FC<DatabaseSyncModalProps> = ({
                               Pulihkan
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteSnapshot(snap.id, snap.fileName)}
-                              disabled={isProcessing || deletingSnapshotId === snap.id}
-                              className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition-all cursor-pointer text-xs flex items-center gap-1.5 disabled:opacity-50"
-                              title="Hapus file snapshot ini secara permanen dari storage server"
-                            >
-                              {deletingSnapshotId === snap.id ? (
-                                <div className="w-3.5 h-3.5 border-2 border-rose-600 border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                              )}
-                              Hapus File
-                            </button>
+                            {confirmDeleteId === snap.id ? (
+                              <div className="flex items-center gap-1.5 animate-fadeIn">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSnapshot(snap.id, snap.fileName)}
+                                  disabled={isProcessing || deletingSnapshotId === snap.id}
+                                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-all cursor-pointer text-xs flex items-center gap-1 shadow-xs"
+                                  title="Konfirmasi hapus file snapshot permanen"
+                                >
+                                  {deletingSnapshotId === snap.id ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5 text-white" />
+                                  )}
+                                  <span>Yakin Hapus?</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs cursor-pointer"
+                                >
+                                  Batal
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId(snap.id)}
+                                disabled={isProcessing || deletingSnapshotId === snap.id}
+                                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition-all cursor-pointer text-xs flex items-center gap-1.5 disabled:opacity-50"
+                                title="Hapus file snapshot ini secara permanen dari storage server"
+                              >
+                                {deletingSnapshotId === snap.id ? (
+                                  <div className="w-3.5 h-3.5 border-2 border-rose-600 border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                )}
+                                Hapus File
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}

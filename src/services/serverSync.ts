@@ -133,6 +133,14 @@ export function getFullServerBaseUrl(): string {
  * Prevents duplicate '/api' path segments and double slashes to eliminate 404 routing errors.
  */
 export function buildApiUrl(path: string): string {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  if (path.startsWith('/http://') || path.startsWith('/https://')) {
+    return path.substring(1);
+  }
+
   const base = getServerBaseUrl();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   if (!base) return normalizedPath;
@@ -156,6 +164,14 @@ export function buildApiUrl(path: string): string {
  * Builds a fully qualified absolute URL with scheme and host for external requests or diagnostics.
  */
 export function buildFullApiUrl(path: string): string {
+  if (!path) return getFullServerBaseUrl();
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  if (path.startsWith('/http://') || path.startsWith('/https://')) {
+    return path.substring(1);
+  }
+
   const fullBase = getFullServerBaseUrl();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const cleanBase = fullBase.replace(/\/+$/, '');
@@ -203,8 +219,7 @@ export function clearNetworkRequestLogs(): void {
 
 /**
  * Verbose fetch wrapper for Cloud SQL & Server communications.
- * Logs EVERY outgoing network request and response with execution timing,
- * and specifically highlights HTTP 404 Not Found errors with full URL, method, and gateway status.
+ * Logs outgoing network request and response with execution timing.
  */
 export async function verboseFetch(
   inputUrl: string,
@@ -215,12 +230,6 @@ export async function verboseFetch(
   const method = (init?.method || 'GET').toUpperCase();
   const startTime = Date.now();
   const logId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-
-  console.log(
-    `%c[ServerSync:REQ] 📡 [${contextLabel}] ${method} %c${fullUrl}`,
-    'color: #0284c7; font-weight: bold; background: #e0f2fe; padding: 1px 5px; border-radius: 3px;',
-    'color: #0369a1; font-weight: 600;'
-  );
 
   let response: Response;
   try {
@@ -243,11 +252,9 @@ export async function verboseFetch(
     networkLogs.unshift(logItem);
     if (networkLogs.length > MAX_NETWORK_LOGS) networkLogs.pop();
 
-    console.error(
-      `%c[ServerSync:NET-FAIL] 💥 [${contextLabel}] ${method} ${fullUrl} FAILED after ${durationMs}ms:`,
-      'color: #991b1b; font-weight: bold; background: #fee2e2; padding: 2px 6px; border-radius: 3px;',
-      netErr.message || netErr
-    );
+    if (!isAbort) {
+      console.warn(`[ServerSync:NET] [${contextLabel}] ${method} ${fullUrl} (${durationMs}ms): ${netErr.message || netErr}`);
+    }
     throw netErr;
   }
 
@@ -271,34 +278,9 @@ export async function verboseFetch(
   if (networkLogs.length > MAX_NETWORK_LOGS) networkLogs.pop();
 
   if (is404) {
-    console.group(
-      `%c[ServerSync:404 ERROR] ❌ HTTP 404 Not Found on ${method} [${contextLabel}]`,
-      'color: #ffffff; background: #dc2626; font-weight: bold; padding: 2px 8px; border-radius: 4px;'
-    );
-    console.error(`• Full Target URL : %c${fullUrl}%c`, 'color: #dc2626; font-weight: bold;', '');
-    console.error(`• Requested Path  : ${inputUrl}`);
-    console.error(`• HTTP Method     : ${method}`);
-    console.error(`• HTTP Status     : 404 (Not Found)`);
-    console.error(`• Latency         : ${durationMs}ms`);
-    console.error(`• Gateway Base    : ${getServerBaseUrl() || '(none / browser origin)'}`);
-    console.error(`• Full Base URL   : ${getFullServerBaseUrl()}`);
-    console.error(`• Timestamp       : ${new Date().toISOString()}`);
-    console.error(`• Context         : ${contextLabel}`);
-    console.groupEnd();
+    console.warn(`[ServerSync:404] ${method} ${fullUrl} - Not Found (${durationMs}ms) [${contextLabel}]`);
   } else if (!response.ok) {
-    console.warn(
-      `%c[ServerSync:HTTP ${response.status}] ⚠ [${contextLabel}] ${method} %c${fullUrl}%c (${durationMs}ms) - ${response.statusText}`,
-      'color: #b45309; font-weight: bold; background: #fef3c7; padding: 1px 5px; border-radius: 3px;',
-      'color: #b45309; font-weight: bold;',
-      'color: inherit;'
-    );
-  } else {
-    console.log(
-      `%c[ServerSync:HTTP ${response.status}] ✔ [${contextLabel}] ${method} %c${fullUrl}%c (${durationMs}ms)`,
-      'color: #15803d; font-weight: bold; background: #dcfce7; padding: 1px 5px; border-radius: 3px;',
-      'color: #15803d;',
-      'color: inherit;'
-    );
+    console.warn(`[ServerSync:HTTP ${response.status}] [${contextLabel}] ${method} ${fullUrl} (${durationMs}ms) - ${response.statusText}`);
   }
 
   return response;
@@ -367,6 +349,7 @@ export async function diagnoseCloudSqlService(options?: {
   ];
 
   for (const item of endpointsToCheck) {
+    const requestUrl = buildApiUrl(item.path);
     const fullUrl = buildFullApiUrl(item.path);
     const epStart = Date.now();
     try {
@@ -374,7 +357,7 @@ export async function diagnoseCloudSqlService(options?: {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       const res = await verboseFetch(
-        fullUrl,
+        requestUrl,
         {
           method: 'GET',
           headers: { Accept: 'application/json', 'X-Client-Id': CLIENT_ID },
@@ -603,26 +586,12 @@ export async function fetchServerDatabase(): Promise<{
   data: AppDatabasePayload | null;
   isRealData: boolean;
 }> {
-  const candidatePaths = [
-    '/api/database',
-    '/api/database/save-all',
-    '/api/cloudsql/data',
-    '/api/cloudsql/database',
-    '/api/cloudsql/save-all',
-    '/api/cloudsql/sync'
+  const candidateEndpoints = [
+    buildApiUrl('/api/database'),
+    buildApiUrl('/api/cloudsql/data')
   ];
 
-  const endpointsToTry: string[] = [];
-  for (const p of candidatePaths) {
-    endpointsToTry.push(buildApiUrl(p));
-    const rel = p.startsWith('/') ? p : `/${p}`;
-    if (!endpointsToTry.includes(rel)) {
-      endpointsToTry.push(rel);
-    }
-  }
-  const uniqueEndpoints = Array.from(new Set(endpointsToTry));
-
-  for (const ep of uniqueEndpoints) {
+  for (const ep of candidateEndpoints) {
     try {
       const res = await verboseFetch(
         ep,
@@ -634,7 +603,7 @@ export async function fetchServerDatabase(): Promise<{
       );
       if (res.ok) {
         const json = await res.json();
-        if (json.data) {
+        if (json.data && typeof json.data === 'object') {
           if (Array.isArray(json.data.transactions)) {
             json.data.transactions = json.data.transactions.filter(
               (tx: any) => tx && tx.id && !PHANTOM_TRANSACTION_IDS.has(tx.id) && tx.invoiceNo && !LEGACY_DUMMY_INVOICES.has(tx.invoiceNo)
@@ -645,10 +614,20 @@ export async function fetchServerDatabase(): Promise<{
             data: json.data || null,
             isRealData: Boolean(json.isRealData)
           };
+        } else if (json.success) {
+          return {
+            success: true,
+            data: null,
+            isRealData: false
+          };
         }
+      } else if (res.status !== 404) {
+        // If server responded with a non-404 error, break early
+        break;
       }
-    } catch (err) {
-      console.warn(`[ServerSync] Failed to fetch database from ${ep}:`, err);
+    } catch {
+      // Network level failure (server offline or reconnecting) - stop probing alternative endpoints
+      break;
     }
   }
 
@@ -959,14 +938,17 @@ export async function fetchLatestServerSnapshot(): Promise<any | null> {
 /**
  * Delete a specific server backup snapshot
  */
-export async function deleteServerBackup(backupId: string): Promise<{ success: boolean; message?: string }> {
+export async function deleteServerBackup(
+  backupId: string,
+  fileName?: string
+): Promise<{ success: boolean; message?: string }> {
   try {
     const res = await verboseFetch(
       buildApiUrl('/api/database/delete-backup'),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backupId })
+        body: JSON.stringify({ backupId, fileName })
       },
       'DeleteServerBackup'
     );

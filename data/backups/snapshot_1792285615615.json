@@ -2,9 +2,9 @@
   "id": "backup_1792285615615",
   "createdAt": "2026-10-18T01:06:55.615Z",
   "timestamp": 1792285615615,
-  "expiresAt": "2026-11-01T01:06:55.615Z",
-  "expiresTimestamp": 1793495215615,
-  "retentionDays": 14,
+  "expiresAt": "2026-11-17T01:06:55.615Z",
+  "expiresTimestamp": 1794877615615,
+  "retentionDays": 30,
   "savedBy": "Kasir / Sistem",
   "source": "save-all",
   "stats": {

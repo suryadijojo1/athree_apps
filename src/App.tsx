@@ -2400,6 +2400,81 @@ export default function App() {
     setDeletingTx(null);
   };
 
+  // Handler: Hapus Masal Beberapa Invoice
+  const handleBatchDeleteInvoices = (transactionIds: string[]) => {
+    if (!transactionIds || transactionIds.length === 0) return;
+    const toDeleteSet = new Set(transactionIds);
+    const updatedTransactions = transactions.filter((t) => !toDeleteSet.has(t.id));
+    setTransactions(updatedTransactions);
+    localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
+    localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
+
+    // Delete from Firestore
+    transactionIds.forEach((id) => {
+      deleteTransactionFromFirestore(id).catch(() => {});
+    });
+
+    // Save to central server with explicit deletedTransactionIds
+    saveServerDatabase(
+      {
+        products,
+        categories,
+        transactions: updatedTransactions,
+        cashFlowRecords,
+        shiftHistory,
+        kaosStocks,
+        stockMovements,
+        customers,
+        users,
+        salesList,
+        isRealData: true
+      },
+      {
+        deletedTransactionIds: transactionIds,
+        savedBy: `${currentUser.name} (Hapus Masal ${transactionIds.length} Faktur)`,
+        source: 'batch-delete-invoices'
+      }
+    ).catch(() => {});
+  };
+
+  // Handler: Ubah Status Masal Beberapa Invoice
+  const handleBatchUpdateOrderStatus = (transactionIds: string[], newStatus: OrderStatus) => {
+    if (!transactionIds || transactionIds.length === 0) return;
+    const idSet = new Set(transactionIds);
+    const updatedTransactions = transactions.map((t) =>
+      idSet.has(t.id) ? { ...t, status: newStatus } : t
+    );
+    setTransactions(updatedTransactions);
+    localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
+
+    transactionIds.forEach((id) => {
+      const tx = updatedTransactions.find((t) => t.id === id);
+      if (tx) {
+        saveTransactionToFirestore(tx).catch(() => {});
+      }
+    });
+
+    saveServerDatabase(
+      {
+        products,
+        categories,
+        transactions: updatedTransactions,
+        cashFlowRecords,
+        shiftHistory,
+        kaosStocks,
+        stockMovements,
+        customers,
+        users,
+        salesList,
+        isRealData: true
+      },
+      {
+        savedBy: `${currentUser.name} (Ubah Status ${transactionIds.length} Faktur -> ${newStatus})`,
+        source: 'batch-status-update'
+      }
+    ).catch(() => {});
+  };
+
   // Handler: Catat Pembayaran / Pelunasan Sisa Piutang
   const handleSavePiutangPayment = (
     transactionId: string,
@@ -3200,6 +3275,8 @@ export default function App() {
                 onViewReceipt={(tx) => setSuccessTx(tx)}
                 onReviseInvoice={(tx) => setRevisingTx(tx)}
                 onDeleteInvoice={(tx) => setDeletingTx(tx)}
+                onBatchDeleteInvoices={handleBatchDeleteInvoices}
+                onBatchUpdateOrderStatus={handleBatchUpdateOrderStatus}
                 onPayPiutang={(tx) => setPayingPiutangTx(tx)}
                 isAdmin={currentUser.role === 'admin'}
                 currentUser={currentUser}

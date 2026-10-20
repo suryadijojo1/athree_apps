@@ -1193,10 +1193,10 @@ export async function syncAllLocalDataToFirestore(data: {
 }
 
 // ---------------------------------------------------------------------------
-// Rolling 14-Day Snapshots in Firestore
+// Rolling 3-Day Snapshots in Firestore (Maksimal tersave hanya 3 hari)
 // ---------------------------------------------------------------------------
 
-export const BACKUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari (1 bulan penuh)
+export const BACKUP_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 hari maksimal
 
 export interface CloudBackupSnapshotMeta {
   id: string;
@@ -1232,7 +1232,7 @@ export async function saveCloudBackupSnapshot(
     timestamp: now,
     expiresAt: new Date(now + BACKUP_RETENTION_MS).toISOString(),
     expiresTimestamp: now + BACKUP_RETENTION_MS,
-    retentionDays: 30,
+    retentionDays: 3,
     savedBy,
     source,
     stats: {
@@ -1268,15 +1268,18 @@ export async function fetchCloudBackupSnapshots(): Promise<CloudBackupSnapshotMe
 
     for (const d of snap.docs) {
       const data = d.data();
-      // Skip expired backups
+      const itemTs = data.timestamp || (data.createdAt ? new Date(data.createdAt).getTime() : 0);
+      // Skip expired backups older than 3 days
+      if (itemTs > 0 && now - itemTs > BACKUP_RETENTION_MS) continue;
       if (data.expiresTimestamp && data.expiresTimestamp < now) continue;
+
       list.push({
         id: data.id || d.id,
         createdAt: data.createdAt,
-        timestamp: data.timestamp || 0,
+        timestamp: data.timestamp || itemTs || now,
         expiresAt: data.expiresAt,
-        expiresTimestamp: data.expiresTimestamp || 0,
-        retentionDays: data.retentionDays || 30,
+        expiresTimestamp: data.expiresTimestamp || (itemTs ? itemTs + BACKUP_RETENTION_MS : now + BACKUP_RETENTION_MS),
+        retentionDays: 3,
         savedBy: data.savedBy || 'Kasir',
         source: data.source || 'backup',
         stats: data.stats || {
@@ -1322,7 +1325,9 @@ export async function cleanExpiredBackupsFirestore(): Promise<number> {
 
     for (const d of snap.docs) {
       const data = d.data();
-      if (data.expiresTimestamp && data.expiresTimestamp < now) {
+      const itemTs = data.timestamp || (data.createdAt ? new Date(data.createdAt).getTime() : 0);
+      const isExpired = (itemTs > 0 && now - itemTs > BACKUP_RETENTION_MS) || (data.expiresTimestamp && data.expiresTimestamp < now);
+      if (isExpired) {
         batch.delete(doc(db, 'databaseBackups', d.id));
         cleaned++;
       }
