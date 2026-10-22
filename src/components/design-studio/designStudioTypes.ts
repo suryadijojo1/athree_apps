@@ -7,6 +7,7 @@ export interface ApparelColor {
   hex: string;
   border?: string;
   textColor?: string;
+  imageMockupUrl?: string;
 }
 
 export interface SizeChartRow {
@@ -57,40 +58,55 @@ export interface DesignElement {
 }
 
 export const COMMON_COLORS: ApparelColor[] = [
+  // Row 1 (Core primary colors matching sample images)
+  { name: 'Hitam', hex: '#161616', imageMockupUrl: '/assets/aistudio/image_0b44b9c3.png' },
+  { name: 'Merah Cabe', hex: '#DE1B23', imageMockupUrl: '/assets/aistudio/image_39dbbc7d.png' },
+  { name: 'Kuning Kenari', hex: '#FDC82F', imageMockupUrl: '/assets/aistudio/image_c8915628.png' },
   { name: 'Salmon', hex: '#E07A5F' },
-  { name: 'Hitam', hex: '#1E1E1E' },
   { name: 'Putih', hex: '#FFFFFF', border: '#D1D5DB', textColor: '#111827' },
-  { name: 'Abu Misty', hex: '#B0B0B0' },
-  { name: 'Charcoal Grey', hex: '#4B5563' },
-  { name: 'Navy', hex: '#1E293B' },
-  { name: 'Maroon', hex: '#701A24' },
-  { name: 'Merah Cabe', hex: '#DC2626' },
+  { name: 'Abu Misty (Heather)', hex: '#A3AEB9' },
+  { name: 'Navy Blue', hex: '#1A2536' },
+  { name: 'Maroon', hex: '#751A2B' },
+  // Row 2
   { name: 'Royal Blue', hex: '#1D4ED8' },
-  { name: 'Hijau Botol', hex: '#15803D' },
-  { name: 'Lime Green', hex: '#84CC16' },
-  { name: 'Kuning Kenari', hex: '#FACC15' },
-  { name: 'Hijau Army', hex: '#4D5D3A' },
+  { name: 'Irish Green', hex: '#15803D' },
+  { name: 'Dark Green (Forest)', hex: '#14532D' },
+  { name: 'Charcoal Dark', hex: '#2B323D' },
+  { name: 'Gold / Mustard', hex: '#E59B12' },
+  { name: 'Dark Chocolate', hex: '#3E2723' },
+  { name: 'Olive Green', hex: '#4D5D3A' },
+  { name: 'Carolina Blue', hex: '#38BDF8' },
+  // Row 3
   { name: 'Orange', hex: '#EA580C' },
-  { name: 'Cokelat Kopi', hex: '#4A2E1B' },
-  { name: 'Lilac', hex: '#C084FC' },
-  { name: 'Light Pink', hex: '#F472B6' },
-  { name: 'Ungu Tua', hex: '#6B21A8' },
-  { name: 'Biru Muda (Sky)', hex: '#38BDF8' },
+  { name: 'Lilac / Lavender', hex: '#C084FC' },
+  { name: 'Sand / Khaki', hex: '#D4C5A9' },
+  { name: 'Purple', hex: '#7C3AED' },
+  { name: 'Dark Violet', hex: '#4C1D95' },
+  { name: 'Burgundy / Wine', hex: '#581C87' },
+  { name: 'Heather Forest', hex: '#3F6253' },
+  { name: 'Espresso', hex: '#292524' },
+  // Row 4
   { name: 'Teal Blue', hex: '#0D9488' },
-  { name: 'Olive Green', hex: '#65A30D' },
-  { name: 'Khaki / Cream', hex: '#D6C7A1' },
-  { name: 'Mustard', hex: '#CA8A04' }
+  { name: 'Light Olive', hex: '#84A98C' },
+  { name: 'Sage Green', hex: '#A3B18A' },
+  { name: 'Mauve / Dusty Rose', hex: '#A57C82' },
+  { name: 'Ochre / Tan', hex: '#B48B47' },
+  { name: 'Lime Green', hex: '#84CC16' },
+  { name: 'Brown Caramel', hex: '#5C3D2E' },
+  // Row 5
+  { name: 'Peacock Blue', hex: '#0284C7' },
+  { name: 'Heliconia Pink', hex: '#DB2777' }
 ];
 
 export const PRODUCT_CATALOG: Record<ProductType, ProductConfig> = {
   tshirt: {
     id: 'tshirt',
     title: 'T-Shirts',
-    fullName: 'New States Apparel Classic & Softstyle T-Shirt 7200',
+    fullName: 'New States Apparel Premium Cotton T-shirt 7200',
     categoryLabel: 'T-Shirts',
     productCountLabel: '8 Produk',
     description:
-      'Kaos polos lengan pendek dengan potongan reguler fit yang sangat nyaman dan tidak ketat. Dibuat dari katun combed ring-spun halus yang adem, menyerap keringat, dan cocok untuk sablon DTF maupun manual.',
+      'Made from lightweight ring-spun cotton, this t-shirt offers a noticeably softer and more comfortable feel. It features a regular fit that sits nicely without feeling tight. A versatile choice for relaxed days or clean, casual looks.',
     defaultColor: { name: 'Salmon', hex: '#E07A5F' },
     availableSizes: ['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'],
     specs: [

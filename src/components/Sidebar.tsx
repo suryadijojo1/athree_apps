@@ -198,6 +198,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </button>
 
+              {/* 4c. Design Studio Real 1:1 & Mockup Creator */}
+              <button
+                onClick={() => {
+                  setActiveTab('design-studio');
+                }}
+                title="Design Studio Real 1:1 (Mockup, Sablon DTF, & Panduan Ukuran)"
+                className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+                  activeTab === 'design-studio'
+                    ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-950'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <Palette className="w-5 h-5 md:w-6 md:h-6 text-amber-300" />
+              </button>
+
               {/* 5. Google Drive Cloud Backup & Storage */}
               {(isAdmin || allowCashierDrive) && (
                 <button

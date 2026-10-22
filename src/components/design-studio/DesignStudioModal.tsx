@@ -23,9 +23,15 @@ import {
   RefreshCw,
   Palette,
   Maximize2,
+  Minimize2,
   Eye,
   FileCheck,
-  LogOut
+  LogOut,
+  Camera,
+  Lock,
+  Unlock,
+  Move,
+  AlignCenter
 } from 'lucide-react';
 import {
   ProductType,
@@ -38,6 +44,8 @@ import {
 import { ApparelVectorMockup } from './ApparelVectorMockup';
 import { SizeChartModal } from './SizeChartModal';
 import { ProductSelectorModal } from './ProductSelectorModal';
+import { CaptureModal } from './CaptureModal';
+import { DualPreviewModal } from './DualPreviewModal';
 import { compressImage } from '../../utils/imageCompressor';
 
 type SidebarTool =
@@ -46,6 +54,7 @@ type SidebarTool =
   | 'text'
   | 'clipart'
   | 'layer'
+  | 'my-images'
   | 'template'
   | 'help';
 
@@ -56,6 +65,7 @@ interface DesignStudioModalProps {
   onApplyToInvoice?: (mockupDataUrl: string) => void;
   isInvoiceMode?: boolean;
   isDedicatedDesignUser?: boolean;
+  isGuestMode?: boolean;
   onLogout?: () => void;
   onSwitchUser?: () => void;
   startWithSelector?: boolean;
@@ -68,6 +78,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
   onApplyToInvoice,
   isInvoiceMode = false,
   isDedicatedDesignUser = false,
+  isGuestMode = false,
   onLogout,
   onSwitchUser,
   startWithSelector = false
@@ -82,10 +93,29 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
 
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [showPrintAreaGuide, setShowPrintAreaGuide] = useState<boolean>(true);
+  const [isScale1to1Active, setIsScale1to1Active] = useState<boolean>(true);
+  const [showGarmentMeasurements, setShowGarmentMeasurements] = useState<boolean>(false);
+  const [uploadedGallery, setUploadedGallery] = useState<string[]>([]);
 
   // Modals inside Studio
   const [showSizeChart, setShowSizeChart] = useState<boolean>(false);
   const [showProductSelector, setShowProductSelector] = useState<boolean>(Boolean(startWithSelector));
+  const [showCaptureModal, setShowCaptureModal] = useState<boolean>(false);
+  const [capturedImageMockup, setCapturedImageMockup] = useState<string>('');
+  const [capturedImageGuide, setCapturedImageGuide] = useState<string>('');
+  const [isCapturingImage, setIsCapturingImage] = useState<boolean>(false);
+
+  // 1. Full Screen Browser State (Default true for maximum work area)
+  const [isFullScreenBrowser, setIsFullScreenBrowser] = useState<boolean>(true);
+
+  // 3. Tombol Preview Depan & Belakang State
+  const [showDualPreview, setShowDualPreview] = useState<boolean>(false);
+
+  // 2. Aspect Ratio Lock for Manual Image Resizing
+  const [lockAspectRatio, setLockAspectRatio] = useState<boolean>(true);
+
+  // Mockup view mode: auto (uses photo for Hitam/Merah/Kuning, flat clean vector for others)
+  const [mockupMode, setMockupMode] = useState<'auto' | 'photo' | 'vector'>('auto');
 
   // Design elements state
   const [elements, setElements] = useState<DesignElement[]>([
@@ -126,6 +156,53 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
 
   // Toast notice
   const [toastMessage, setToastMessage] = useState<string>('');
+
+  // Toggle Full Screen Browser
+  const toggleFullScreenBrowser = () => {
+    setIsFullScreenBrowser((prev) => {
+      const next = !prev;
+      try {
+        if (next) {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          }
+        } else {
+          if (document.fullscreenElement && document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+          }
+        }
+      } catch (e) {
+        // Safe for iframe environment
+      }
+      return next;
+    });
+  };
+
+  // Synchronize fullscreenchange event if user presses ESC or F11
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && isFullScreenBrowser) {
+        // Keep CSS fullscreen even if native exited, or keep synchronized
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [isFullScreenBrowser]);
+
+  // Handle live element position update
+  const handleUpdateElementPosition = (id: string, x: number, y: number) => {
+    setElements((prev) => prev.map((el) => (el.id === id ? { ...el, x, y } : el)));
+  };
+
+  // Handle live element size update
+  const handleUpdateElementSize = (id: string, width: number, height: number) => {
+    setElements((prev) => prev.map((el) => (el.id === id ? { ...el, width, height } : el)));
+  };
+
+  // Handle general element update
+  const handleUpdateElement = (id: string, updates: Partial<DesignElement>) => {
+    setElements((prev) => prev.map((el) => (el.id === id ? { ...el, ...updates } : el)));
+  };
 
   // Update product default color when productType changes
   useEffect(() => {
@@ -190,21 +267,42 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
       reader.onload = (event) => {
         const dataUrl = event.target?.result as string;
         if (dataUrl) {
-          const newEl: DesignElement = {
-            id: `img-${Date.now()}`,
-            type: 'image',
-            angle: activeAngle,
-            x: 50,
-            y: 50,
-            width: 100,
-            height: 100,
-            rotation: 0,
-            scale: 1,
-            src: dataUrl
+          const img = new Image();
+          img.onload = () => {
+            const aspect = img.naturalWidth / (img.naturalHeight || 1);
+            let w = 100;
+            let h = Math.round(100 / aspect);
+            if (h > 150) {
+              h = 150;
+              w = Math.round(150 * aspect);
+            }
+            if (w > 160) {
+              w = 160;
+              h = Math.round(160 / aspect);
+            }
+
+            const widthCm = Math.round((w / 180) * 30 * 10) / 10;
+            const heightCm = Math.round((h / 250) * 42 * 10) / 10;
+
+            const newEl: DesignElement = {
+              id: `img-${Date.now()}`,
+              type: 'image',
+              angle: activeAngle,
+              x: 50,
+              y: 50,
+              width: w,
+              height: h,
+              rotation: 0,
+              scale: 1,
+              src: dataUrl
+            };
+            pushHistory([...elements, newEl]);
+            setSelectedElementId(newEl.id);
+            setUploadedGallery((prev) => (prev.includes(dataUrl) ? prev : [dataUrl, ...prev]));
+            setActiveTool('upload');
+            showToast(`Gambar diunggah! Ukuran: ${widthCm} × ${heightCm} cm. Bisa diubah manual.`);
           };
-          pushHistory([...elements, newEl]);
-          setSelectedElementId(newEl.id);
-          showToast('Gambar / Logo berhasil ditambahkan!');
+          img.src = dataUrl;
         }
       };
       reader.readAsDataURL(file);
@@ -238,43 +336,108 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
     if (selectedElementId === id) setSelectedElementId(null);
   };
 
+  // Keyboard shortcut listener: Delete or Backspace removes selected object when not typing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const tagName = activeEl?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElementId) {
+        e.preventDefault();
+        handleDeleteElement(selectedElementId);
+        showToast('Objek berhasil dihapus');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedElementId, elements]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  // Export Mockup Canvas to Image
-  const generateMockupImage = async (): Promise<string> => {
+  // Export Mockup Canvas to Image with optional Size Guide, 1:1 Scale, or DTF Print-Area crop
+  const generateMockupImage = async (options?: {
+    withGuide?: boolean;
+    highRes?: boolean;
+    printAreaOnly?: boolean;
+  }): Promise<string> => {
     const svgEl = document.getElementById('apparel-mockup-svg');
     if (!svgEl) throw new Error('SVG Mockup tidak ditemukan');
 
-    const svgXml = new XMLSerializer().serializeToString(svgEl);
+    // Clone SVG to modify export layers safely without disturbing live DOM
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+    clone.style.transform = 'none';
+
+    const guideEl = clone.querySelector('#garment-measurement-guide') as SVGElement | null;
+    const rulerEl = clone.querySelector('#scale-1to1-rulers') as SVGElement | null;
+    const printAreaGuide = clone.querySelector('#printable-area-guide') as SVGElement | null;
+    const distanceGuide = clone.querySelector('#object-distance-guidelines') as SVGElement | null;
+
+    if (printAreaGuide) {
+      printAreaGuide.style.display = 'none';
+    }
+    if (distanceGuide) {
+      distanceGuide.style.display = 'none';
+    }
+
+    if (options?.withGuide) {
+      if (guideEl) guideEl.style.display = 'block';
+      if (rulerEl) rulerEl.style.display = 'block';
+    } else {
+      if (guideEl) guideEl.style.display = 'none';
+      if (rulerEl) rulerEl.style.display = 'none';
+    }
+
+    // Ensure image elements have absolute origin URLs for canvas rasterizer
+    const imageElements = Array.from(clone.querySelectorAll('image'));
+    for (const imgEl of imageElements) {
+      const href = imgEl.getAttribute('href') || imgEl.getAttribute('xlink:href');
+      if (href && href.startsWith('/')) {
+        imgEl.setAttribute('href', window.location.origin + href);
+      }
+    }
+
+    const svgXml = new XMLSerializer().serializeToString(clone);
     const svgBlob = new Blob([svgXml], { type: 'image/svg+xml;charset=utf-8' });
     const blobURL = window.URL.createObjectURL(svgBlob);
 
     return new Promise((resolve, reject) => {
       const image = new Image();
       image.onload = async () => {
+        const outWidth = options?.highRes ? 1200 : 800;
+        const outHeight = options?.highRes ? 1200 : 800;
         const canvas = document.createElement('canvas');
-        canvas.width = 800;
-        canvas.height = 800;
+        canvas.width = outWidth;
+        canvas.height = outHeight;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           window.URL.revokeObjectURL(blobURL);
           return reject(new Error('Canvas context gagal'));
         }
 
-        // Fill background white
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, 800, 800);
-        ctx.drawImage(image, 50, 50, 700, 700);
+        if (options?.printAreaOnly) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, outWidth, outHeight);
+          // Crop into print area (approx coords 160, 140, 180, 250 in 500x600 SVG)
+          const sx = (150 / 500) * image.naturalWidth;
+          const sy = (130 / 600) * image.naturalHeight;
+          const sw = (200 / 500) * image.naturalWidth;
+          const sh = (270 / 600) * image.naturalHeight;
+          ctx.drawImage(image, sx, sy, sw, sh, 60, 60, outWidth - 120, outHeight - 120);
+        } else {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, outWidth, outHeight);
+          const pad = options?.highRes ? 60 : 40;
+          ctx.drawImage(image, pad, pad, outWidth - pad * 2, outHeight - pad * 2);
+        }
 
         window.URL.revokeObjectURL(blobURL);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-
-        // Compress cleanly for lightweight Firestore / app payload (<100KB)
-        const compressed = await compressImage(dataUrl, 800, 800, 0.7);
-        resolve(compressed.dataUrl);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        resolve(dataUrl);
       };
       image.onerror = () => {
         window.URL.revokeObjectURL(blobURL);
@@ -282,6 +445,48 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
       };
       image.src = blobURL;
     });
+  };
+
+  // Action: Open Capture Modal (Skala 1:1 & Panduan Ukuran)
+  const handleOpenCaptureModal = async (initialMode: 'mockup' | 'guide' | 'print-area' = 'guide') => {
+    try {
+      setIsCapturingImage(true);
+      setShowCaptureModal(true);
+      setSelectedElementId(null);
+      // Wait a tick for selection outlines to dismiss
+      await new Promise((r) => setTimeout(r, 60));
+      const [imgGuide, imgClean] = await Promise.all([
+        generateMockupImage({ withGuide: true, highRes: true }),
+        generateMockupImage({ withGuide: false, highRes: true })
+      ]);
+      setCapturedImageGuide(imgGuide);
+      setCapturedImageMockup(imgClean);
+    } catch (e: any) {
+      console.warn('Capture image error:', e);
+      showToast('Gagal memproses capture gambar');
+    } finally {
+      setIsCapturingImage(false);
+    }
+  };
+
+  const handleCaptureAgain = async (mode: 'mockup' | 'guide' | 'print-area') => {
+    setIsCapturingImage(true);
+    try {
+      if (mode === 'print-area') {
+        const imgPrint = await generateMockupImage({ printAreaOnly: true, highRes: true });
+        setCapturedImageMockup(imgPrint);
+      } else if (mode === 'guide') {
+        const img = await generateMockupImage({ withGuide: true, highRes: true });
+        setCapturedImageGuide(img);
+      } else {
+        const img = await generateMockupImage({ withGuide: false, highRes: true });
+        setCapturedImageMockup(img);
+      }
+    } catch (err: any) {
+      console.warn('Capture error:', err);
+    } finally {
+      setIsCapturingImage(false);
+    }
   };
 
   // Action: Apply to Invoice (mockupDesign)
@@ -314,7 +519,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
       setShowPrintAreaGuide(false);
       setSelectedElementId(null);
       await new Promise((r) => setTimeout(r, 100));
-      const mockupUrl = await generateMockupImage();
+      const mockupUrl = await generateMockupImage({ highRes: true });
       setShowPrintAreaGuide(true);
 
       const link = document.createElement('a');
@@ -331,12 +536,24 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150 select-none">
-      <div className="bg-white rounded-3xl w-full max-w-[1400px] h-[95vh] max-h-[900px] shadow-2xl border border-slate-700 flex flex-col overflow-hidden text-slate-800 animate-in zoom-in-95 duration-150">
+    <div
+      className={
+        isFullScreenBrowser
+          ? 'fixed inset-0 z-50 bg-slate-900 w-screen h-screen m-0 p-0 overflow-hidden flex flex-col select-none'
+          : 'fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150 select-none overflow-hidden'
+      }
+    >
+      <div
+        className={
+          isFullScreenBrowser
+            ? 'w-full h-full flex flex-col overflow-hidden text-slate-800 bg-white rounded-none border-none shadow-none'
+            : 'bg-white rounded-3xl w-full max-w-[1400px] h-[95vh] max-h-[900px] shadow-2xl border border-slate-700 flex flex-col overflow-hidden text-slate-800 animate-in zoom-in-95 duration-150'
+        }
+      >
         {/* =========================================================================
             TOP NAV / HEADER
         ========================================================================= */}
-        <header className="px-4 py-2.5 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800 gap-2">
+        <header className="px-4 py-2 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800 gap-2">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
               <Sparkles className="w-4 h-4" />
@@ -349,6 +566,12 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                 <span className="text-[10px] bg-[#00871f] text-white px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                   {currentConfig.categoryLabel}
                 </span>
+                {isGuestMode && (
+                  <span className="text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1 shadow-xs">
+                    <Sparkles className="w-3 h-3 text-purple-200" />
+                    Bebas Akses (Tanpa Login)
+                  </span>
+                )}
                 {productType === 'tshirt' && (
                   <span className="hidden md:inline-flex items-center gap-1 text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-semibold">
                     <Sparkles className="w-3 h-3 text-emerald-400" />
@@ -400,6 +623,40 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
 
           {/* Top Actions */}
           <div className="flex items-center gap-2">
+            {/* 3. TOMBOL PREVIEW: LIHAT GAMBAR DEPAN & BELAKANG */}
+            <button
+              onClick={() => setShowDualPreview(true)}
+              className="px-2.5 sm:px-3.5 py-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-purple-950/20 transition-all cursor-pointer active:scale-95"
+              title="Lihat Preview Gambar Depan & Belakang Sekaligus"
+            >
+              <Eye className="w-3.5 h-3.5 text-purple-200" />
+              <span className="whitespace-nowrap">Preview Depan &amp; Belakang</span>
+            </button>
+
+            {/* 1. TOMBOL FULL SCREEN BROWSER */}
+            <button
+              onClick={toggleFullScreenBrowser}
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                isFullScreenBrowser
+                  ? 'bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700'
+                  : 'bg-sky-600 hover:bg-sky-500 text-white shadow-xs'
+              }`}
+              title={isFullScreenBrowser ? 'Tampilan Jendela Standar' : 'Tampilan Full Screen Browser'}
+            >
+              {isFullScreenBrowser ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{isFullScreenBrowser ? 'Layar Penuh' : 'Full Screen'}</span>
+            </button>
+
+            {/* Capture Gambar Skala 1:1 button */}
+            <button
+              onClick={() => handleOpenCaptureModal('guide')}
+              className="px-2.5 sm:px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+              title="Capture Gambar Real 1:1 Lengkap dengan Panduan Ukuran (LD x P x L)"
+            >
+              <Camera className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+              <span className="whitespace-nowrap">Capture (1:1)</span>
+            </button>
+
             {/* Mulai Design Baru (Modal 4 Pilihan) */}
             <button
               onClick={() => setShowProductSelector(true)}
@@ -407,7 +664,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               title="Pilihan Mulai Design: 1. Kaos T-Shirt, 2. Polo, 3. Hoodie, 4. Jersey"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-              <span>Mulai Design</span>
+              <span className="hidden sm:inline">Mulai Design</span>
             </button>
 
             <button
@@ -416,7 +673,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               title="Lihat tabel ukuran asli 1:1 (LD, P, L)"
             >
               <Ruler className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden sm:inline">Panduan Ukuran</span>
+              <span className="hidden md:inline">Panduan Ukuran</span>
               {productType === 'tshirt' && (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute top-1 right-1"></span>
               )}
@@ -428,7 +685,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               title="Download gambar mockup JPG"
             >
               <Download className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden md:inline">Download</span>
+              <span className="hidden xl:inline">Download</span>
             </button>
 
             {/* Apply To Invoice Button */}
@@ -455,6 +712,18 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               </button>
             )}
 
+            {/* Exit to Login button for Guest Mode */}
+            {isGuestMode && (
+              <button
+                onClick={onClose}
+                className="px-2.5 py-1.5 rounded-xl bg-purple-900/80 hover:bg-purple-800 text-purple-200 border border-purple-600/50 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Keluar ke Halaman Login Kasir"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Kembali ke Login</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 if (isDedicatedDesignUser) {
@@ -464,7 +733,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                 }
               }}
               className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
-              title={isDedicatedDesignUser ? 'Mulai Desain Baru' : 'Tutup Studio'}
+              title={isDedicatedDesignUser ? 'Mulai Desain Baru' : isGuestMode ? 'Kembali ke Login' : 'Tutup Studio'}
             >
               <X className="w-5 h-5" />
             </button>
@@ -485,6 +754,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               { id: 'text', label: 'Add Text', icon: Type },
               { id: 'clipart', label: 'Add Clip Art', icon: Smile },
               { id: 'layer', label: 'Layer', icon: Layers },
+              { id: 'my-images', label: 'My Images', icon: ImageIcon },
               { id: 'template', label: 'Template', icon: LayoutTemplate },
               { id: 'help', label: 'Help', icon: HelpCircle }
             ].map((tool) => {
@@ -698,51 +968,365 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               </div>
             )}
 
-            {/* 2B. UPLOAD IMAGE TAB */}
-            {activeTool === 'upload' && (
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900">Upload Logo / Gambar</h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Tambahkan logo, desain DTF, atau sablon ke pakaian
-                  </p>
-                </div>
+            {/* 2B. UPLOAD IMAGE TAB & PENGATURAN UKURAN GAMBAR MANUAL */}
+            {activeTool === 'upload' && (() => {
+              const angleImageElements = elements.filter((el) => el.type === 'image' && el.angle === activeAngle);
+              const selectedEl = elements.find((el) => el.id === selectedElementId);
+              const currentImage = (selectedEl && selectedEl.type === 'image' && selectedEl.angle === activeAngle)
+                ? selectedEl
+                : angleImageElements[angleImageElements.length - 1] || null;
 
-                {/* Hidden File Input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
+              const currentWidthCm = currentImage ? Math.round(((currentImage.width || 80) / 180) * 30 * 10) / 10 : 16.7;
+              const currentHeightCm = currentImage ? Math.round(((currentImage.height || 80) / 250) * 42 * 10) / 10 : 16.8;
 
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-300 hover:border-[#00871f] rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-50/70 hover:bg-emerald-50/40"
-                >
-                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-[#00871f] flex items-center justify-center mx-auto mb-2">
-                    <Upload className="w-5 h-5" />
+              const handleSetWidthCm = (targetCm: number) => {
+                if (!currentImage) return;
+                const clampedCm = Math.max(2, Math.min(30, Math.round(targetCm * 10) / 10));
+                const newSvgWidth = Math.round((clampedCm / 30) * 180);
+                let newSvgHeight = currentImage.height || 80;
+                if (lockAspectRatio) {
+                  const aspect = (currentImage.width || 80) / (currentImage.height || 80 || 1);
+                  newSvgHeight = Math.round(newSvgWidth / (aspect || 1));
+                }
+                handleUpdateElementSize(currentImage.id, newSvgWidth, newSvgHeight);
+              };
+
+              const handleSetHeightCm = (targetCm: number) => {
+                if (!currentImage) return;
+                const clampedCm = Math.max(2, Math.min(42, Math.round(targetCm * 10) / 10));
+                const newSvgHeight = Math.round((clampedCm / 42) * 250);
+                let newSvgWidth = currentImage.width || 80;
+                if (lockAspectRatio) {
+                  const aspect = (currentImage.width || 80) / (currentImage.height || 80 || 1);
+                  newSvgWidth = Math.round(newSvgHeight * (aspect || 1));
+                }
+                handleUpdateElementSize(currentImage.id, newSvgWidth, newSvgHeight);
+              };
+
+              const handlePresetSize = (wCm: number, hCm: number, label: string) => {
+                if (!currentImage) return;
+                const newSvgW = Math.round((wCm / 30) * 180);
+                const newSvgH = Math.round((hCm / 42) * 250);
+                handleUpdateElementSize(currentImage.id, newSvgW, newSvgH);
+                showToast(`Ukuran diatur ke ${label} (${wCm} × ${hCm} cm)`);
+              };
+
+              return (
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">Upload &amp; Ukuran Gambar</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Upload logo/gambar, atur ukuran manual (cm), dan cek keterangan skala 1:1
+                    </p>
                   </div>
-                  <span className="font-bold text-slate-800 block">Klik untuk Upload File</span>
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    PNG, JPG, SVG transparan didukung (Maks. 10 MB)
-                  </span>
-                </div>
 
-                {/* Paste from Clipboard reminder */}
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-900 space-y-1">
-                  <p className="font-bold flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-[#00871f]" />
-                    Tips Cepat:
-                  </p>
-                  <p className="text-slate-600">
-                    Kamu bisa langsung tekan <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono font-bold">Ctrl + V</kbd> untuk menempelkan gambar screenshot / logo langsung ke baju.
-                  </p>
-                </div>
-              </div>
-            )}
+                  {/* Multiple Images Selector if more than 1 image on this angle */}
+                  {angleImageElements.length > 1 && (
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-700">Pilih Gambar yang Diedit:</label>
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                        {angleImageElements.map((imgEl, idx) => (
+                          <button
+                            key={imgEl.id}
+                            onClick={() => setSelectedElementId(imgEl.id)}
+                            className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                              currentImage?.id === imgEl.id
+                                ? 'bg-emerald-50 border-[#00871f] text-[#00871f] font-bold shadow-xs'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            <img src={imgEl.src} alt="Thumb" className="w-4 h-4 object-contain rounded" />
+                            <span>Gambar #{idx + 1}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
+                  {/* KETERANGAN UKURAN GAMBAR YANG DI-UPLOAD */}
+                  {currentImage ? (
+                    <div className="space-y-3.5">
+                      <div className="bg-slate-900 text-white rounded-2xl p-3.5 space-y-2.5 border border-slate-700 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Ruler className="w-4 h-4 text-sky-400" />
+                            <span className="font-extrabold text-xs text-sky-300">
+                              Keterangan Ukuran Gambar
+                            </span>
+                          </div>
+                          <span className="text-[10px] bg-sky-500/20 text-sky-300 font-bold px-2 py-0.5 rounded-full border border-sky-500/30">
+                            Skala 1:1
+                          </span>
+                        </div>
+
+                        {/* Real CM Dimension Display */}
+                        <div className="grid grid-cols-2 gap-2 bg-slate-800/90 p-2.5 rounded-xl border border-slate-700">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-medium">Lebar Gambar:</span>
+                            <span className="text-base font-black text-sky-400 tracking-tight">
+                              {currentWidthCm} cm
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-medium">Tinggi Gambar:</span>
+                            <span className="text-base font-black text-sky-400 tracking-tight">
+                              {currentHeightCm} cm
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Additional Dimension Notes */}
+                        <div className="text-[11px] text-slate-300 space-y-1 pt-1 border-t border-slate-800">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Area Cetak:</span>
+                            <span className="font-bold text-emerald-400">DTF A3 (30 × 42 cm)</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Posisi Baju:</span>
+                            <span className="text-slate-200 font-semibold">
+                              X: {Math.round(currentImage.x)}% &bull; Y: {Math.round(currentImage.y)}%
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Status Sablon:</span>
+                            <span className={`font-bold ${currentWidthCm <= 30 && currentHeightCm <= 42 ? 'text-emerald-300' : 'text-amber-400'}`}>
+                              {currentWidthCm <= 30 && currentHeightCm <= 42 ? '✓ Aman Dalam Area Cetak' : '⚠️ Melebihi Batas A3'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* UBAH UKURAN GAMBAR SECARA MANUAL */}
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-slate-800 text-xs">
+                            Ubah Ukuran Manual (cm)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setLockAspectRatio(!lockAspectRatio)}
+                            className={`flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${
+                              lockAspectRatio
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-slate-100 text-slate-500 border-slate-300'
+                            }`}
+                            title={lockAspectRatio ? 'Proporsi Terkunci' : 'Proporsi Bebas (Distorsi)'}
+                          >
+                            {lockAspectRatio ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                            <span>{lockAspectRatio ? 'Kunci Proporsi' : 'Bebas'}</span>
+                          </button>
+                        </div>
+
+                        {/* Input Lebar Gambar (cm) */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-slate-700">Lebar (Width):</label>
+                            <span className="font-mono font-bold text-emerald-700">{currentWidthCm} cm</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSetWidthCm(currentWidthCm - 0.5)}
+                              className="w-8 h-8 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 font-black text-slate-700 flex items-center justify-center cursor-pointer active:scale-95"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="2"
+                              max="30"
+                              value={currentWidthCm}
+                              onChange={(e) => handleSetWidthCm(parseFloat(e.target.value) || 2)}
+                              className="flex-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-center font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#00871f]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSetWidthCm(currentWidthCm + 0.5)}
+                              className="w-8 h-8 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 font-black text-slate-700 flex items-center justify-center cursor-pointer active:scale-95"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <input
+                            type="range"
+                            min="3"
+                            max="30"
+                            step="0.5"
+                            value={currentWidthCm}
+                            onChange={(e) => handleSetWidthCm(parseFloat(e.target.value))}
+                            className="w-full accent-[#00871f] cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Input Tinggi Gambar (cm) */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-slate-700">Tinggi (Height):</label>
+                            <span className="font-mono font-bold text-emerald-700">{currentHeightCm} cm</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSetHeightCm(currentHeightCm - 0.5)}
+                              className="w-8 h-8 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 font-black text-slate-700 flex items-center justify-center cursor-pointer active:scale-95"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="2"
+                              max="42"
+                              value={currentHeightCm}
+                              onChange={(e) => handleSetHeightCm(parseFloat(e.target.value) || 2)}
+                              className="flex-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-center font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#00871f]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSetHeightCm(currentHeightCm + 0.5)}
+                              className="w-8 h-8 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 font-black text-slate-700 flex items-center justify-center cursor-pointer active:scale-95"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <input
+                            type="range"
+                            min="3"
+                            max="42"
+                            step="0.5"
+                            value={currentHeightCm}
+                            onChange={(e) => handleSetHeightCm(parseFloat(e.target.value))}
+                            className="w-full accent-[#00871f] cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Preset Ukuran Standar Cetak Sablon DTF */}
+                        <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                          <span className="text-[10.5px] font-bold text-slate-600 block">Preset Ukuran Cepat:</span>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handlePresetSize(8, 8, 'Logo Saku')}
+                              className="px-2 py-1.5 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-[#00871f] rounded-lg text-slate-700 font-bold text-[10.5px] text-left transition-colors cursor-pointer"
+                            >
+                              <span className="block text-slate-900">Saku Dada</span>
+                              <span className="text-[9.5px] text-slate-400">8 × 8 cm</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handlePresetSize(15, 15, 'Dada Sedang')}
+                              className="px-2 py-1.5 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-[#00871f] rounded-lg text-slate-700 font-bold text-[10.5px] text-left transition-colors cursor-pointer"
+                            >
+                              <span className="block text-slate-900">Dada Sedang</span>
+                              <span className="text-[9.5px] text-slate-400">15 × 15 cm</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handlePresetSize(21, 29.7, 'Sablon A4')}
+                              className="px-2 py-1.5 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-[#00871f] rounded-lg text-slate-700 font-bold text-[10.5px] text-left transition-colors cursor-pointer"
+                            >
+                              <span className="block text-slate-900">Sablon A4</span>
+                              <span className="text-[9.5px] text-slate-400">21 × 29.7 cm</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handlePresetSize(28, 38, 'Maksimal A3')}
+                              className="px-2 py-1.5 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-[#00871f] rounded-lg text-slate-700 font-bold text-[10.5px] text-left transition-colors cursor-pointer"
+                            >
+                              <span className="block text-slate-900">Maksimal A3</span>
+                              <span className="text-[9.5px] text-slate-400">28 × 38 cm</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Tombol Posisi Cepat */}
+                        <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                          <span className="text-[10.5px] font-bold text-slate-600 block">Posisi Gambar di Kaos:</span>
+                          <div className="grid grid-cols-3 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateElementPosition(currentImage.id, 50, 30)}
+                              className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-[10.5px] font-bold text-slate-700 cursor-pointer"
+                            >
+                              Dada Atas
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateElementPosition(currentImage.id, 50, 50)}
+                              className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-[10.5px] font-bold text-slate-700 cursor-pointer"
+                            >
+                              Tengah (Center)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateElementPosition(currentImage.id, 35, 30)}
+                              className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-[10.5px] font-bold text-slate-700 cursor-pointer"
+                            >
+                              Saku Kiri
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Hapus Gambar */}
+                        <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">Atau seret sudut di baju untuk resize</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteElement(currentImage.id)}
+                            className="text-rose-600 hover:text-rose-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus Gambar</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Hidden File Input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+
+                  {/* Upload Dropzone */}
+                  <div className="space-y-1.5">
+                    <span className="font-bold text-slate-700 block text-[11px]">
+                      {currentImage ? 'Unggah Gambar Lainnya:' : 'Unggah File Gambar / Logo:'}
+                    </span>
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-300 hover:border-[#00871f] rounded-2xl p-4 text-center cursor-pointer transition-colors bg-slate-50/70 hover:bg-emerald-50/40"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-emerald-100 text-[#00871f] flex items-center justify-center mx-auto mb-1.5">
+                        <Upload className="w-4 h-4" />
+                      </div>
+                      <span className="font-bold text-slate-800 block text-xs">Klik untuk Upload File</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">
+                        PNG, JPG, SVG transparan (Maks. 10 MB)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Paste from Clipboard reminder */}
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-900 space-y-1">
+                    <p className="font-bold flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-[#00871f]" />
+                      Tips Cepat:
+                    </p>
+                    <p className="text-slate-600 leading-snug">
+                      Kamu juga bisa tekan <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono font-bold">Ctrl + V</kbd> untuk langsung menempelkan gambar logo dari clipboard.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 2C. ADD TEXT TAB */}
             {/* 2C. ADD TEXT TAB */}
             {activeTool === 'text' && (
               <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
@@ -753,8 +1337,73 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                   </p>
                 </div>
 
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Isi Teks:</label>
+                {/* If a text element is currently selected on this angle, show edit & delete controls */}
+                {(() => {
+                  const activeTextEl = elements.find((el) => el.id === selectedElementId && el.angle === activeAngle && el.type === 'text');
+                  if (!activeTextEl) return null;
+                  return (
+                    <div className="bg-emerald-50/80 border border-emerald-300 rounded-2xl p-3 space-y-2.5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-emerald-950 text-xs flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                          Edit Teks Terpilih
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleDeleteElement(activeTextEl.id);
+                            showToast('Teks berhasil dihapus');
+                          }}
+                          className="text-rose-600 hover:text-rose-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer hover:underline"
+                          title="Hapus teks ini dari baju"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Hapus Teks</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10.5px] font-bold text-slate-700 block">Ubah Teks:</label>
+                        <input
+                          type="text"
+                          value={activeTextEl.text || ''}
+                          onChange={(e) => handleUpdateElement(activeTextEl.id, { text: e.target.value })}
+                          className="w-full text-xs font-bold px-3 py-1.5 border border-emerald-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#00871f]"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pt-1 border-t border-emerald-200">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleUpdateElementPosition(activeTextEl.id, 50, activeTextEl.y);
+                            showToast('Teks diposisikan tepat di tengah baju');
+                          }}
+                          className="flex-1 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          title="Posisikan teks tepat di tengah baju"
+                        >
+                          <AlignCenter className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Tengahkan Teks</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleDeleteElement(activeTextEl.id);
+                            showToast('Teks berhasil dihapus');
+                          }}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                          title="Hapus teks dari pakaian"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Hapus</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="pt-1 border-t border-slate-200">
+                  <label className="font-bold text-slate-700 block mb-1">Isi Teks Baru:</label>
                   <input
                     type="text"
                     value={newText}
@@ -822,6 +1471,56 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                     Pilih ikon atau lencana untuk ditempatkan pada baju
                   </p>
                 </div>
+
+                {/* If a clipart element is selected, show edit & delete controls */}
+                {(() => {
+                  const activeClipEl = elements.find((el) => el.id === selectedElementId && el.angle === activeAngle && el.type === 'clipart');
+                  if (!activeClipEl) return null;
+                  return (
+                    <div className="bg-emerald-50/80 border border-emerald-300 rounded-2xl p-3 space-y-2 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-emerald-950 text-xs">
+                          Clip Art Terpilih: {activeClipEl.clipartName}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleDeleteElement(activeClipEl.id);
+                            showToast('Clip Art berhasil dihapus');
+                          }}
+                          className="text-rose-600 hover:text-rose-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer hover:underline"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Hapus</span>
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleUpdateElementPosition(activeClipEl.id, 50, activeClipEl.y);
+                            showToast('Clip Art diposisikan tepat di tengah baju');
+                          }}
+                          className="flex-1 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <AlignCenter className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Tengahkan</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleDeleteElement(activeClipEl.id);
+                            showToast('Clip Art berhasil dihapus');
+                          }}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Hapus</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
@@ -899,7 +1598,62 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               </div>
             )}
 
-            {/* 2F. TEMPLATE TAB */}
+            {/* 2F. MY IMAGES TAB */}
+            {activeTool === 'my-images' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">Koleksi Gambar Saya</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Logo &amp; gambar yang telah diunggah untuk ditempelkan ke kaos
+                  </p>
+                </div>
+
+                {uploadedGallery.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 space-y-2 border-2 border-dashed border-slate-200 rounded-xl p-4">
+                    <ImageIcon className="w-8 h-8 mx-auto opacity-50" />
+                    <p>Belum ada gambar yang diunggah</p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTool('upload')}
+                      className="px-3 py-1.5 bg-[#00871f] text-white font-bold rounded-lg text-xs cursor-pointer"
+                    >
+                      Unggah Gambar Sekarang
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {uploadedGallery.map((imgSrc, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          const newEl: DesignElement = {
+                            id: `img-${Date.now()}-${idx}`,
+                            type: 'image',
+                            angle: activeAngle,
+                            x: 50,
+                            y: 50,
+                            width: 100,
+                            height: 100,
+                            rotation: 0,
+                            scale: 1,
+                            src: imgSrc
+                          };
+                          pushHistory([...elements, newEl]);
+                          setSelectedElementId(newEl.id);
+                          showToast('Gambar ditempelkan ke pakaian!');
+                        }}
+                        className="p-2 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-[#00871f] rounded-xl cursor-pointer transition-all flex flex-col items-center gap-1 group"
+                      >
+                        <img src={imgSrc} alt="Uploaded logo" className="w-16 h-16 object-contain group-hover:scale-105 transition-transform" />
+                        <span className="text-[10px] font-bold text-slate-700">Gunakan</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2G. TEMPLATE TAB */}
             {activeTool === 'template' && (
               <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
                 <div>
@@ -988,7 +1742,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               </div>
             )}
 
-            {/* 2G. HELP TAB */}
+            {/* 2H. HELP TAB */}
             {activeTool === 'help' && (
               <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs leading-relaxed text-slate-600">
                 <h3 className="font-bold text-sm text-slate-900">Panduan Penggunaan Studio</h3>
@@ -999,10 +1753,10 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                   2. <strong>Sudut Tampilan</strong>: Gunakan panel di sebelah kanan untuk mendesain bagian <em>Depan</em>, <em>Belakang</em>, <em>Lengan</em>, maupun <em>Label Kerah</em>.
                 </p>
                 <p>
-                  3. <strong>Area Cetak</strong>: Garis putus-putus hijau menandakan batasan area cetak DTF / sablon maksimal 1:1.
+                  3. <strong>Skala 1:1</strong>: Aktifkan tombol <em>Skala 1:1</em> di canvas untuk melihat penggaris metrik (cm) dan ukuran asli sablon.
                 </p>
                 <p>
-                  4. <strong>Gunakan di Invoice</strong>: Klik tombol hijau di pojok kanan atas untuk langsung menyimpan mockup ke pesanan faktur saat ini.
+                  4. <strong>Panduan Ukuran</strong>: Klik <em>Panduan Ukuran</em> untuk melihat tabel ukuran Lebar Dada (LD), Panjang (P), dan Lengan (L).
                 </p>
               </div>
             )}
@@ -1012,7 +1766,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
               3. CENTER MAIN CANVAS AREA (matching Images 2, 3, 4)
           ===================================================================== */}
           <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-slate-100">
-            {/* Top Canvas Floating Controls (Undo, Redo, Zoom) matching Images 2, 3, 4 */}
+            {/* Top Canvas Floating Controls (Undo, Redo, Zoom, Skala 1:1, Panduan Ukuran) */}
             <div className="absolute top-4 left-4 z-20 flex flex-col gap-1 bg-white/95 backdrop-blur-xs border border-slate-200 rounded-2xl p-1.5 shadow-md text-xs">
               <button
                 onClick={handleUndo}
@@ -1020,7 +1774,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                 className="p-2 hover:bg-slate-100 text-slate-700 disabled:opacity-30 rounded-xl transition-colors cursor-pointer"
                 title="Undo (Ctrl + Z)"
               >
-                <Undo2 className="w-4 h-4" />
+                <Undo2 className="w-4 h-4 mx-auto" />
                 <span className="text-[9px] font-bold block text-center">Undo</span>
               </button>
               <button
@@ -1029,7 +1783,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                 className="p-2 hover:bg-slate-100 text-slate-700 disabled:opacity-30 rounded-xl transition-colors cursor-pointer"
                 title="Redo (Ctrl + Y)"
               >
-                <Redo2 className="w-4 h-4" />
+                <Redo2 className="w-4 h-4 mx-auto" />
                 <span className="text-[9px] font-bold block text-center">Redo</span>
               </button>
               <div className="h-px bg-slate-200 my-0.5" />
@@ -1038,7 +1792,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                 className="p-2 hover:bg-slate-100 text-slate-700 rounded-xl transition-colors cursor-pointer"
                 title="Perbesar Zoom"
               >
-                <ZoomIn className="w-4 h-4" />
+                <ZoomIn className="w-4 h-4 mx-auto" />
                 <span className="text-[9px] font-bold block text-center">Perbesar</span>
               </button>
               <button
@@ -1046,7 +1800,7 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                 className="p-2 hover:bg-slate-100 text-slate-700 rounded-xl transition-colors cursor-pointer"
                 title="Perkecil Zoom"
               >
-                <ZoomOut className="w-4 h-4" />
+                <ZoomOut className="w-4 h-4 mx-auto" />
                 <span className="text-[9px] font-bold block text-center">Perkecil</span>
               </button>
               <button
@@ -1054,22 +1808,186 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                 className="p-2 hover:bg-slate-100 text-slate-500 rounded-xl transition-colors cursor-pointer"
                 title="Reset Zoom (100%)"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-4 h-4 mx-auto" />
                 <span className="text-[9px] font-bold block text-center">Reset</span>
+              </button>
+              <div className="h-px bg-slate-200 my-0.5" />
+              <button
+                onClick={() => {
+                  setIsScale1to1Active((prev) => !prev);
+                  if (!isScale1to1Active) {
+                    setZoomLevel(1);
+                    showToast('Mode Skala 1:1 Aktif (Penggaris Metrik CM)');
+                  } else {
+                    showToast('Mode Skala 1:1 Nonaktif');
+                  }
+                }}
+                className={`p-2 rounded-xl transition-colors cursor-pointer relative ${
+                  isScale1to1Active
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                    : 'hover:bg-slate-100 text-slate-700'
+                }`}
+                title="Skala 1:1 Real Size (Penggaris Metrik CM)"
+              >
+                <Ruler className="w-4 h-4 mx-auto" />
+                <span className="text-[9px] font-bold block text-center">Skala 1:1</span>
+                {isScale1to1Active && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse" />
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowGarmentMeasurements((prev) => !prev);
+                  showToast(!showGarmentMeasurements ? 'Panduan Ukuran (LD x P x L) Aktif' : 'Panduan Ukuran Sembunyi');
+                }}
+                className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                  showGarmentMeasurements
+                    ? 'bg-blue-600 text-white font-bold'
+                    : 'hover:bg-slate-100 text-slate-700'
+                }`}
+                title="Panduan Ukuran Baju (LD x P x L)"
+              >
+                <Eye className="w-4 h-4 mx-auto" />
+                <span className="text-[9px] font-bold block text-center">Ukuran</span>
+              </button>
+
+              <div className="h-px bg-slate-200 my-0.5" />
+
+              {/* 3. Preview Depan & Belakang floating button */}
+              <button
+                onClick={() => setShowDualPreview(true)}
+                className="p-2 hover:bg-purple-50 text-purple-700 rounded-xl transition-colors cursor-pointer group"
+                title="Preview Gambar Tampak Depan & Belakang"
+              >
+                <Eye className="w-4 h-4 mx-auto text-purple-600 group-hover:scale-110 transition-transform" />
+                <span className="text-[9px] font-extrabold block text-center text-purple-800">Preview</span>
+              </button>
+
+              {/* 1. Full Screen Browser floating button */}
+              <button
+                onClick={toggleFullScreenBrowser}
+                className="p-2 hover:bg-sky-50 text-sky-700 rounded-xl transition-colors cursor-pointer group"
+                title={isFullScreenBrowser ? 'Keluar Full Screen Browser' : 'Tampilan Full Screen Browser'}
+              >
+                {isFullScreenBrowser ? (
+                  <Minimize2 className="w-4 h-4 mx-auto text-sky-600 group-hover:scale-110 transition-transform" />
+                ) : (
+                  <Maximize2 className="w-4 h-4 mx-auto text-sky-600 group-hover:scale-110 transition-transform" />
+                )}
+                <span className="text-[9px] font-extrabold block text-center text-sky-800">
+                  {isFullScreenBrowser ? 'Normal' : 'Full'}
+                </span>
+              </button>
+
+              {/* Mode Foto Katalog NSA / Vektor Flat */}
+              {productType === 'tshirt' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMode = mockupMode === 'vector' ? 'photo' : 'vector';
+                    setMockupMode(nextMode);
+                    showToast(nextMode === 'photo' ? 'Mode Foto Produk Asli NSA' : 'Mode Vektor 2D Flat (Tanpa Shadow)');
+                  }}
+                  className={`p-2 rounded-xl transition-colors cursor-pointer group ${
+                    mockupMode === 'vector'
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                      : 'hover:bg-slate-100 text-slate-700'
+                  }`}
+                  title={mockupMode === 'vector' ? 'Mode: Vektor Flat (Klik untuk Foto Produk NSA)' : 'Mode: Foto Produk Asli NSA (Klik untuk Vektor Flat)'}
+                >
+                  <Shirt className="w-4 h-4 mx-auto group-hover:scale-110 transition-transform text-slate-700" />
+                  <span className="text-[9px] font-extrabold block text-center">
+                    {mockupMode === 'vector' ? 'Vektor' : 'Foto'}
+                  </span>
+                </button>
+              )}
+
+              <button
+                onClick={() => handleOpenCaptureModal('guide')}
+                className="p-2 hover:bg-amber-50 text-amber-700 rounded-xl transition-colors cursor-pointer group"
+                title="Capture Gambar Real 1:1 Lengkap dengan Panduan Ukuran"
+              >
+                <Camera className="w-4 h-4 mx-auto text-amber-600 group-hover:scale-110 transition-transform" />
+                <span className="text-[9px] font-extrabold block text-center text-amber-800">Capture</span>
               </button>
             </div>
 
+            {/* Floating Quick Action Toolbar for Selected Element */}
+            {(() => {
+              const activeSelectedElement = elements.find((el) => el.id === selectedElementId && el.angle === activeAngle);
+              if (!activeSelectedElement) return null;
+              return (
+                <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-white/95 backdrop-blur-xs border border-slate-300 rounded-2xl px-3 py-1.5 shadow-lg text-xs animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                    <span className="font-bold text-slate-800 text-[11px] truncate max-w-[130px]">
+                      {activeSelectedElement.type === 'text'
+                        ? `Teks: "${activeSelectedElement.text || ''}"`
+                        : activeSelectedElement.type === 'image'
+                        ? 'Gambar / Logo'
+                        : `Clipart: ${activeSelectedElement.clipartName}`}
+                    </span>
+                  </div>
+
+                  {/* Quick Center Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleUpdateElementPosition(activeSelectedElement.id, 50, activeSelectedElement.y);
+                      showToast('Objek diposisikan tepat di tengah baju');
+                    }}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 rounded-lg font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Posisikan tepat di tengah horizontal (Center X: 50%)"
+                  >
+                    <AlignCenter className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Tengahkan</span>
+                  </button>
+
+                  {/* Quick Delete Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeleteElement(activeSelectedElement.id);
+                      showToast('Objek berhasil dihapus dari baju');
+                    }}
+                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Hapus objek ini (Shortcut: tombol Delete / Backspace)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Hapus Objek</span>
+                  </button>
+                </div>
+              );
+            })()}
+
             {/* Canvas Interactive Center */}
-            <div className="flex-1 flex items-center justify-center p-6 overflow-hidden">
+            <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
               <ApparelVectorMockup
                 productType={productType}
                 colorHex={selectedColor.hex}
+                colorName={selectedColor.name}
+                imageMockupUrl={selectedColor.imageMockupUrl}
+                mockupMode={mockupMode}
                 angle={activeAngle}
                 showPrintAreaGuide={showPrintAreaGuide}
                 elements={elements}
                 selectedElementId={selectedElementId}
-                onSelectElement={setSelectedElementId}
+                onSelectElement={(id) => {
+                  setSelectedElementId(id);
+                  const found = elements.find((el) => el.id === id);
+                  if (found?.type === 'image') {
+                    setActiveTool('upload');
+                  }
+                }}
+                onUpdateElementPosition={handleUpdateElementPosition}
+                onUpdateElementSize={handleUpdateElementSize}
+                onUpdateElement={handleUpdateElement}
+                onDeleteElement={handleDeleteElement}
                 scale={zoomLevel}
+                selectedSize={selectedSize}
+                showGarmentMeasurements={showGarmentMeasurements}
+                isScale1to1={isScale1to1Active}
               />
             </div>
 
@@ -1085,10 +2003,23 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
           {/* =====================================================================
               4. RIGHTMOST VIEW ANGLE THUMBNAILS (matching Images 2, 3, 4)
           ===================================================================== */}
-          <div className="w-28 bg-white border-l border-slate-200 flex flex-col items-center py-4 px-2 gap-3 shrink-0 z-10 overflow-y-auto">
+          <div className="w-28 bg-white border-l border-slate-200 flex flex-col items-center py-3 px-2 gap-2.5 shrink-0 z-10 overflow-y-auto">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
               Sudut Pandang
             </span>
+
+            {/* Quick Preview 2 Sisi Button */}
+            <button
+              type="button"
+              onClick={() => setShowDualPreview(true)}
+              className="w-full py-2 px-1 rounded-2xl border-2 border-purple-200 hover:border-purple-600 bg-purple-50 hover:bg-purple-100 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all shadow-xs group"
+              title="Lihat Gambar Depan dan Belakang Sekaligus"
+            >
+              <Eye className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-extrabold text-purple-950 text-center leading-tight">
+                Preview 2 Sisi
+              </span>
+            </button>
 
             {[
               { id: 'depan', label: 'Depan' },
@@ -1114,6 +2045,9 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
                       <ApparelVectorMockup
                         productType={productType}
                         colorHex={selectedColor.hex}
+                        colorName={selectedColor.name}
+                        imageMockupUrl={selectedColor.imageMockupUrl}
+                        mockupMode={mockupMode}
                         angle={angleItem.id as ViewAngle}
                         showPrintAreaGuide={false}
                         elements={elements}
@@ -1154,6 +2088,38 @@ export const DesignStudioModal: React.FC<DesignStudioModalProps> = ({
           setProductType(newType);
           setShowProductSelector(false);
           showToast(`Produk diganti ke: ${PRODUCT_CATALOG[newType].title}`);
+        }}
+      />
+
+      {/* =========================================================================
+          CAPTURE GAMBAR SKALA 1:1 & PANDUAN UKURAN MODAL
+      ========================================================================= */}
+      <CaptureModal
+        isOpen={showCaptureModal}
+        onClose={() => setShowCaptureModal(false)}
+        capturedImageUrl={capturedImageMockup}
+        capturedImageUrlWithGuide={capturedImageGuide}
+        productConfig={currentConfig}
+        selectedColor={selectedColor}
+        selectedSize={selectedSize}
+        activeAngle={activeAngle}
+        onCaptureAgain={handleCaptureAgain}
+        isCapturing={isCapturingImage}
+      />
+
+      {/* =========================================================================
+          3. DUAL PREVIEW MODAL (PREVIEW GAMBAR DEPAN & BELAKANG)
+      ========================================================================= */}
+      <DualPreviewModal
+        isOpen={showDualPreview}
+        onClose={() => setShowDualPreview(false)}
+        productConfig={currentConfig}
+        selectedColor={selectedColor}
+        selectedSize={selectedSize}
+        elements={elements}
+        onSelectAngleAndEdit={(angle) => {
+          setActiveAngle(angle);
+          setShowDualPreview(false);
         }}
       />
     </div>

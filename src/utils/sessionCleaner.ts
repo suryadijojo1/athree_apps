@@ -10,12 +10,9 @@ export function isPageRefreshed(): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    // 1. Session Storage markers (survives reload in the same browser tab)
+    // 1. Session Storage explicit refresh marker
     if (typeof sessionStorage !== 'undefined') {
       if (sessionStorage.getItem('athree_page_refreshed') === 'true') {
-        return true;
-      }
-      if (sessionStorage.getItem('athree_tab_has_loaded') === 'true') {
         return true;
       }
     }

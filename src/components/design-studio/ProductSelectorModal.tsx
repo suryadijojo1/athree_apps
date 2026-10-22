@@ -118,51 +118,51 @@ export const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                 >
                   {/* Vector Silhouette Preview */}
                   {p.type === 'tshirt' && (
-                    <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-md">
+                    <svg viewBox="0 0 200 200" className="w-full h-full">
                       <path
                         d="M 70 30 C 85 45, 115 45, 130 30 L 165 42 L 185 75 L 160 95 L 150 80 L 150 175 L 50 175 L 50 80 L 40 95 L 15 75 L 35 42 Z"
                         fill={p.previewColor}
                         stroke="#111827"
-                        strokeOpacity="0.2"
-                        strokeWidth="1.5"
+                        strokeOpacity="0.15"
+                        strokeWidth="1.2"
                       />
-                      <path d="M 70 30 C 85 48, 115 48, 130 30" stroke="#111827" strokeOpacity="0.3" strokeWidth="2" fill="none" />
+                      <path d="M 70 30 C 85 48, 115 48, 130 30" stroke="#111827" strokeOpacity="0.2" strokeWidth="1.5" fill="none" />
                     </svg>
                   )}
 
                   {p.type === 'hoodie' && (
-                    <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-md">
+                    <svg viewBox="0 0 200 200" className="w-full h-full">
                       <path
                         d="M 65 35 C 80 45, 120 45, 135 35 L 170 50 L 190 100 L 165 115 L 155 95 L 155 180 L 45 180 L 45 95 L 35 115 L 10 100 L 30 50 Z"
                         fill={p.previewColor}
                         stroke="#111827"
-                        strokeOpacity="0.2"
-                        strokeWidth="1.5"
+                        strokeOpacity="0.15"
+                        strokeWidth="1.2"
                       />
                       {/* Hood */}
-                      <path d="M 65 35 C 55 15, 85 8, 100 8 C 115 8, 145 15, 135 35 C 120 55, 80 55, 65 35 Z" fill={p.previewColor} stroke="#111827" strokeOpacity="0.3" strokeWidth="1.5" />
+                      <path d="M 65 35 C 55 15, 85 8, 100 8 C 115 8, 145 15, 135 35 C 120 55, 80 55, 65 35 Z" fill={p.previewColor} stroke="#111827" strokeOpacity="0.2" strokeWidth="1.2" />
                       {/* Drawstrings */}
                       <line x1="90" y1="50" x2="88" y2="85" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
                       <line x1="110" y1="50" x2="112" y2="85" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
                       {/* Kangaroo pocket */}
-                      <path d="M 65 125 L 135 125 L 145 170 L 55 170 Z" fill="#000000" fillOpacity="0.12" stroke="#111827" strokeOpacity="0.2" strokeWidth="1.2" />
+                      <path d="M 65 125 L 135 125 L 145 170 L 55 170 Z" fill={p.previewColor} stroke="#111827" strokeOpacity="0.2" strokeWidth="1.2" />
                     </svg>
                   )}
 
                   {p.type === 'polo' && (
-                    <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-md">
+                    <svg viewBox="0 0 200 200" className="w-full h-full">
                       <path
                         d="M 70 30 C 85 40, 115 40, 130 30 L 165 42 L 182 78 L 160 95 L 150 80 L 150 175 L 50 175 L 50 80 L 40 95 L 18 78 L 35 42 Z"
                         fill={p.previewColor}
                         stroke="#111827"
-                        strokeOpacity="0.2"
-                        strokeWidth="1.5"
+                        strokeOpacity="0.15"
+                        strokeWidth="1.2"
                       />
                       {/* Polo Collar */}
-                      <path d="M 70 30 C 76 34, 86 36, 92 45 L 90 60 C 80 55, 74 42, 70 30 Z" fill={p.previewColor} stroke="#111827" strokeOpacity="0.3" strokeWidth="1.2" />
-                      <path d="M 130 30 C 124 34, 114 36, 108 45 L 110 60 C 120 55, 126 42, 130 30 Z" fill={p.previewColor} stroke="#111827" strokeOpacity="0.3" strokeWidth="1.2" />
+                      <path d="M 70 30 C 76 34, 86 36, 92 45 L 90 60 C 80 55, 74 42, 70 30 Z" fill={p.previewColor} stroke="#111827" strokeOpacity="0.2" strokeWidth="1" />
+                      <path d="M 130 30 C 124 34, 114 36, 108 45 L 110 60 C 120 55, 126 42, 130 30 Z" fill={p.previewColor} stroke="#111827" strokeOpacity="0.2" strokeWidth="1" />
                       {/* Placket */}
-                      <rect x="94" y="44" width="12" height="38" rx="1" fill={p.previewColor} stroke="#111827" strokeOpacity="0.25" strokeWidth="1" />
+                      <rect x="94" y="44" width="12" height="38" rx="1" fill={p.previewColor} stroke="#111827" strokeOpacity="0.2" strokeWidth="1" />
                       <circle cx="100" cy="50" r="1.5" fill="#E5E7EB" />
                       <circle cx="100" cy="60" r="1.5" fill="#E5E7EB" />
                       <circle cx="100" cy="70" r="1.5" fill="#E5E7EB" />
@@ -170,7 +170,7 @@ export const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                   )}
 
                   {p.type === 'jersey' && (
-                    <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-md">
+                    <svg viewBox="0 0 200 200" className="w-full h-full">
                       <path
                         d="M 72 30 C 85 42, 115 42, 128 30 L 165 42 L 185 75 L 160 95 L 150 80 L 150 175 L 50 175 L 50 80 L 40 95 L 15 75 L 35 42 Z"
                         fill={p.previewColor}

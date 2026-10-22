@@ -249,14 +249,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     </div>
                     <div className="text-left">
                       <span className="block font-black text-xs text-white tracking-tight">
-                        🎨 Design Studio (Bebas Akses)
+                        🎨 Aplikasi Desain Kaos (Skala 1:1)
                       </span>
                       <span className="block text-[10px] text-purple-200 font-normal">
-                        Desain Kaos T-Shirt, Polo, Hoodie, Jersey
+                        Capture Gambar, Panduan Ukuran &bull; Bebas Akses
                       </span>
                     </div>
                   </div>
-                  <span className="text-[10px] bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0 shadow-xs">
+                  <span className="text-[10px] bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0 shadow-xs">
                     <Sparkles className="w-2.5 h-2.5 fill-slate-950 text-slate-950" />
                     Tanpa Login
                   </span>

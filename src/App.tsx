@@ -141,9 +141,33 @@ const shouldApplyRemoteShift = (remoteShift: CashierShift, prevShift: CashierShi
     return true;
   }
 
-  // RULE 2: If remote shift is CLOSED, always respect closure!
+  // RULE 2: If local shift is actively OPEN and remote shift is CLOSED:
+  // Only accept remote closure if the remote closure is demonstrably newer than when this shift was opened!
   if (prevShift.isOpen && !remoteShift.isOpen) {
-    console.log('Real-Time Sync: Remote shift is CLOSED, transitioning local cashier to CLOSED');
+    const localStartTs = getShiftTimestamp(prevShift);
+    const now = Date.now();
+
+    // Guard 1: Grace period - do not let background network responses or stale snapshots close a freshly opened shift (minimum 3 minutes)
+    if (localStartTs > 0 && now - localStartTs < 3 * 60 * 1000) {
+      console.log('Real-Time Protection: Ignored remote closed shift during grace period of newly opened local shift.');
+      return false;
+    }
+
+    // Guard 2: If remote shift has an end time / timestamp, ensure it actually closed AFTER this local shift was opened
+    const remoteEndTs = remoteShift.endTimestamp || (remoteShift.endTime ? parseDateString(remoteShift.endTime) : 0);
+    if (localStartTs > 0 && remoteEndTs > 0 && remoteEndTs <= localStartTs) {
+      console.log('Real-Time Protection: Ignored stale remote closed shift (ended before current shift was opened).');
+      return false;
+    }
+
+    // Guard 3: If remote shift has an older start time than current shift
+    const remoteStartTs = getShiftTimestamp(remoteShift);
+    if (localStartTs > 0 && remoteStartTs > 0 && remoteStartTs < localStartTs) {
+      console.log('Real-Time Protection: Ignored outdated remote closed shift with older start timestamp.');
+      return false;
+    }
+
+    console.log('Real-Time Sync: Remote shift is genuinely CLOSED with newer timestamp, transitioning local cashier to CLOSED');
     return true;
   }
 
@@ -472,7 +496,10 @@ export default function App() {
   });
 
   const [shift, setShift] = useState<CashierShift>(() => {
-    const saved = localStorage.getItem('athree_shift') || localStorage.getItem('athree_shift_active_persistent');
+    let saved = localStorage.getItem('athree_shift_active_persistent');
+    if (!saved) {
+      saved = localStorage.getItem('athree_shift');
+    }
     const todayFormatted = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 
     if (saved) {
@@ -564,18 +591,17 @@ export default function App() {
 
   // Enforce access control:
   // 1. User Design hanya bisa mengakses Design Studio (tampilan lain tidak bisa diakses)
-  // 2. Menu Design Studio hanya ada pada user Design (user lain tidak bisa akses menu design studio)
+  // 2. Menu Design Studio dapat diakses bebas oleh semua role (kasir, admin, atau tanpa login)
   useEffect(() => {
     if (currentUser.role === 'design') {
       if (activeTab !== 'design-studio') {
         setActiveTab('design-studio');
       }
-    } else {
-      if (activeTab === 'design-studio') {
-        setActiveTab('pos');
-      }
     }
   }, [currentUser.role, activeTab]);
+
+  // Guest Design Studio Mode (Penggunaan aplikasi tanpa login)
+  const [isGuestDesignStudioOpen, setIsGuestDesignStudioOpen] = useState<boolean>(false);
 
   // If currently on drive tab but user is non-admin and cashier access is disabled, redirect to pos
   useEffect(() => {
@@ -3008,14 +3034,30 @@ export default function App() {
     }).catch((err) => console.warn('Sync restored data to server error:', err));
   };
 
-  // 0. INITIAL SCREEN: LOGIN SCREEN (Matches uploaded fluid wave image)
+  // 0. INITIAL SCREEN: LOGIN SCREEN OR GUEST DESIGN STUDIO (Penggunaan tanpa login)
   if (!isAuthenticated) {
+    if (isGuestDesignStudioOpen) {
+      return (
+        <div className="flex h-screen w-screen bg-slate-950 overflow-hidden font-sans text-slate-800 antialiased select-none">
+          <DesignStudioModal
+            isOpen={true}
+            onClose={() => setIsGuestDesignStudioOpen(false)}
+            isGuestMode={true}
+            initialProductType="tshirt"
+            onSwitchUser={() => setIsGuestDesignStudioOpen(false)}
+            onLogout={() => setIsGuestDesignStudioOpen(false)}
+          />
+        </div>
+      );
+    }
+
     return (
       <LoginScreen
         users={users}
         onLogin={handleLogin}
         sessionTimeoutNotice={sessionTimeoutNotice}
         onClearTimeoutNotice={clearSessionTimeoutNotice}
+        onOpenDesignStudio={() => setIsGuestDesignStudioOpen(true)}
       />
     );
   }
