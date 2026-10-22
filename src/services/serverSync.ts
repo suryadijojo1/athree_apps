@@ -670,6 +670,44 @@ export async function fetchServerDatabase(): Promise<{
 }
 
 /**
+ * Directly and atomically persist a single transaction to the server master database
+ */
+export async function saveSingleTransactionToServer(
+  tx: Transaction
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const candidateEndpoints = [
+      buildApiUrl('/api/transactions/create'),
+      '/api/transactions/create',
+      buildApiUrl('/api/transactions/upsert'),
+      '/api/transactions/upsert'
+    ];
+    for (const ep of candidateEndpoints) {
+      try {
+        const res = await verboseFetch(
+          ep,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Client-Id': CLIENT_ID
+            },
+            body: JSON.stringify({ transaction: tx })
+          },
+          `SaveSingleTransaction (${tx.invoiceNo})`
+        );
+        if (res.ok) {
+          return { success: true };
+        }
+      } catch {}
+    }
+    return { success: false, error: 'Endpoint transactions unavailable' };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Save full database payload to the central Express server & replicated cloud storage
  */
 export interface SaveDatabaseResult {

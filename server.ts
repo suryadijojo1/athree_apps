@@ -419,30 +419,28 @@ async function startServer() {
         '#INV/00008'
       ]);
 
-      // Filter out deleted & phantom IDs from incoming payload
-      if (Array.isArray(payload.transactions)) {
-        payload.transactions = payload.transactions.filter(
-          (tx: any) => tx && tx.id && !phantomIds.has(tx.id) && tx.invoiceNo && !dummyInvoices.has(tx.invoiceNo) && !deletedIds.has(tx.id)
-        );
-      } else {
-        payload.transactions = [];
-      }
-
-      if (currentDbState?.transactions?.length > 0) {
-        if (payload.transactions.length === 0 && deletedIds.size === 0) {
-          console.warn('Blocked database wipe: incoming payload has 0 transactions while server has', currentDbState.transactions.length);
-          payload.transactions = currentDbState.transactions.filter(
-            (tx: any) => tx && tx.id && !phantomIds.has(tx.id) && tx.invoiceNo && !dummyInvoices.has(tx.invoiceNo) && !deletedIds.has(tx.id)
-          );
-          payload.isRealData = true;
-        } else {
-          // Sort by latest date
-          payload.transactions = payload.transactions.sort(
-            (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-          );
-          payload.isRealData = true;
+      // Smart Merge of transactions: Never lose existing server transactions unless explicitly deleted
+      const txMap = new Map<string, any>();
+      // 1. Keep existing server transactions (unless deleted or phantom)
+      if (Array.isArray(currentDbState?.transactions)) {
+        for (const tx of currentDbState.transactions) {
+          if (tx && tx.id && !phantomIds.has(tx.id) && tx.invoiceNo && !dummyInvoices.has(tx.invoiceNo) && !deletedIds.has(tx.id)) {
+            txMap.set(tx.id, tx);
+          }
         }
       }
+      // 2. Overlay incoming transactions (updates or new additions)
+      if (Array.isArray(payload.transactions)) {
+        for (const tx of payload.transactions) {
+          if (tx && tx.id && !phantomIds.has(tx.id) && tx.invoiceNo && !dummyInvoices.has(tx.invoiceNo) && !deletedIds.has(tx.id)) {
+            txMap.set(tx.id, tx);
+          }
+        }
+      }
+      payload.transactions = Array.from(txMap.values()).sort(
+        (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+      );
+      payload.isRealData = true;
 
       // Safeguard: Retain existing real products if incoming payload only has default mock products or empty
       if (currentDbState?.products?.length > 0) {
@@ -632,6 +630,71 @@ async function startServer() {
     app.put(`${ep}/`, handleSaveDatabaseRequest);
     app.patch(`${ep}/`, handleSaveDatabaseRequest);
   }
+
+  // Dedicated API endpoint for instant single transaction saving/upsert
+  const handleSaveSingleTransaction = (req: express.Request, res: express.Response) => {
+    try {
+      const tx = req.body?.transaction || req.body;
+      if (!tx || !tx.id || !tx.invoiceNo) {
+        return res.status(400).json({ error: 'Valid transaction data is required' });
+      }
+
+      if (!currentDbState) {
+        currentDbState = {
+          products: [],
+          transactions: [],
+          cashFlowRecords: [],
+          shiftHistory: [],
+          kaosStocks: [],
+          stockMovements: [],
+          customers: [],
+          users: [],
+          isRealData: true
+        };
+      }
+
+      if (!Array.isArray(currentDbState.transactions)) {
+        currentDbState.transactions = [];
+      }
+
+      const txMap = new Map<string, any>();
+      for (const t of currentDbState.transactions) {
+        if (t && t.id) txMap.set(t.id, t);
+      }
+      txMap.set(tx.id, tx);
+
+      currentDbState.transactions = Array.from(txMap.values()).sort(
+        (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+      );
+      currentDbState.lastUpdated = new Date().toISOString();
+      currentDbState.isRealData = true;
+
+      // Atomically persist to disk
+      const dir = path.dirname(DB_FILE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(currentDbState, null, 2), 'utf-8');
+
+      // Broadcast update to all connected clients
+      broadcastDatabaseUpdate(currentDbState);
+
+      res.json({
+        success: true,
+        message: 'Transaction saved successfully',
+        transactionId: tx.id,
+        invoiceNo: tx.invoiceNo,
+        totalTransactions: currentDbState.transactions.length
+      });
+    } catch (err: any) {
+      console.error('Error saving transaction:', err);
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  app.post('/api/transactions/create', handleSaveSingleTransaction);
+  app.post('/api/transactions/upsert', handleSaveSingleTransaction);
+  app.post('/api/transactions', handleSaveSingleTransaction);
 
   // Real-time SQL Analysis Endpoint
   app.post('/api/sql/analyze', (req, res) => {

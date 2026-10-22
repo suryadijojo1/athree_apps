@@ -94,6 +94,7 @@ import {
   fetchServerDatabase,
   fetchCurrentShiftFromServer,
   saveServerDatabase,
+  saveSingleTransactionToServer,
   saveServerBackupSnapshot,
   subscribeToServerEvents,
   startLiveShiftSync,
@@ -375,7 +376,9 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const filtered = parsed.filter((t: any) => t && t.id && !phantomIds.has(t.id) && t.invoiceNo && !t.invoiceNo.includes('0000'));
+          const filtered = parsed.filter(
+            (t: any) => t && t.id && !phantomIds.has(t.id) && t.invoiceNo && t.invoiceNo !== '#INV/00000' && t.invoiceNo !== '#INV/00001'
+          );
           if (filtered.length > 0) return sortTransactionsByLatestDate(filtered);
         }
       } catch {}
@@ -717,6 +720,7 @@ export default function App() {
         } catch {}
         const deletedSet = new Set(deletedTxIds);
 
+        // Include locally tracked active state
         for (const t of localTx) {
           if (t && t.id && !phantomIds.has(t.id) && !deletedSet.has(t.id)) {
             if (!txMap.has(t.id)) {
@@ -724,6 +728,21 @@ export default function App() {
             }
           }
         }
+
+        // Include persistent local backup in case of page refresh or tab re-opening
+        try {
+          const backupRaw = localStorage.getItem('athree_transactions_persistent_backup');
+          if (backupRaw) {
+            const parsedBackup: Transaction[] = JSON.parse(backupRaw);
+            if (Array.isArray(parsedBackup)) {
+              for (const t of parsedBackup) {
+                if (t && t.id && !phantomIds.has(t.id) && !deletedSet.has(t.id) && !txMap.has(t.id)) {
+                  txMap.set(t.id, t);
+                }
+              }
+            }
+          }
+        } catch {}
 
         const merged = Array.from(txMap.values());
         const sorted = sortTransactionsByLatestDate(merged);
@@ -2055,86 +2074,96 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    // 1. Deduct Stock for each master product & record Stock Movement
+    // 1. Deduct Stock for each master product synchronously
     const newMovements: StockMovement[] = [];
-    setProducts((prevProducts) => {
-      return prevProducts.map((prod) => {
-        const itemSold = newTx.items.find((i) => i.productId === prod.id);
-        if (itemSold) {
-          const newQty = Math.max(0, prod.stock - itemSold.quantity);
-          newMovements.push({
-            id: `sm-${Date.now()}-${prod.id}`,
-            productId: prod.id,
-            productName: prod.name,
-            sku: prod.sku,
-            type: 'SALE',
-            qty: itemSold.quantity,
-            prevStock: prod.stock,
-            newStock: newQty,
-            date: newTx.date,
-            reason: `Penjualan Kasir ${newTx.invoiceNo}`,
-            operatorName: currentUser.name,
-            referenceNo: newTx.invoiceNo
-          });
-          const updatedProd = { ...prod, stock: newQty };
-          saveProductToFirestore(updatedProd).catch(() => {});
-          return updatedProd;
-        }
-        return prod;
-      });
+    const baseProducts = (latestStateRef.current.products && latestStateRef.current.products.length > 0)
+      ? latestStateRef.current.products
+      : products;
+
+    const nextProducts = baseProducts.map((prod) => {
+      const itemSold = newTx.items.find((i) => i.productId === prod.id);
+      if (itemSold) {
+        const newQty = Math.max(0, prod.stock - itemSold.quantity);
+        newMovements.push({
+          id: `sm-${Date.now()}-${prod.id}`,
+          productId: prod.id,
+          productName: prod.name,
+          sku: prod.sku,
+          type: 'SALE',
+          qty: itemSold.quantity,
+          prevStock: prod.stock,
+          newStock: newQty,
+          date: newTx.date,
+          reason: `Penjualan Kasir ${newTx.invoiceNo}`,
+          operatorName: currentUser.name,
+          referenceNo: newTx.invoiceNo
+        });
+        const updatedProd = { ...prod, stock: newQty };
+        saveProductToFirestore(updatedProd).catch(() => {});
+        return updatedProd;
+      }
+      return prod;
     });
 
-    // 2. Deduct Kaos Polos stock for items with color & size
-    setKaosStocks((prevKaos) => {
-      const { updatedStocks, movements } = deductKaosStock(
-        prevKaos,
-        newTx.items,
-        newTx.invoiceNo,
-        currentUser.name,
-        'Penjualan'
-      );
-      if (movements.length > 0) {
-        newMovements.push(...movements);
-      }
-      if (updatedStocks && updatedStocks.length > 0) {
-        saveMultipleKaosStocksToFirestore(updatedStocks).catch(() => {});
-      }
-      return updatedStocks;
-    });
+    setProducts(nextProducts);
+    localStorage.setItem('athree_products', JSON.stringify(nextProducts));
+    latestStateRef.current.products = nextProducts;
 
+    // 2. Deduct Kaos Polos stock synchronously for items with color & size
+    const baseKaos = (latestStateRef.current.kaosStocks && latestStateRef.current.kaosStocks.length > 0)
+      ? latestStateRef.current.kaosStocks
+      : kaosStocks;
+
+    const { updatedStocks: nextKaosStocks, movements: kaosMovements } = deductKaosStock(
+      baseKaos,
+      newTx.items,
+      newTx.invoiceNo,
+      currentUser.name,
+      'Penjualan'
+    );
+    if (kaosMovements.length > 0) {
+      newMovements.push(...kaosMovements);
+    }
+    if (nextKaosStocks && nextKaosStocks.length > 0) {
+      saveMultipleKaosStocksToFirestore(nextKaosStocks).catch(() => {});
+    }
+    setKaosStocks(nextKaosStocks);
+    localStorage.setItem('athree_kaos_stocks', JSON.stringify(nextKaosStocks));
+    latestStateRef.current.kaosStocks = nextKaosStocks;
+
+    // 3. Record stock movements synchronously
+    const baseMovements = latestStateRef.current.stockMovements || stockMovements;
+    const nextMovements = [...newMovements, ...baseMovements];
+    setStockMovements(nextMovements);
+    localStorage.setItem('athree_stock_movements', JSON.stringify(nextMovements));
+    latestStateRef.current.stockMovements = nextMovements;
     if (newMovements.length > 0) {
-      setStockMovements((prev) => [...newMovements, ...prev]);
+      saveMultipleStockMovementsToFirestore(newMovements).catch(() => {});
     }
 
-    // 3. Add to transactions list with multi-layer synchronous persistence
-    const updatedTransactions = sortTransactionsByLatestDate([newTx, ...transactions]);
+    // 4. Add to transactions list with multi-layer synchronous persistence
+    const baseTransactions = (latestStateRef.current.transactions && latestStateRef.current.transactions.length > 0)
+      ? latestStateRef.current.transactions
+      : transactions;
+    const filteredBase = baseTransactions.filter((t) => t.id !== newTx.id && t.invoiceNo !== newTx.invoiceNo);
+    const updatedTransactions = sortTransactionsByLatestDate([newTx, ...filteredBase]);
+
     setTransactions(updatedTransactions);
     localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
     localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
     latestStateRef.current.transactions = updatedTransactions;
+
+    // Direct atomic write to server transaction endpoint
+    saveSingleTransactionToServer(newTx).catch((err) =>
+      console.warn('Direct server transaction endpoint error:', err)
+    );
 
     // Direct Firestore write backup
     saveTransactionToFirestore(newTx).catch((err) =>
       console.warn('Direct save transaction error:', err)
     );
 
-    // Atomic Firestore checkout transaction
-    runFirestoreCheckoutTransaction({
-      transaction: newTx,
-      items: newTx.items.map((it) => ({
-        productId: it.productId,
-        quantity: it.quantity,
-        kaosColor: it.kaosColor,
-        kaosSize: it.kaosSize
-      })),
-      isCashPayment: newTx.paymentMethod === 'Tunai',
-      cashAmountReceived: newTx.amountPaid,
-      stockMovements: newMovements
-    }).catch((err) => {
-      console.warn('Firestore Checkout Transaction warning (fallback to direct save):', err);
-    });
-
-    // 4. Update shift balances (only actual amount received enters the cash drawer)
+    // 5. Update shift balances (only actual amount received enters the cash drawer)
     const actualReceived = newTx.amountPaid;
     const isReceivable = Boolean(newTx.remainingAmount && newTx.remainingAmount > 0);
 
@@ -2165,17 +2194,17 @@ export default function App() {
     }
     latestStateRef.current.shift = updatedShift;
 
-    // 5. Instantly save to Central Server Cloud SQL so invoice is permanently stored
+    // 6. Instantly save to Central Server Cloud SQL so invoice is permanently stored
     saveServerDatabase(
       {
-        products: latestStateRef.current.products,
+        products: nextProducts,
         categories: latestStateRef.current.categories,
         transactions: updatedTransactions,
         cashFlowRecords: latestStateRef.current.cashFlowRecords,
         shiftHistory: latestStateRef.current.shiftHistory,
         currentShift: updatedShift,
-        kaosStocks: latestStateRef.current.kaosStocks,
-        stockMovements: latestStateRef.current.stockMovements,
+        kaosStocks: nextKaosStocks,
+        stockMovements: nextMovements,
         customers: latestStateRef.current.customers,
         users: latestStateRef.current.users,
         salesList: latestStateRef.current.salesList,
@@ -2187,7 +2216,7 @@ export default function App() {
       }
     ).catch((err) => console.warn('Sync checkout to server error:', err));
 
-    // 6. Broadcast to other open tabs
+    // 7. Broadcast to other open tabs
     try {
       const bc = new BroadcastChannel('athree_cross_tab_sync');
       bc.postMessage({
@@ -2198,7 +2227,7 @@ export default function App() {
       bc.close();
     } catch {}
 
-    // 7. Show success & receipt modal
+    // 8. Show success & receipt modal
     setSuccessTx(newTx);
   };
 
@@ -2211,75 +2240,104 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    // Deduct stock if physical inventory
+    // 1. Deduct stock synchronously if physical inventory
     const newMovements: StockMovement[] = [];
-    setProducts((prevProducts) => {
-      return prevProducts.map((prod) => {
-        const itemSold = newTx.items.find((i) => i.productId === prod.id);
-        if (itemSold) {
-          const newQty = Math.max(0, prod.stock - itemSold.quantity);
-          newMovements.push({
-            id: `sm-${Date.now()}-${prod.id}`,
-            productId: prod.id,
-            productName: prod.name,
-            sku: prod.sku,
-            type: 'SALE',
-            qty: itemSold.quantity,
-            prevStock: prod.stock,
-            newStock: newQty,
-            date: newTx.date,
-            reason: `Antrean Produksi ${newTx.invoiceNo} (Jatuh Tempo: ${newTx.dueDate})`,
-            operatorName: currentUser.name,
-            referenceNo: newTx.invoiceNo
-          });
-          const updatedProd = { ...prod, stock: newQty };
-          saveProductToFirestore(updatedProd).catch(() => {});
-          return updatedProd;
-        }
-        return prod;
-      });
+    const baseProducts = (latestStateRef.current.products && latestStateRef.current.products.length > 0)
+      ? latestStateRef.current.products
+      : products;
+
+    const nextProducts = baseProducts.map((prod) => {
+      const itemSold = newTx.items.find((i) => i.productId === prod.id);
+      if (itemSold) {
+        const newQty = Math.max(0, prod.stock - itemSold.quantity);
+        newMovements.push({
+          id: `sm-${Date.now()}-${prod.id}`,
+          productId: prod.id,
+          productName: prod.name,
+          sku: prod.sku,
+          type: 'SALE',
+          qty: itemSold.quantity,
+          prevStock: prod.stock,
+          newStock: newQty,
+          date: newTx.date,
+          reason: `Antrean Produksi ${newTx.invoiceNo} (Jatuh Tempo: ${newTx.dueDate})`,
+          operatorName: currentUser.name,
+          referenceNo: newTx.invoiceNo
+        });
+        const updatedProd = { ...prod, stock: newQty };
+        saveProductToFirestore(updatedProd).catch(() => {});
+        return updatedProd;
+      }
+      return prod;
     });
 
-    // Deduct Kaos Polos stock
-    setKaosStocks((prevKaos) => {
-      const { updatedStocks, movements } = deductKaosStock(
-        prevKaos,
-        newTx.items,
-        newTx.invoiceNo,
-        currentUser.name,
-        'Pesanan Dikerjakan'
-      );
-      if (movements.length > 0) {
-        newMovements.push(...movements);
-      }
-      if (updatedStocks && updatedStocks.length > 0) {
-        saveMultipleKaosStocksToFirestore(updatedStocks).catch(() => {});
-      }
-      return updatedStocks;
-    });
+    setProducts(nextProducts);
+    localStorage.setItem('athree_products', JSON.stringify(nextProducts));
+    latestStateRef.current.products = nextProducts;
 
+    // 2. Deduct Kaos Polos stock synchronously
+    const baseKaos = (latestStateRef.current.kaosStocks && latestStateRef.current.kaosStocks.length > 0)
+      ? latestStateRef.current.kaosStocks
+      : kaosStocks;
+
+    const { updatedStocks: nextKaosStocks, movements: kaosMovements } = deductKaosStock(
+      baseKaos,
+      newTx.items,
+      newTx.invoiceNo,
+      currentUser.name,
+      'Pesanan Dikerjakan'
+    );
+    if (kaosMovements.length > 0) {
+      newMovements.push(...kaosMovements);
+    }
+    if (nextKaosStocks && nextKaosStocks.length > 0) {
+      saveMultipleKaosStocksToFirestore(nextKaosStocks).catch(() => {});
+    }
+    setKaosStocks(nextKaosStocks);
+    localStorage.setItem('athree_kaos_stocks', JSON.stringify(nextKaosStocks));
+    latestStateRef.current.kaosStocks = nextKaosStocks;
+
+    // 3. Record stock movements synchronously
+    const baseMovements = latestStateRef.current.stockMovements || stockMovements;
+    const nextMovements = [...newMovements, ...baseMovements];
+    setStockMovements(nextMovements);
+    localStorage.setItem('athree_stock_movements', JSON.stringify(nextMovements));
+    latestStateRef.current.stockMovements = nextMovements;
     if (newMovements.length > 0) {
-      setStockMovements((prev) => [...newMovements, ...prev]);
+      saveMultipleStockMovementsToFirestore(newMovements).catch(() => {});
     }
 
-    const updatedTransactions = sortTransactionsByLatestDate([newTx, ...transactions]);
+    // 4. Add to transactions list with multi-layer synchronous persistence
+    const baseTransactions = (latestStateRef.current.transactions && latestStateRef.current.transactions.length > 0)
+      ? latestStateRef.current.transactions
+      : transactions;
+    const filteredBase = baseTransactions.filter((t) => t.id !== newTx.id && t.invoiceNo !== newTx.invoiceNo);
+    const updatedTransactions = sortTransactionsByLatestDate([newTx, ...filteredBase]);
+
     setTransactions(updatedTransactions);
     localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
     localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
     latestStateRef.current.transactions = updatedTransactions;
 
+    // Direct atomic write to server transaction endpoint
+    saveSingleTransactionToServer(newTx).catch((err) =>
+      console.warn('Direct server transaction endpoint error:', err)
+    );
+
+    // Direct Firestore write backup
     saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync pending transaction error:', err));
 
+    // 5. Instantly save full database state to Central Server
     saveServerDatabase(
       {
-        products: latestStateRef.current.products,
+        products: nextProducts,
         categories: latestStateRef.current.categories,
         transactions: updatedTransactions,
         cashFlowRecords: latestStateRef.current.cashFlowRecords,
         shiftHistory: latestStateRef.current.shiftHistory,
         currentShift: latestStateRef.current.shift,
-        kaosStocks: latestStateRef.current.kaosStocks,
-        stockMovements: latestStateRef.current.stockMovements,
+        kaosStocks: nextKaosStocks,
+        stockMovements: nextMovements,
         customers: latestStateRef.current.customers,
         users: latestStateRef.current.users,
         salesList: latestStateRef.current.salesList,
@@ -2290,6 +2348,17 @@ export default function App() {
         source: 'pending-order'
       }
     ).catch((err) => console.warn('Sync pending order to server error:', err));
+
+    // 6. Broadcast to other open tabs
+    try {
+      const bc = new BroadcastChannel('athree_cross_tab_sync');
+      bc.postMessage({
+        type: 'TRANSACTION_NEW',
+        transaction: newTx,
+        sender: 'pending-order'
+      });
+      bc.close();
+    } catch {}
   };
 
   // Handler: Save Revision of Transaction Invoice (Accessible by Admin and Cashier)
@@ -2406,6 +2475,8 @@ export default function App() {
       setSuccessTx(updatedTransaction);
     }
 
+    saveSingleTransactionToServer(updatedTransaction).catch(() => {});
+
     // Immediately sync all updated state to central server and trigger broadcast
     syncCurrentStateToServer(true);
   };
@@ -2488,6 +2559,18 @@ export default function App() {
     setTransactions(updatedTransactions);
     localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
     localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
+    latestStateRef.current.transactions = updatedTransactions;
+
+    // Track permanently deleted ID locally
+    try {
+      const savedDeleted = localStorage.getItem('athree_deleted_tx_ids');
+      const deletedList: string[] = savedDeleted ? JSON.parse(savedDeleted) : [];
+      if (!deletedList.includes(transactionId)) {
+        deletedList.push(transactionId);
+        localStorage.setItem('athree_deleted_tx_ids', JSON.stringify(deletedList));
+      }
+    } catch {}
+
     deleteTransactionFromFirestore(transactionId).catch((err) => console.warn('Sync delete invoice error:', err));
 
     // Save to central server with explicit deletedTransactionIds so it's not restored by merge
@@ -2533,6 +2616,16 @@ export default function App() {
     setTransactions(updatedTransactions);
     localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
     localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
+
+    // Track deleted IDs in localStorage
+    try {
+      const savedDeleted = localStorage.getItem('athree_deleted_tx_ids');
+      const deletedList: string[] = savedDeleted ? JSON.parse(savedDeleted) : [];
+      for (const id of transactionIds) {
+        if (!deletedList.includes(id)) deletedList.push(id);
+      }
+      localStorage.setItem('athree_deleted_tx_ids', JSON.stringify(deletedList));
+    } catch {}
 
     // Delete from Firestore
     transactionIds.forEach((id) => {
@@ -2649,6 +2742,7 @@ export default function App() {
     localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
     latestStateRef.current.transactions = updatedTransactions;
 
+    saveSingleTransactionToServer(updatedTx).catch(() => {});
     saveTransactionToFirestore(updatedTx).catch((err) =>
       console.warn('Sync piutang payment error:', err)
     );
@@ -2697,53 +2791,80 @@ export default function App() {
 
   // Handler: Update order status (Selesai, Sedang Dikerjakan, etc.)
   const handleUpdateOrderStatus = (transactionId: string, status: OrderStatus) => {
-    setTransactions((prev) =>
-      prev.map((t) => {
+    let updatedTx: Transaction | undefined;
+    setTransactions((prev) => {
+      const updated = prev.map((t) => {
         if (t.id === transactionId) {
-          const updated = { ...t, status };
-          saveTransactionToFirestore(updated).catch(() => {});
-          return updated;
+          const item = { ...t, status };
+          updatedTx = item;
+          return item;
         }
         return t;
-      })
-    );
+      });
+      localStorage.setItem('athree_transactions', JSON.stringify(updated));
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updated));
+      latestStateRef.current.transactions = updated;
+      return updated;
+    });
+    if (updatedTx) {
+      saveSingleTransactionToServer(updatedTx).catch(() => {});
+      saveTransactionToFirestore(updatedTx).catch(() => {});
+    }
   };
 
   // Handler: Update due date
   const handleUpdateDueDate = (transactionId: string, newDueDate: string) => {
-    setTransactions((prev) =>
-      prev.map((t) => {
+    let updatedTx: Transaction | undefined;
+    setTransactions((prev) => {
+      const updated = prev.map((t) => {
         if (t.id === transactionId) {
-          const updated = { ...t, dueDate: newDueDate };
-          saveTransactionToFirestore(updated).catch(() => {});
-          return updated;
+          const item = { ...t, dueDate: newDueDate };
+          updatedTx = item;
+          return item;
         }
         return t;
-      })
-    );
+      });
+      localStorage.setItem('athree_transactions', JSON.stringify(updated));
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updated));
+      latestStateRef.current.transactions = updated;
+      return updated;
+    });
+    if (updatedTx) {
+      saveSingleTransactionToServer(updatedTx).catch(() => {});
+      saveTransactionToFirestore(updatedTx).catch(() => {});
+    }
   };
 
   // Handler: Update vendor cost & shipping cost (Keuntungan otomatis dihitung ulang)
   const handleUpdateCosts = (transactionId: string, vendorCost: number, shippingCost: number, vendorName?: string) => {
-    setTransactions((prev) =>
-      prev.map((t) => {
+    let updatedTx: Transaction | undefined;
+    setTransactions((prev) => {
+      const updated = prev.map((t) => {
         if (t.id === transactionId) {
           const safeVendor = Math.max(0, Number(vendorCost) || 0);
           const safeShipping = Math.max(0, Number(shippingCost) || 0);
           const profit = calculateProfit(t.total, safeVendor, safeShipping);
-          const updated: Transaction = {
+          const item: Transaction = {
             ...t,
             vendorCost: safeVendor,
             shippingCost: safeShipping,
             vendorName: vendorName !== undefined ? (vendorName.trim() || undefined) : t.vendorName,
             profit
           };
-          saveTransactionToFirestore(updated).catch((err) => console.warn('Sync update costs error:', err));
-          return updated;
+          updatedTx = item;
+          return item;
         }
         return t;
-      })
-    );
+      });
+      localStorage.setItem('athree_transactions', JSON.stringify(updated));
+      localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updated));
+      latestStateRef.current.transactions = updated;
+      return updated;
+    });
+    if (updatedTx) {
+      saveSingleTransactionToServer(updatedTx).catch(() => {});
+      saveTransactionToFirestore(updatedTx).catch((err) => console.warn('Sync update costs error:', err));
+    }
   };
 
   // Handler: Master Product Add/Update/Delete
