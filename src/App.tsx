@@ -699,9 +699,34 @@ export default function App() {
           'tx-11028'
         ]);
         const cleaned = payload.transactions.filter(
-          (t: any) => t && t.id && !phantomIds.has(t.id) && t.invoiceNo && !t.invoiceNo.includes('0000')
+          (t: any) => t && t.id && !phantomIds.has(t.id) && t.invoiceNo && t.invoiceNo !== '#INV/00000' && t.invoiceNo !== '#INV/00001'
         );
-        const sorted = sortTransactionsByLatestDate(cleaned);
+
+        // Safe Merge: Merge remote transactions with local active transactions
+        // Ensures freshly created local invoices are NEVER overwritten by lagging server polls
+        const localTx = latestStateRef.current.transactions || [];
+        const txMap = new Map<string, Transaction>();
+        for (const t of cleaned) {
+          if (t && t.id) txMap.set(t.id, t);
+        }
+
+        let deletedTxIds: string[] = [];
+        try {
+          const savedDeleted = localStorage.getItem('athree_deleted_tx_ids');
+          if (savedDeleted) deletedTxIds = JSON.parse(savedDeleted);
+        } catch {}
+        const deletedSet = new Set(deletedTxIds);
+
+        for (const t of localTx) {
+          if (t && t.id && !phantomIds.has(t.id) && !deletedSet.has(t.id)) {
+            if (!txMap.has(t.id)) {
+              txMap.set(t.id, t);
+            }
+          }
+        }
+
+        const merged = Array.from(txMap.values());
+        const sorted = sortTransactionsByLatestDate(merged);
         setTransactions(sorted);
         latestStateRef.current.transactions = sorted;
         localStorage.setItem('athree_transactions', JSON.stringify(sorted));
@@ -2081,10 +2106,19 @@ export default function App() {
       setStockMovements((prev) => [...newMovements, ...prev]);
     }
 
-    // 3. Add to transactions list & execute atomic Firestore Transaction
-    setTransactions((prev) => sortTransactionsByLatestDate([newTx, ...prev]));
+    // 3. Add to transactions list with multi-layer synchronous persistence
+    const updatedTransactions = sortTransactionsByLatestDate([newTx, ...transactions]);
+    setTransactions(updatedTransactions);
+    localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
+    localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
+    latestStateRef.current.transactions = updatedTransactions;
 
-    // 2. Gunakan Firestore Transactions (Wajib untuk Data Bersama)
+    // Direct Firestore write backup
+    saveTransactionToFirestore(newTx).catch((err) =>
+      console.warn('Direct save transaction error:', err)
+    );
+
+    // Atomic Firestore checkout transaction
     runFirestoreCheckoutTransaction({
       transaction: newTx,
       items: newTx.items.map((it) => ({
@@ -2098,34 +2132,73 @@ export default function App() {
       stockMovements: newMovements
     }).catch((err) => {
       console.warn('Firestore Checkout Transaction warning (fallback to direct save):', err);
-      saveTransactionToFirestore(newTx).catch(() => {});
     });
 
     // 4. Update shift balances (only actual amount received enters the cash drawer)
     const actualReceived = newTx.amountPaid;
     const isReceivable = Boolean(newTx.remainingAmount && newTx.remainingAmount > 0);
 
-    setShift((prev) => ({
-      ...prev,
+    const updatedShift: CashierShift = {
+      ...shift,
       cashSales:
         newTx.paymentMethod === 'Tunai'
-          ? prev.cashSales + actualReceived
-          : prev.cashSales,
+          ? shift.cashSales + actualReceived
+          : shift.cashSales,
       nonCashSales:
         newTx.paymentMethod !== 'Tunai'
-          ? prev.nonCashSales + actualReceived
-          : prev.nonCashSales,
-      totalSales: prev.totalSales + newTx.total,
+          ? shift.nonCashSales + actualReceived
+          : shift.nonCashSales,
+      totalSales: shift.totalSales + newTx.total,
       expectedCash:
         newTx.paymentMethod === 'Tunai'
-          ? prev.expectedCash + actualReceived
-          : prev.expectedCash,
-      unpaidAmount: prev.unpaidAmount + (newTx.remainingAmount || 0),
-      unpaidCount: isReceivable ? prev.unpaidCount + 1 : prev.unpaidCount,
-      totalTransactions: prev.totalTransactions + 1
-    }));
+          ? shift.expectedCash + actualReceived
+          : shift.expectedCash,
+      unpaidAmount: shift.unpaidAmount + (newTx.remainingAmount || 0),
+      unpaidCount: isReceivable ? shift.unpaidCount + 1 : shift.unpaidCount,
+      totalTransactions: shift.totalTransactions + 1
+    };
 
-    // 5. Show success & receipt modal
+    setShift(updatedShift);
+    localStorage.setItem('athree_shift', JSON.stringify(updatedShift));
+    if (updatedShift.isOpen) {
+      localStorage.setItem('athree_shift_active_persistent', JSON.stringify(updatedShift));
+    }
+    latestStateRef.current.shift = updatedShift;
+
+    // 5. Instantly save to Central Server Cloud SQL so invoice is permanently stored
+    saveServerDatabase(
+      {
+        products: latestStateRef.current.products,
+        categories: latestStateRef.current.categories,
+        transactions: updatedTransactions,
+        cashFlowRecords: latestStateRef.current.cashFlowRecords,
+        shiftHistory: latestStateRef.current.shiftHistory,
+        currentShift: updatedShift,
+        kaosStocks: latestStateRef.current.kaosStocks,
+        stockMovements: latestStateRef.current.stockMovements,
+        customers: latestStateRef.current.customers,
+        users: latestStateRef.current.users,
+        salesList: latestStateRef.current.salesList,
+        isRealData: true
+      },
+      {
+        savedBy: `${currentUser.name} (Penjualan ${newTx.invoiceNo})`,
+        source: 'checkout'
+      }
+    ).catch((err) => console.warn('Sync checkout to server error:', err));
+
+    // 6. Broadcast to other open tabs
+    try {
+      const bc = new BroadcastChannel('athree_cross_tab_sync');
+      bc.postMessage({
+        type: 'TRANSACTION_NEW',
+        transaction: newTx,
+        sender: 'checkout'
+      });
+      bc.close();
+    } catch {}
+
+    // 7. Show success & receipt modal
     setSuccessTx(newTx);
   };
 
@@ -2189,8 +2262,34 @@ export default function App() {
       setStockMovements((prev) => [...newMovements, ...prev]);
     }
 
-    setTransactions((prev) => sortTransactionsByLatestDate([newTx, ...prev]));
+    const updatedTransactions = sortTransactionsByLatestDate([newTx, ...transactions]);
+    setTransactions(updatedTransactions);
+    localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
+    localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
+    latestStateRef.current.transactions = updatedTransactions;
+
     saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync pending transaction error:', err));
+
+    saveServerDatabase(
+      {
+        products: latestStateRef.current.products,
+        categories: latestStateRef.current.categories,
+        transactions: updatedTransactions,
+        cashFlowRecords: latestStateRef.current.cashFlowRecords,
+        shiftHistory: latestStateRef.current.shiftHistory,
+        currentShift: latestStateRef.current.shift,
+        kaosStocks: latestStateRef.current.kaosStocks,
+        stockMovements: latestStateRef.current.stockMovements,
+        customers: latestStateRef.current.customers,
+        users: latestStateRef.current.users,
+        salesList: latestStateRef.current.salesList,
+        isRealData: true
+      },
+      {
+        savedBy: `${currentUser.name} (Antrean Produksi ${newTx.invoiceNo})`,
+        source: 'pending-order'
+      }
+    ).catch((err) => console.warn('Sync pending order to server error:', err));
   };
 
   // Handler: Save Revision of Transaction Invoice (Accessible by Admin and Cashier)
@@ -2544,9 +2643,12 @@ export default function App() {
     };
 
     // 1. Update transactions state & Firestore
-    setTransactions((prev) =>
-      prev.map((t) => (t.id === transactionId ? updatedTx : t))
-    );
+    const updatedTransactions = transactions.map((t) => (t.id === transactionId ? updatedTx : t));
+    setTransactions(updatedTransactions);
+    localStorage.setItem('athree_transactions', JSON.stringify(updatedTransactions));
+    localStorage.setItem('athree_transactions_persistent_backup', JSON.stringify(updatedTransactions));
+    latestStateRef.current.transactions = updatedTransactions;
+
     saveTransactionToFirestore(updatedTx).catch((err) =>
       console.warn('Sync piutang payment error:', err)
     );
@@ -2582,6 +2684,9 @@ export default function App() {
     };
     setCashFlowRecords((prev) => [newCashFlow, ...prev]);
     saveCashFlowToFirestore(newCashFlow).catch(() => {});
+
+    // 4. Immediately sync to server
+    syncCurrentStateToServer(true);
 
     // Refresh modal if viewing
     if (successTx && successTx.id === transactionId) {
