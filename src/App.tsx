@@ -21,7 +21,8 @@ import {
   OrderItem,
   CashFlowRecord,
   KaosStockItem,
-  PaymentMethod
+  PaymentMethod,
+  isCashMethod
 } from './types';
 import { formatCurrency } from './utils/exportUtils';
 import { deductKaosStock, restoreMultipleKaosStock } from './utils/kaosStockUtils';
@@ -95,6 +96,7 @@ import {
   fetchCurrentShiftFromServer,
   saveServerDatabase,
   saveSingleTransactionToServer,
+  saveSingleCashFlowToServer,
   saveServerBackupSnapshot,
   subscribeToServerEvents,
   startLiveShiftSync,
@@ -544,12 +546,14 @@ export default function App() {
   });
 
   const [cashFlowRecords, setCashFlowRecords] = useState<CashFlowRecord[]>(() => {
-    const saved = localStorage.getItem('athree_cash_flow');
+    const saved =
+      localStorage.getItem('athree_cash_flow') ||
+      localStorage.getItem('athree_cash_flow_persistent_backup');
     if (saved) {
       try {
         const parsed: CashFlowRecord[] = JSON.parse(saved);
         const cleaned = parsed.filter(
-          (r) => r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
+          (r) => r && r.id && r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
         );
         return cleaned;
       } catch {
@@ -753,7 +757,7 @@ export default function App() {
       }
       if (payload.cashFlowRecords && Array.isArray(payload.cashFlowRecords)) {
         const cleaned = payload.cashFlowRecords.filter(
-          (r) => r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
+          (r) => r && r.id && r.id !== 'cf-1' && r.id !== 'cf-2' && !r.id.startsWith('cf-179006656569')
         );
         const deletedSet = deletedCashFlowIdsRef.current;
         const map = new Map<string, CashFlowRecord>();
@@ -762,12 +766,37 @@ export default function App() {
             map.set(item.id, item);
           }
         }
+
+        // Include locally tracked active state (never lose newly recorded store expenses)
+        const localRecords = latestStateRef.current.cashFlowRecords || [];
+        for (const r of localRecords) {
+          if (r && r.id && !deletedSet.has(r.id) && !map.has(r.id)) {
+            map.set(r.id, r);
+          }
+        }
+
+        // Include persistent local backup in case of page refresh or tab re-opening
+        try {
+          const backupRaw = localStorage.getItem('athree_cash_flow_persistent_backup');
+          if (backupRaw) {
+            const parsedBackup: CashFlowRecord[] = JSON.parse(backupRaw);
+            if (Array.isArray(parsedBackup)) {
+              for (const r of parsedBackup) {
+                if (r && r.id && !deletedSet.has(r.id) && !map.has(r.id)) {
+                  map.set(r.id, r);
+                }
+              }
+            }
+          }
+        } catch {}
+
         const merged = Array.from(map.values()).sort(
           (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
         );
         latestStateRef.current.cashFlowRecords = merged;
         setCashFlowRecords(merged);
         localStorage.setItem('athree_cash_flow', JSON.stringify(merged));
+        localStorage.setItem('athree_cash_flow_persistent_backup', JSON.stringify(merged));
       }
       if (payload.shiftHistory && Array.isArray(payload.shiftHistory)) {
         setShiftHistory(payload.shiftHistory);
@@ -1376,7 +1405,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    localStorage.setItem('athree_cash_flow', JSON.stringify(cashFlowRecords));
+    if (cashFlowRecords.length > 0) {
+      localStorage.setItem('athree_cash_flow', JSON.stringify(cashFlowRecords));
+      localStorage.setItem('athree_cash_flow_persistent_backup', JSON.stringify(cashFlowRecords));
+    }
   }, [cashFlowRecords]);
 
   // Handler: Add cash flow (income / expense)
@@ -1447,21 +1479,43 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    // 1. Synchronously update state, latestStateRef, and localStorage
+    // 1. Synchronously update state, latestStateRef, and local storage (both active and persistent backup)
     setCashFlowRecords((prev) => {
       const updated = [rec, ...prev.filter((c) => c.id !== cfId)];
       latestStateRef.current.cashFlowRecords = updated;
       localStorage.setItem('athree_cash_flow', JSON.stringify(updated));
+      localStorage.setItem('athree_cash_flow_persistent_backup', JSON.stringify(updated));
       return updated;
     });
 
-    // 2. Persist directly to Firebase Firestore Cloud
+    // 2. Direct atomic save to server endpoint for zero-latency permanent persistence
+    saveSingleCashFlowToServer(rec).catch((err) => {
+      console.warn('Direct server cashflow endpoint error:', err);
+    });
+
+    // 3. Persist directly to Firebase Firestore Cloud
     saveCashFlowToFirestore(rec).catch((err) => {
       console.warn('Sync cashflow to Firestore error:', err);
     });
     runFirestoreCashFlowTransaction(rec).catch(() => {});
 
-    // 3. Immediately sync to central server and trigger cloud backups
+    // 4. If Expense is paid from TUNAI, update active shift expectedCash
+    if (rec.type === 'EXPENSE' && isCashMethod(rec.paymentMethod)) {
+      setShift((prev) => {
+        const nextShift = {
+          ...prev,
+          expectedCash: Math.max(0, prev.expectedCash - rec.amount)
+        };
+        latestStateRef.current.shift = nextShift;
+        localStorage.setItem('athree_shift', JSON.stringify(nextShift));
+        if (nextShift.isOpen) {
+          localStorage.setItem('athree_shift_active_persistent', JSON.stringify(nextShift));
+        }
+        return nextShift;
+      });
+    }
+
+    // 5. Immediately sync to central server and trigger cloud backups
     syncCurrentStateToServer(true);
   };
 
@@ -1479,8 +1533,13 @@ export default function App() {
       );
       latestStateRef.current.cashFlowRecords = updated;
       localStorage.setItem('athree_cash_flow', JSON.stringify(updated));
+      localStorage.setItem('athree_cash_flow_persistent_backup', JSON.stringify(updated));
       return updated;
     });
+
+    saveSingleCashFlowToServer(updatedRecordWithMeta).catch((err) =>
+      console.warn('Direct server cashflow update error:', err)
+    );
 
     saveCashFlowToFirestore(updatedRecordWithMeta).catch((err) =>
       console.warn('Sync cashflow update error:', err)
@@ -1604,6 +1663,7 @@ export default function App() {
       const updated = prev.filter((c) => c.id !== id);
       latestStateRef.current.cashFlowRecords = updated;
       localStorage.setItem('athree_cash_flow', JSON.stringify(updated));
+      localStorage.setItem('athree_cash_flow_persistent_backup', JSON.stringify(updated));
       return updated;
     });
 
@@ -2166,25 +2226,28 @@ export default function App() {
     // 5. Update shift balances (only actual amount received enters the cash drawer)
     const actualReceived = newTx.amountPaid;
     const isReceivable = Boolean(newTx.remainingAmount && newTx.remainingAmount > 0);
+    const isCashTx = isCashMethod(newTx.paymentMethod);
+
+    const prevBreakdown = shift.paymentMethodBreakdown || { cash: 0, transfer: 0, qris: 0, other: 0 };
+    const methodStr = String(newTx.paymentMethod || '').trim().toUpperCase();
+    const updatedBreakdown = {
+      ...prevBreakdown,
+      cash: isCashTx ? prevBreakdown.cash + actualReceived : prevBreakdown.cash,
+      transfer: (methodStr === 'TRANSFER BANK' || methodStr === 'TRANSFER') ? prevBreakdown.transfer + actualReceived : prevBreakdown.transfer,
+      qris: methodStr === 'QRIS' ? prevBreakdown.qris + actualReceived : prevBreakdown.qris,
+      other: (!isCashTx && methodStr !== 'TRANSFER BANK' && methodStr !== 'TRANSFER' && methodStr !== 'QRIS') ? prevBreakdown.other + actualReceived : prevBreakdown.other
+    };
 
     const updatedShift: CashierShift = {
       ...shift,
-      cashSales:
-        newTx.paymentMethod === 'Tunai'
-          ? shift.cashSales + actualReceived
-          : shift.cashSales,
-      nonCashSales:
-        newTx.paymentMethod !== 'Tunai'
-          ? shift.nonCashSales + actualReceived
-          : shift.nonCashSales,
+      cashSales: isCashTx ? shift.cashSales + actualReceived : shift.cashSales,
+      nonCashSales: !isCashTx ? shift.nonCashSales + actualReceived : shift.nonCashSales,
       totalSales: shift.totalSales + newTx.total,
-      expectedCash:
-        newTx.paymentMethod === 'Tunai'
-          ? shift.expectedCash + actualReceived
-          : shift.expectedCash,
+      expectedCash: isCashTx ? shift.expectedCash + actualReceived : shift.expectedCash,
       unpaidAmount: shift.unpaidAmount + (newTx.remainingAmount || 0),
       unpaidCount: isReceivable ? shift.unpaidCount + 1 : shift.unpaidCount,
-      totalTransactions: shift.totalTransactions + 1
+      totalTransactions: shift.totalTransactions + 1,
+      paymentMethodBreakdown: updatedBreakdown
     };
 
     setShift(updatedShift);
@@ -2327,6 +2390,42 @@ export default function App() {
     // Direct Firestore write backup
     saveTransactionToFirestore(newTx).catch((err) => console.warn('Sync pending transaction error:', err));
 
+    // Update active cashier shift (only cash enters expectedCash/cashSales; non-cash enters nonCashSales)
+    const pendingPaid = newTx.amountPaid || 0;
+    const isReceivablePending = Boolean(newTx.remainingAmount && newTx.remainingAmount > 0);
+    const isCashPending = isCashMethod(newTx.paymentMethod);
+    let updatedShiftForPending = latestStateRef.current.shift || shift;
+
+    if (pendingPaid > 0 || isReceivablePending) {
+      const prevBreakdown = updatedShiftForPending.paymentMethodBreakdown || { cash: 0, transfer: 0, qris: 0, other: 0 };
+      const methodStr = String(newTx.paymentMethod || '').trim().toUpperCase();
+      const updatedBreakdown = {
+        ...prevBreakdown,
+        cash: isCashPending ? prevBreakdown.cash + pendingPaid : prevBreakdown.cash,
+        transfer: (methodStr === 'TRANSFER BANK' || methodStr === 'TRANSFER') ? prevBreakdown.transfer + pendingPaid : prevBreakdown.transfer,
+        qris: methodStr === 'QRIS' ? prevBreakdown.qris + pendingPaid : prevBreakdown.qris,
+        other: (!isCashPending && methodStr !== 'TRANSFER BANK' && methodStr !== 'TRANSFER' && methodStr !== 'QRIS') ? prevBreakdown.other + pendingPaid : prevBreakdown.other
+      };
+
+      updatedShiftForPending = {
+        ...updatedShiftForPending,
+        cashSales: isCashPending ? updatedShiftForPending.cashSales + pendingPaid : updatedShiftForPending.cashSales,
+        nonCashSales: !isCashPending ? updatedShiftForPending.nonCashSales + pendingPaid : updatedShiftForPending.nonCashSales,
+        totalSales: updatedShiftForPending.totalSales + newTx.total,
+        expectedCash: isCashPending ? updatedShiftForPending.expectedCash + pendingPaid : updatedShiftForPending.expectedCash,
+        unpaidAmount: updatedShiftForPending.unpaidAmount + (newTx.remainingAmount || 0),
+        unpaidCount: isReceivablePending ? updatedShiftForPending.unpaidCount + 1 : updatedShiftForPending.unpaidCount,
+        totalTransactions: updatedShiftForPending.totalTransactions + 1,
+        paymentMethodBreakdown: updatedBreakdown
+      };
+      setShift(updatedShiftForPending);
+      localStorage.setItem('athree_shift', JSON.stringify(updatedShiftForPending));
+      if (updatedShiftForPending.isOpen) {
+        localStorage.setItem('athree_shift_active_persistent', JSON.stringify(updatedShiftForPending));
+      }
+      latestStateRef.current.shift = updatedShiftForPending;
+    }
+
     // 5. Instantly save full database state to Central Server
     saveServerDatabase(
       {
@@ -2335,7 +2434,7 @@ export default function App() {
         transactions: updatedTransactions,
         cashFlowRecords: latestStateRef.current.cashFlowRecords,
         shiftHistory: latestStateRef.current.shiftHistory,
-        currentShift: latestStateRef.current.shift,
+        currentShift: updatedShiftForPending,
         kaosStocks: nextKaosStocks,
         stockMovements: nextMovements,
         customers: latestStateRef.current.customers,
@@ -2748,21 +2847,35 @@ export default function App() {
     );
 
     // 2. Update cash drawer in active shift
-    if (paymentData.paymentMethod === 'Tunai') {
-      setShift((prev) => ({
-        ...prev,
-        cashSales: prev.cashSales + payAmt,
-        expectedCash: prev.expectedCash + payAmt,
-        unpaidAmount: Math.max(0, prev.unpaidAmount - payAmt),
-        unpaidCount: newRemaining <= 0 ? Math.max(0, prev.unpaidCount - 1) : prev.unpaidCount
-      }));
+    // 2. Update cash drawer in active shift
+    const isPayCash = isCashMethod(paymentData.paymentMethod);
+    if (isPayCash) {
+      setShift((prev) => {
+        const next = {
+          ...prev,
+          cashSales: prev.cashSales + payAmt,
+          expectedCash: prev.expectedCash + payAmt,
+          unpaidAmount: Math.max(0, prev.unpaidAmount - payAmt),
+          unpaidCount: newRemaining <= 0 ? Math.max(0, prev.unpaidCount - 1) : prev.unpaidCount
+        };
+        latestStateRef.current.shift = next;
+        localStorage.setItem('athree_shift', JSON.stringify(next));
+        if (next.isOpen) localStorage.setItem('athree_shift_active_persistent', JSON.stringify(next));
+        return next;
+      });
     } else {
-      setShift((prev) => ({
-        ...prev,
-        nonCashSales: prev.nonCashSales + payAmt,
-        unpaidAmount: Math.max(0, prev.unpaidAmount - payAmt),
-        unpaidCount: newRemaining <= 0 ? Math.max(0, prev.unpaidCount - 1) : prev.unpaidCount
-      }));
+      setShift((prev) => {
+        const next = {
+          ...prev,
+          nonCashSales: prev.nonCashSales + payAmt,
+          unpaidAmount: Math.max(0, prev.unpaidAmount - payAmt),
+          unpaidCount: newRemaining <= 0 ? Math.max(0, prev.unpaidCount - 1) : prev.unpaidCount
+        };
+        latestStateRef.current.shift = next;
+        localStorage.setItem('athree_shift', JSON.stringify(next));
+        if (next.isOpen) localStorage.setItem('athree_shift_active_persistent', JSON.stringify(next));
+        return next;
+      });
     }
 
     // 3. Catat ke Arus Kas
@@ -2773,10 +2886,18 @@ export default function App() {
       category: 'Pelunasan Piutang',
       description: `Pelunasan Piutang Faktur ${tx.invoiceNo} (${tx.customer.name}) - ${paymentData.paymentMethod} (${paymentData.notes || 'Pelunasan Piutang'})`,
       amount: payAmt,
+      paymentMethod: isPayCash ? 'TUNAI' : 'TRANSFER',
       recordedBy: currentUser.name,
       createdAt: new Date().toISOString()
     };
-    setCashFlowRecords((prev) => [newCashFlow, ...prev]);
+    setCashFlowRecords((prev) => {
+      const updated = [newCashFlow, ...prev];
+      latestStateRef.current.cashFlowRecords = updated;
+      localStorage.setItem('athree_cash_flow', JSON.stringify(updated));
+      localStorage.setItem('athree_cash_flow_persistent_backup', JSON.stringify(updated));
+      return updated;
+    });
+    saveSingleCashFlowToServer(newCashFlow).catch(() => {});
     saveCashFlowToFirestore(newCashFlow).catch(() => {});
 
     // 4. Immediately sync to server

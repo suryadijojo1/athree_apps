@@ -22,7 +22,7 @@ import {
   ArrowRight,
   LogOut
 } from 'lucide-react';
-import { CashierShift, User, Transaction, CashFlowRecord, CashDenomination } from '../types';
+import { CashierShift, User, Transaction, CashFlowRecord, CashDenomination, isCashMethod } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
 import { resolveLastClosingCash, parseDateString } from '../utils/shiftUtils';
 
@@ -254,8 +254,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       return false;
     });
 
-    const cashTx = shiftTransactions.filter((t) => t.paymentMethod === 'Tunai' && t.status !== 'BATAL');
-    const nonCashTx = shiftTransactions.filter((t) => t.paymentMethod !== 'Tunai' && t.status !== 'BATAL');
+    const cashTx = shiftTransactions.filter((t) => isCashMethod(t.paymentMethod) && t.status !== 'BATAL');
+    const nonCashTx = shiftTransactions.filter((t) => !isCashMethod(t.paymentMethod) && t.status !== 'BATAL');
     const qrisTx = shiftTransactions.filter((t) => t.paymentMethod === 'QRIS' && t.status !== 'BATAL');
     const transferTx = shiftTransactions.filter(
       (t) => (t.paymentMethod === 'Transfer Bank' || t.paymentMethod === 'Kartu Debit' || t.paymentMethod === 'Kartu Kredit') && t.status !== 'BATAL'
@@ -277,21 +277,21 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
 
     // Cash flow additions (other income & operational expense) in this shift
     // Hanya pendapatan lain Tunai yang belum masuk ke shiftTransactions yang dihitung di cashIncome
-    // Jika pendapatan lain metode TRANSFER, TIDAK ditambahkan ke kas laci
+    // Jika pendapatan lain metode TRANSFER / QRIS / DEBIT, TIDAK ditambahkan ke kas laci
     const cashIncome = shiftCashFlows
       .filter(
         (c) =>
           c.type === 'INCOME' &&
-          c.paymentMethod !== 'TRANSFER' &&
+          isCashMethod(c.paymentMethod) &&
           (!c.transactionId || !shiftTransactions.some((t) => t.id === c.transactionId))
       )
       .reduce((sum, c) => sum + c.amount, 0);
     const cashExpense = shiftCashFlows
-      .filter((c) => c.type === 'EXPENSE')
+      .filter((c) => c.type === 'EXPENSE' && (isCashMethod(c.paymentMethod) || !c.paymentMethod))
       .reduce((sum, c) => sum + c.amount, 0);
 
     // System theoretical cash in drawer for this shift:
-    // Modal Awal + Penjualan Tunai Aktual + Kas Masuk Aktual - Pengeluaran Kas Aktual
+    // Modal Awal + Penjualan Tunai Aktual + Kas Masuk Aktual - Pengeluaran Kas Aktual (Non-Tunai strictly excluded)
     const systemCash = shift.startingCash + calcCashSales + cashIncome - cashExpense;
 
     return {

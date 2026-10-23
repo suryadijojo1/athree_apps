@@ -38,7 +38,7 @@ import {
   Lock,
   Image as ImageIcon
 } from 'lucide-react';
-import { Transaction, User, CashierShift, CashFlowRecord } from '../types';
+import { Transaction, User, CashierShift, CashFlowRecord, isCashMethod } from '../types';
 import { resolveLastClosingCash, getShiftTimestamp, isMockOrTestShift } from '../utils/shiftUtils';
 import {
   formatCurrency,
@@ -285,14 +285,22 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   // Cash in drawer calculations for selected review date
   const reviewDateCashSales = useMemo(() => {
     return reviewDateTransactions
-      .filter((t) => t.paymentMethod === 'Tunai' && t.status !== 'BATAL')
-      .reduce((acc, t) => acc + t.total, 0);
+      .filter((t) => isCashMethod(t.paymentMethod) && t.status !== 'BATAL')
+      .reduce((acc, t) => {
+        const isPiutang = Boolean(t.remainingAmount && t.remainingAmount > 0) || t.paymentStatus === 'DP' || t.paymentStatus === 'PIUTANG';
+        const amt = isPiutang ? (t.amountPaid || 0) : t.total;
+        return acc + amt;
+      }, 0);
   }, [reviewDateTransactions]);
 
   const reviewDateNonCashSales = useMemo(() => {
     return reviewDateTransactions
-      .filter((t) => t.paymentMethod !== 'Tunai' && t.status !== 'BATAL')
-      .reduce((acc, t) => acc + t.total, 0);
+      .filter((t) => !isCashMethod(t.paymentMethod) && t.status !== 'BATAL')
+      .reduce((acc, t) => {
+        const isPiutang = Boolean(t.remainingAmount && t.remainingAmount > 0) || t.paymentStatus === 'DP' || t.paymentStatus === 'PIUTANG';
+        const amt = isPiutang ? (t.amountPaid || 0) : t.total;
+        return acc + amt;
+      }, 0);
   }, [reviewDateTransactions]);
 
   // Cash flow records specifically for selected review date
@@ -315,14 +323,14 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
   // Pendapatan lain Tunai (menambah saldo kas fisik toko per hari tgl saat diinput)
   const reviewDateCashOtherIncome = useMemo(() => {
     return reviewDateIncomeRecords
-      .filter((r) => r.paymentMethod !== 'TRANSFER')
+      .filter((r) => isCashMethod(r.paymentMethod))
       .reduce((s, r) => s + r.amount, 0);
   }, [reviewDateIncomeRecords]);
 
-  // Pendapatan lain Transfer (hanya tercatat di daftar transaksi, TIDAK ditambahkan ke kas fisik)
+  // Pendapatan lain Transfer & Non-Tunai (hanya tercatat di daftar transaksi, TIDAK ditambahkan ke kas fisik)
   const reviewDateTransferOtherIncome = useMemo(() => {
     return reviewDateIncomeRecords
-      .filter((r) => r.paymentMethod === 'TRANSFER')
+      .filter((r) => !isCashMethod(r.paymentMethod))
       .reduce((s, r) => s + r.amount, 0);
   }, [reviewDateIncomeRecords]);
 
@@ -335,7 +343,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     return reviewDateIncomeRecords
       .filter(
         (r) =>
-          r.paymentMethod !== 'TRANSFER' &&
+          isCashMethod(r.paymentMethod) &&
           (!r.transactionId || !reviewDateTransactions.some((t) => t.id === r.transactionId))
       )
       .reduce((s, r) => s + r.amount, 0);
@@ -444,11 +452,11 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     );
 
     const piutangCashReceived = piutangPaymentsInRange
-      .filter((p) => p.paymentMethod === 'Tunai')
+      .filter((p) => isCashMethod(p.paymentMethod))
       .reduce((sum, p) => sum + p.amount, 0);
 
     const piutangNonCashReceived = piutangPaymentsInRange
-      .filter((p) => p.paymentMethod !== 'Tunai')
+      .filter((p) => !isCashMethod(p.paymentMethod))
       .reduce((sum, p) => sum + p.amount, 0);
 
     // Fallback if transaction has piutangPaidDate in range but no piutangPayments array
@@ -461,7 +469,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
       piutangPaymentsInRange.length === 0
     ) {
       const amount = t.amountPaid || t.total;
-      if (t.paymentMethod === 'Tunai') {
+      if (isCashMethod(t.paymentMethod)) {
         legacyPiutangCash = amount;
       } else {
         legacyPiutangNonCash = amount;
@@ -481,7 +489,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
         t.paymentStatus === 'PIUTANG';
 
       if (!isPiutang && (!t.piutangPayments || t.piutangPayments.length === 0)) {
-        if (t.paymentMethod === 'Tunai') {
+        if (isCashMethod(t.paymentMethod)) {
           orderCash = t.total;
         } else {
           orderNonCash = t.total;
@@ -490,7 +498,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
         // Initial down payment paid when created
         const allPiutangSum = (t.piutangPayments || []).reduce((sum, p) => sum + p.amount, 0);
         const initialPaid = Math.max(0, (t.amountPaid || 0) - allPiutangSum);
-        if (t.paymentMethod === 'Tunai') {
+        if (isCashMethod(t.paymentMethod)) {
           orderCash = initialPaid;
         } else {
           orderNonCash = initialPaid;
@@ -626,7 +634,7 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
         breakdown['Tunai'].count += 1;
       }
       if (fin.totalNonCash > 0) {
-        const nonMethod = t.paymentMethod !== 'Tunai' ? t.paymentMethod : 'Transfer Bank';
+        const nonMethod = !isCashMethod(t.paymentMethod) ? t.paymentMethod : 'Transfer Bank';
         if (!breakdown[nonMethod]) {
           breakdown[nonMethod] = { total: 0, count: 0, percent: 0 };
         }
@@ -661,12 +669,12 @@ export const DailyReportsView: React.FC<DailyReportsViewProps> = ({
     if (paymentFilter === 'non_cash') {
       result = dateFilteredTransactions.filter((t) => {
         const fin = getTxRangeFinancials(t);
-        return fin.totalNonCash > 0 || (fin.isOrderInActiveRange && t.paymentMethod !== 'Tunai');
+        return fin.totalNonCash > 0 || (fin.isOrderInActiveRange && !isCashMethod(t.paymentMethod));
       });
     } else if (paymentFilter === 'Tunai') {
       result = dateFilteredTransactions.filter((t) => {
         const fin = getTxRangeFinancials(t);
-        return fin.totalCash > 0 || (fin.isOrderInActiveRange && t.paymentMethod === 'Tunai');
+        return fin.totalCash > 0 || (fin.isOrderInActiveRange && isCashMethod(t.paymentMethod));
       });
     } else if (paymentFilter !== 'all') {
       result = dateFilteredTransactions.filter((t) => t.paymentMethod === paymentFilter);

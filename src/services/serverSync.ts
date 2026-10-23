@@ -708,6 +708,46 @@ export async function saveSingleTransactionToServer(
 }
 
 /**
+ * Persists a single cash flow record (income or expense) directly to the server endpoint with zero latency.
+ */
+export async function saveSingleCashFlowToServer(
+  record: CashFlowRecord
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const candidateEndpoints = [
+      buildApiUrl('/api/cashflow/create'),
+      '/api/cashflow/create',
+      buildApiUrl('/api/cashflow/upsert'),
+      '/api/cashflow/upsert',
+      buildApiUrl('/api/cashflow/add'),
+      '/api/cashflow/add'
+    ];
+    for (const ep of candidateEndpoints) {
+      try {
+        const res = await verboseFetch(
+          ep,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Client-Id': CLIENT_ID
+            },
+            body: JSON.stringify({ cashFlowRecord: record, record })
+          },
+          `SaveSingleCashFlow (${record.id})`
+        );
+        if (res.ok) {
+          return { success: true };
+        }
+      } catch {}
+    }
+    return { success: false, error: 'Endpoint cashflow unavailable' };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Save full database payload to the central Express server & replicated cloud storage
  */
 export interface SaveDatabaseResult {

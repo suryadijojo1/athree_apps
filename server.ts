@@ -539,21 +539,28 @@ async function startServer() {
         Array.isArray(payload.deletedCashFlowIds) ? payload.deletedCashFlowIds : []
       );
 
-      // Smart cash flow preservation
-      if (Array.isArray(currentDbState?.cashFlowRecords) && currentDbState.cashFlowRecords.length > 0) {
-        if ((!payload.cashFlowRecords || payload.cashFlowRecords.length === 0) && deletedCfIds.size === 0) {
-          payload.cashFlowRecords = currentDbState.cashFlowRecords;
-        } else if (Array.isArray(payload.cashFlowRecords)) {
-          payload.cashFlowRecords = payload.cashFlowRecords
-            .filter((cf: any) => !deletedCfIds.has(cf.id))
-            .sort(
-              (a: any, b: any) =>
-                new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
-            );
+      // Smart cash flow preservation and bi-directional merge (never lose inputted store expenses)
+      const cfMap = new Map<string, any>();
+      // 1. Keep existing server cash flow records (unless explicitly deleted)
+      if (Array.isArray(currentDbState?.cashFlowRecords)) {
+        for (const cf of currentDbState.cashFlowRecords) {
+          if (cf && cf.id && !deletedCfIds.has(cf.id)) {
+            cfMap.set(cf.id, cf);
+          }
         }
-      } else if (Array.isArray(payload.cashFlowRecords)) {
-        payload.cashFlowRecords = payload.cashFlowRecords.filter((cf: any) => !deletedCfIds.has(cf.id));
       }
+      // 2. Overlay incoming cash flow records (unless explicitly deleted)
+      if (Array.isArray(payload.cashFlowRecords)) {
+        for (const cf of payload.cashFlowRecords) {
+          if (cf && cf.id && !deletedCfIds.has(cf.id)) {
+            cfMap.set(cf.id, cf);
+          }
+        }
+      }
+      payload.cashFlowRecords = Array.from(cfMap.values()).sort(
+        (a: any, b: any) =>
+          new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+      );
 
       currentDbState = payload;
 
@@ -695,6 +702,74 @@ async function startServer() {
   app.post('/api/transactions/create', handleSaveSingleTransaction);
   app.post('/api/transactions/upsert', handleSaveSingleTransaction);
   app.post('/api/transactions', handleSaveSingleTransaction);
+
+  // Dedicated API endpoint for instant single cash flow record saving/upsert
+  const handleSaveSingleCashFlow = (req: express.Request, res: express.Response) => {
+    try {
+      const record = req.body?.cashFlowRecord || req.body?.record || req.body;
+      if (!record || !record.id) {
+        return res.status(400).json({ error: 'Valid cash flow record data is required' });
+      }
+
+      if (!currentDbState) {
+        currentDbState = {
+          products: [],
+          transactions: [],
+          cashFlowRecords: [],
+          shiftHistory: [],
+          kaosStocks: [],
+          stockMovements: [],
+          customers: [],
+          users: [],
+          isRealData: true
+        };
+      }
+
+      if (!Array.isArray(currentDbState.cashFlowRecords)) {
+        currentDbState.cashFlowRecords = [];
+      }
+
+      const cfMap = new Map<string, any>();
+      for (const c of currentDbState.cashFlowRecords) {
+        if (c && c.id) cfMap.set(c.id, c);
+      }
+      cfMap.set(record.id, record);
+
+      currentDbState.cashFlowRecords = Array.from(cfMap.values()).sort(
+        (a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+      );
+      currentDbState.lastUpdated = new Date().toISOString();
+      currentDbState.isRealData = true;
+
+      // Atomically persist to master DB file on disk
+      const dir = path.dirname(DB_FILE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(currentDbState, null, 2), 'utf-8');
+
+      // Broadcast update to all connected clients
+      broadcastDatabaseUpdate(currentDbState);
+
+      return res.json({
+        success: true,
+        message: 'Pengeluaran/Pendapatan berhasil disimpan ke server',
+        id: record.id,
+        totalCashFlowRecords: currentDbState.cashFlowRecords.length
+      });
+    } catch (err: any) {
+      console.error('Error saving single cash flow:', err);
+      return res.status(500).json({ error: err.message || 'Server error' });
+    }
+  };
+
+  app.post('/api/cashflow/create', handleSaveSingleCashFlow);
+  app.post('/api/cashflow/upsert', handleSaveSingleCashFlow);
+  app.post('/api/cashflow/add', handleSaveSingleCashFlow);
+  app.post('/api/cashflow', handleSaveSingleCashFlow);
+  app.put('/api/cashflow/create', handleSaveSingleCashFlow);
+  app.put('/api/cashflow/upsert', handleSaveSingleCashFlow);
+  app.put('/api/cashflow', handleSaveSingleCashFlow);
 
   // Real-time SQL Analysis Endpoint
   app.post('/api/sql/analyze', (req, res) => {

@@ -194,3 +194,14 @@ export interface DriveFile {
   description?: string;
 }
 
+/**
+ * Normalizes and checks whether a payment method represents physical Cash (Tunai).
+ * Returns true strictly for 'Tunai', 'tunai', 'TUNAI', 'cash', 'CASH'.
+ * Any other method (QRIS, Transfer Bank, Kartu Debit, etc.) is strictly non-cash.
+ */
+export const isCashMethod = (method?: string | null): boolean => {
+  if (!method) return false;
+  const m = String(method).trim().toUpperCase();
+  return m === 'TUNAI' || m === 'CASH';
+};
+
